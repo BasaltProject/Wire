@@ -8,3 +8,9 @@ package org.basaltmc.wire.io
  * only one with per-platform source sets, and this is a syscall like every other one in here.
  */
 public expect fun processCpuMicros(): Long?
+
+/**
+ * Cores this process may run on, or null where the platform cannot say. For sizing worker pools:
+ * a constant is what puts eight generation threads on a four-core machine.
+ */
+public expect fun cpuCoreCount(): Int?

@@ -24,6 +24,8 @@ import platform.posix.pthread_tVar
  * An exception escaping [block] is caught rather than left to cross back into the C callback
  * boundary: Kotlin/Native terminates the whole process when that happens, which would mean one
  * connection's failure (a bad handshake, a bind failure) takes the entire server down with it.
+ *
+ * Reported with its stack: the thread is gone either way, and a bare name says nothing about where.
  */
 public object NativeThread {
     public fun start(block: () -> Unit) {
@@ -41,7 +43,7 @@ public object NativeThread {
                         try {
                             fn()
                         } catch (e: Throwable) {
-                            println("Uncaught exception on a native thread: $e")
+                            println("Uncaught exception on a native thread: " + e.stackTraceToString())
                         }
                         null
                     },

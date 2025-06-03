@@ -9,6 +9,8 @@ import kotlinx.cinterop.ptr
 import platform.windows.FILETIME
 import platform.windows.GetCurrentProcess
 import platform.windows.GetProcessTimes
+import platform.windows.GetSystemInfo
+import platform.windows.SYSTEM_INFO
 
 /**
  * `GetProcessTimes` rather than `getrusage`, which Windows does not have.
@@ -32,3 +34,11 @@ public actual fun processCpuMicros(): Long? =
 
 private fun ticks(time: FILETIME): Long =
     (time.dwHighDateTime.toLong() shl 32) or (time.dwLowDateTime.toLong() and 0xFFFFFFFFL)
+
+/** `GetSystemInfo`, Windows having no `sysconf`. Unverified locally, like the rest of this file. */
+public actual fun cpuCoreCount(): Int? =
+    memScoped {
+        val info = alloc<SYSTEM_INFO>()
+        GetSystemInfo(info.ptr)
+        info.dwNumberOfProcessors.toInt().takeIf { it > 0 }
+    }
