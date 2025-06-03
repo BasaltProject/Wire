@@ -1,7 +1,7 @@
 package org.basaltmc.wire.text
 
 /**
- * Parser for the MiniMessage tag markup (`<red>Hello</red>`), the format BSMod plugins use to
+ * Parser for the MiniMessage tag markup (`<red>Hello</red>`), the format Basalt plugins use to
  * author text. Covers colors (named and `#rrggbb`),
  * decorations, `<reset>`, `<click:...>`/`<hover:show_text:...>`, and two-or-more-stop
  * `<gradient:...>` (applied to the literal text up to the matching `</gradient>`, without
