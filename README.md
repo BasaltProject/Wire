@@ -50,19 +50,19 @@ runtime and no Java library in the build: no Netty, no Adventure, no Gson.
 
 ## Modules
 
-Dependencies point downwards only: `basalt-protocol` knows about `basalt-nbt`,
+Dependencies point downwards only: `wire-protocol` knows about `wire-nbt`,
 never the other way round.
 
 | Module | What it holds |
 |---|---|
-| `basalt-common` | Logging, primitive collections, hashing, identifiers, timings. Depends on nothing |
-| `basalt-nbt` | NBT and SNBT, reading and writing |
-| `basalt-text` | Adventure-style components, styles, JSON and NBT serialisation |
-| `basalt-io` | Sockets, event loop, byte buffers, zlib, gzip, zstd |
-| `basalt-protocol` | Packet framing, varints, and the codecs for every protocol state |
-| `basalt-auth` | Encrypted handshake, Mojang session lookup, profiles, offline UUIDs |
-| `basalt-multiversion` | Translation for older Java clients |
-| `basalt-bedrock` | RakNet and Bedrock protocol translation |
+| `wire-common` | Logging, primitive collections, hashing, identifiers, timings. Depends on nothing |
+| `wire-nbt` | NBT and SNBT, reading and writing |
+| `wire-text` | Adventure-style components, styles, JSON and NBT serialisation |
+| `wire-io` | Sockets, event loop, byte buffers, zlib, gzip, zstd |
+| `wire-protocol` | Packet framing, varints, and the codecs for every protocol state |
+| `wire-auth` | Encrypted handshake, Mojang session lookup, profiles, offline UUIDs |
+| `wire-multiversion` | Translation for older Java clients |
+| `wire-bedrock` | RakNet and Bedrock protocol translation |
 
 Everything above the network layer, worlds, entities, gameplay, plugins, lives
 in the consuming repository instead.
@@ -87,8 +87,8 @@ dependencyResolutionManagement {
     }
 }
 
-include(":basalt-protocol")
-project(":basalt-protocol").projectDir = file("wire/basalt-protocol")
+include(":wire-protocol")
+project(":wire-protocol").projectDir = file("wire/wire-protocol")
 ```
 
 Wire owns the shared build convention (`basalt.native-module`) and the version
@@ -110,7 +110,7 @@ one you are building for.
 ./gradlew build
 
 # A single module
-./gradlew :basalt-protocol:macosArm64Test
+./gradlew :wire-protocol:macosArm64Test
 ```
 
 Supported targets: `macosArm64`, `macosX64`, `linuxX64`, `linuxArm64`,
@@ -142,17 +142,17 @@ Use the included wrapper rather than a system Gradle installation.
 
 | Module | Status |
 |---|---|
-| `basalt-common` | Working |
-| `basalt-nbt` | Working |
-| `basalt-text` | Working |
-| `basalt-io` | Working |
-| `basalt-protocol` | Handshake, status, login, configuration and play |
-| `basalt-auth` | Working: encryption, Mojang session, profiles |
-| `basalt-multiversion` | Not started |
-| `basalt-bedrock` | Not started |
+| `wire-common` | Working |
+| `wire-nbt` | Working |
+| `wire-text` | Working |
+| `wire-io` | Working |
+| `wire-protocol` | Handshake, status, login, configuration and play |
+| `wire-auth` | Working: encryption, Mojang session, profiles |
+| `wire-multiversion` | Not started |
+| `wire-bedrock` | Not started |
 
 Codecs are written against protocol 776 and are not yet parameterised by
-version. Making them so is the work `basalt-multiversion` depends on.
+version. Making them so is the work `wire-multiversion` depends on.
 
 ## Related repositories
 

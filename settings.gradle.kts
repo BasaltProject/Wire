@@ -15,12 +15,12 @@ dependencyResolutionManagement {
 }
 
 include(
-    ":basalt-common",
-    ":basalt-nbt",
-    ":basalt-text",
-    ":basalt-io",
-    ":basalt-protocol",
-    ":basalt-auth",
-    ":basalt-multiversion",
-    ":basalt-bedrock",
+    ":wire-common",
+    ":wire-nbt",
+    ":wire-text",
+    ":wire-io",
+    ":wire-protocol",
+    ":wire-auth",
+    ":wire-multiversion",
+    ":wire-bedrock",
 )
