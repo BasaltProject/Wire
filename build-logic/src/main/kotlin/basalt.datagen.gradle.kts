@@ -48,7 +48,7 @@ tasks.register("generate") {
         val items = parseRegistryEntries(File(reportsDir, "registries.json").readText(), "minecraft:item")
         val blocks = parseRegistryEntries(File(reportsDir, "registries.json").readText(), "minecraft:block")
 
-        val registryDir = project.rootProject.file("basalt-registry/src/commonMain/kotlin/org/basaltmc/registry")
+        val registryDir = project.rootProject.file("basalt-registry/src/commonMain/kotlin/org/basaltmc/server/registry")
         writeIdTable(File(registryDir, "VanillaBlockStates.kt"), "ALL_DEFAULT_BLOCK_STATES", BLOCK_STATES_KDOC, blockStates)
         writeIdTable(File(registryDir, "VanillaItems.kt"), "ALL_ITEMS", ITEMS_KDOC, items)
         writeIdTable(File(registryDir, "VanillaBlockIds.kt"), "ALL_BLOCK_IDS", BLOCK_IDS_KDOC, blocks)
@@ -100,7 +100,7 @@ fun writeIdTable(
 ) {
     val content =
         buildString {
-            appendLine("package org.basaltmc.registry")
+            appendLine("package org.basaltmc.server.registry")
             appendLine()
             appendLine(kdoc)
             appendLine("internal val $varName: List<Pair<Int, String>> =")
@@ -237,7 +237,7 @@ fun writeHardnessTable(
         }
     file.writeText(
         """
-        package org.basaltmc.registry
+        package org.basaltmc.server.registry
 
         /**
          * Every block's destroy time and whether it needs the correct tool to drop anything,
@@ -310,7 +310,7 @@ fun writeToolTable(
         }
     file.writeText(
         """
-        package org.basaltmc.registry
+        package org.basaltmc.server.registry
 
         /**
          * Every tool item's mining rules, from the real server jar's own item component reports
