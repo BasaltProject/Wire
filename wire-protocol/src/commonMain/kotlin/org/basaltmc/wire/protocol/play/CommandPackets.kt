@@ -102,20 +102,172 @@ public sealed class ArgumentParser(
         }
     }
 
+    /** `brigadier:bool`. */
+    public data object BrigadierBool : ArgumentParser(0)
+
+    /** `brigadier:double`, with vanilla's "omit an unbounded end" encoding. */
+    public data class BrigadierDouble(
+        val min: Double = -Double.MAX_VALUE,
+        val max: Double = Double.MAX_VALUE,
+    ) : ArgumentParser(2) {
+        override fun writeProperties(buffer: ByteBuffer) {
+            val hasMin = min != -Double.MAX_VALUE
+            val hasMax = max != Double.MAX_VALUE
+            var flags = 0
+            if (hasMin) flags = flags or 1
+            if (hasMax) flags = flags or 2
+            buffer.writeByte(flags.toByte())
+            if (hasMin) buffer.writeDouble(min)
+            if (hasMax) buffer.writeDouble(max)
+        }
+    }
+
     /** `minecraft:game_profile`: a player by name, online or not. */
     public data object GameProfile : ArgumentParser(7)
 
     /** `minecraft:block_pos`. */
     public data object BlockPosition : ArgumentParser(8)
 
+    /** `minecraft:column_pos`: an `x z` pair of block coordinates. */
+    public data object ColumnPosition : ArgumentParser(9)
+
     /** `minecraft:vec3`. */
     public data object Vec3 : ArgumentParser(10)
+
+    /** `minecraft:vec2`. */
+    public data object Vec2 : ArgumentParser(11)
+
+    /** `minecraft:block_state`: a block plus its properties, as `/setblock` takes one. */
+    public data object BlockState : ArgumentParser(12)
+
+    /** `minecraft:block_predicate`: a block, a block tag, or either with properties. */
+    public data object BlockPredicate : ArgumentParser(13)
+
+    /** `minecraft:item_stack`: an item plus its components. */
+    public data object ItemStack : ArgumentParser(14)
+
+    /** `minecraft:item_predicate`: an item or item tag to match against. */
+    public data object ItemPredicate : ArgumentParser(15)
+
+    /** `minecraft:team_color`: one of the sixteen chat colours a team can be dyed. */
+    public data object TeamColor : ArgumentParser(16)
+
+    /** `minecraft:component`: a text component, as JSON or SNBT. */
+    public data object TextComponent : ArgumentParser(18)
+
+    /** `minecraft:style`: a component style without its text. */
+    public data object Style : ArgumentParser(19)
 
     /** `minecraft:message`: the rest of the line, chat-decorated. */
     public data object Message : ArgumentParser(20)
 
+    /** `minecraft:nbt_compound_tag`: an SNBT compound. */
+    public data object NbtCompound : ArgumentParser(21)
+
+    /** `minecraft:nbt_tag`: any SNBT value, compound or not. */
+    public data object NbtTag : ArgumentParser(22)
+
+    /** `minecraft:nbt_path`: a path into a compound, as `/data` takes one. */
+    public data object NbtPath : ArgumentParser(23)
+
+    /** `minecraft:objective`: a scoreboard objective's name. */
+    public data object Objective : ArgumentParser(24)
+
+    /** `minecraft:objective_criteria`: what an objective counts. */
+    public data object ObjectiveCriteria : ArgumentParser(25)
+
+    /** `minecraft:operation`: the `+=`, `<`, `><` family `/scoreboard players operation` takes. */
+    public data object Operation : ArgumentParser(26)
+
+    /** `minecraft:particle`. */
+    public data object Particle : ArgumentParser(27)
+
+    /** `minecraft:angle`: a single yaw, absolute or relative. */
+    public data object Angle : ArgumentParser(28)
+
+    /** `minecraft:rotation`: a `yaw pitch` pair. */
+    public data object Rotation : ArgumentParser(29)
+
+    /** `minecraft:scoreboard_slot`: where an objective is displayed. */
+    public data object ScoreboardSlot : ArgumentParser(30)
+
+    /** `minecraft:score_holder`: a selector or a bare name, which is how fake players are scored. */
+    public data class ScoreHolder(
+        val multiple: Boolean,
+    ) : ArgumentParser(31) {
+        override fun writeProperties(buffer: ByteBuffer) {
+            buffer.writeByte(if (multiple) 1 else 0)
+        }
+    }
+
+    /** `minecraft:swizzle`: any combination of `x`, `y` and `z`. */
+    public data object Swizzle : ArgumentParser(32)
+
+    /** `minecraft:team`: a team's name. */
+    public data object Team : ArgumentParser(33)
+
+    /** `minecraft:item_slot`: one slot name, as `/item replace` takes. */
+    public data object ItemSlot : ArgumentParser(34)
+
+    /** `minecraft:item_slots`: a slot name that may cover several slots. */
+    public data object ItemSlots : ArgumentParser(35)
+
+    /** `minecraft:resource_location`: a namespaced id, unchecked against any registry. */
+    public data object ResourceLocation : ArgumentParser(36)
+
+    /** `minecraft:entity_anchor`: `eyes` or `feet`. */
+    public data object EntityAnchor : ArgumentParser(38)
+
+    /** `minecraft:int_range`: `3`, `3..`, `..7` or `3..7`. */
+    public data object IntRange : ArgumentParser(39)
+
+    /** `minecraft:float_range`. */
+    public data object FloatRange : ArgumentParser(40)
+
+    /** `minecraft:dimension`: a level's id, resolved by the client against its own dimension list. */
+    public data object Dimension : ArgumentParser(41)
+
     /** `minecraft:gamemode`. */
     public data object GameMode : ArgumentParser(42)
+
+    /** `minecraft:time`: a tick count with an optional `d`/`s`/`t` unit, never below [min]. */
+    public data class Time(
+        val min: Int = 0,
+    ) : ArgumentParser(43) {
+        override fun writeProperties(buffer: ByteBuffer) {
+            buffer.writeInt(min)
+        }
+    }
+
+    /** `minecraft:resource`: an entry of [registry], which the client checks it knows. */
+    public data class Resource(
+        val registry: String,
+    ) : ArgumentParser(46) {
+        override fun writeProperties(buffer: ByteBuffer) {
+            buffer.writeProtocolString(registry)
+        }
+    }
+
+    /** `minecraft:resource_key`: like [Resource], but the entry need not be loaded. */
+    public data class ResourceKey(
+        val registry: String,
+    ) : ArgumentParser(47) {
+        override fun writeProperties(buffer: ByteBuffer) {
+            buffer.writeProtocolString(registry)
+        }
+    }
+
+    /** `minecraft:heightmap`: one of the heightmap types `/execute positioned over` accepts. */
+    public data object Heightmap : ArgumentParser(51)
+
+    /** `minecraft:loot_table`: a loot table id or an inline table. */
+    public data object LootTable : ArgumentParser(52)
+
+    /** `minecraft:dialog`: a dialog id or an inline dialog. */
+    public data object Dialog : ArgumentParser(55)
+
+    /** `minecraft:uuid`. */
+    public data object Uuid : ArgumentParser(56)
 
     public companion object {
         /**
@@ -126,6 +278,14 @@ public sealed class ArgumentParser(
          */
         public fun read(buffer: ByteBuffer): ArgumentParser =
             when (val registryId = buffer.readVarInt()) {
+                0 -> BrigadierBool
+                2 -> {
+                    val flags = buffer.readByte().toInt()
+                    BrigadierDouble(
+                        min = if (flags and 1 != 0) buffer.readDouble() else -Double.MAX_VALUE,
+                        max = if (flags and 2 != 0) buffer.readDouble() else Double.MAX_VALUE,
+                    )
+                }
                 3 -> {
                     val flags = buffer.readByte().toInt()
                     BrigadierInteger(
@@ -140,9 +300,45 @@ public sealed class ArgumentParser(
                 }
                 7 -> GameProfile
                 8 -> BlockPosition
+                9 -> ColumnPosition
                 10 -> Vec3
+                11 -> Vec2
+                12 -> BlockState
+                13 -> BlockPredicate
+                14 -> ItemStack
+                15 -> ItemPredicate
+                16 -> TeamColor
+                18 -> TextComponent
+                19 -> Style
                 20 -> Message
+                21 -> NbtCompound
+                22 -> NbtTag
+                23 -> NbtPath
+                24 -> Objective
+                25 -> ObjectiveCriteria
+                26 -> Operation
+                27 -> Particle
+                28 -> Angle
+                29 -> Rotation
+                30 -> ScoreboardSlot
+                31 -> ScoreHolder(multiple = buffer.readByte().toInt() and 1 != 0)
+                32 -> Swizzle
+                33 -> Team
+                34 -> ItemSlot
+                35 -> ItemSlots
+                36 -> ResourceLocation
+                38 -> EntityAnchor
+                39 -> IntRange
+                40 -> FloatRange
+                41 -> Dimension
                 42 -> GameMode
+                43 -> Time(min = buffer.readInt())
+                46 -> Resource(buffer.readProtocolString())
+                47 -> ResourceKey(buffer.readProtocolString())
+                51 -> Heightmap
+                52 -> LootTable
+                55 -> Dialog
+                56 -> Uuid
                 else -> error("no argument parser registered for id $registryId")
             }
     }
