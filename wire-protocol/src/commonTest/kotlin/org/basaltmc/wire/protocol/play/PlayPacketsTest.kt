@@ -263,6 +263,56 @@ class PlayPacketsTest {
     }
 
     @Test
+    fun setTimeRoundTripsEveryClockItCarries() {
+        val buffer = ByteBuffer()
+        val packet =
+            SetTimePacket(
+                gameTime = 123456L,
+                clocks =
+                    listOf(
+                        ClockUpdate(SetTimePacket.OVERWORLD_CLOCK, totalTicks = 6000L, partialTick = 0.5f, rate = 1f),
+                        ClockUpdate(SetTimePacket.END_CLOCK, totalTicks = 0L, partialTick = 0f, rate = 0f),
+                    ),
+            )
+        packet.write(buffer)
+        assertEquals(packet, SetTimePacket.read(buffer))
+    }
+
+    @Test
+    fun changeDifficultyRoundTrips() {
+        val buffer = ByteBuffer()
+        val packet = ChangeDifficultyPacket(difficulty = 2, locked = true)
+        packet.write(buffer)
+        assertEquals(packet, ChangeDifficultyPacket.read(buffer))
+    }
+
+    @Test
+    fun sectionBlocksUpdateRoundTripsWithNegativeSectionCoordinates() {
+        val buffer = ByteBuffer()
+        val packet =
+            SectionBlocksUpdatePacket(
+                sectionX = -3,
+                sectionY = -4,
+                sectionZ = 7,
+                positions =
+                    shortArrayOf(
+                        SectionBlocksUpdatePacket.packPosition(0, 0, 0),
+                        SectionBlocksUpdatePacket.packPosition(15, 15, 15),
+                        SectionBlocksUpdatePacket.packPosition(1, 2, 3),
+                    ),
+                blockStateIds = intArrayOf(1, 32365, 0),
+            )
+        packet.write(buffer)
+        assertEquals(packet, SectionBlocksUpdatePacket.read(buffer))
+    }
+
+    @Test
+    fun sectionRelativePositionsPackAsVanillaOrdersThem() {
+        // parity: SectionPos.sectionRelativePos, x << 8 | z << 4 | y.
+        assertEquals((1 shl 8 or (3 shl 4) or 2).toShort(), SectionBlocksUpdatePacket.packPosition(1, 2, 3))
+    }
+
+    @Test
     fun clientboundBlockChangedAckRoundTrips() {
         val buffer = ByteBuffer()
         val packet = ClientboundBlockChangedAckPacket(sequence = 42)

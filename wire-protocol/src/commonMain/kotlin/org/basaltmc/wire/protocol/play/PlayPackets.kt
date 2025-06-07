@@ -9,11 +9,13 @@ import org.basaltmc.wire.protocol.readBoolean
 import org.basaltmc.wire.protocol.readProtocolString
 import org.basaltmc.wire.protocol.readUuid
 import org.basaltmc.wire.protocol.readVarInt
+import org.basaltmc.wire.protocol.readVarLong
 import org.basaltmc.wire.protocol.writeAnonymousNbt
 import org.basaltmc.wire.protocol.writeBoolean
 import org.basaltmc.wire.protocol.writeProtocolString
 import org.basaltmc.wire.protocol.writeUuid
 import org.basaltmc.wire.protocol.writeVarInt
+import org.basaltmc.wire.protocol.writeVarLong
 import org.basaltmc.wire.text.Component
 import org.basaltmc.wire.text.ComponentNbt
 import kotlin.uuid.ExperimentalUuidApi
@@ -230,7 +232,11 @@ public data class GameEventPacket(
 
     public companion object {
         public const val ID: Int = 0x26
+        public const val START_RAINING: Int = 1
+        public const val STOP_RAINING: Int = 2
         public const val CHANGE_GAME_MODE: Int = 3
+        public const val RAIN_LEVEL_CHANGE: Int = 7
+        public const val THUNDER_LEVEL_CHANGE: Int = 8
         public const val LEVEL_CHUNKS_LOAD_START: Int = 13
 
         public fun read(buffer: ByteBuffer): GameEventPacket =
@@ -997,6 +1003,168 @@ public data class ClientboundBlockUpdatePacket(
 
         public fun read(buffer: ByteBuffer): ClientboundBlockUpdatePacket =
             ClientboundBlockUpdatePacket(BlockPos.unpack(buffer.readLong()), buffer.readVarInt())
+    }
+}
+
+/**
+ * One clock's state on the wire: how many ticks it has counted, where it is between ticks, and how
+ * fast it runs. A rate of zero is how a paused clock is expressed, since there is no paused flag.
+ */
+public data class ClockUpdate(
+    /** The clock's index in the `minecraft:world_clock` registry: 0 overworld, 1 the end. */
+    val clockId: Int,
+    val totalTicks: Long,
+    val partialTick: Float = 0f,
+    val rate: Float = 1f,
+)
+
+/**
+ * Clientbound, id 0x71: the world clocks' state. Mirrors `ClientboundSetTimePacket`.
+ *
+ * 26.2 stopped sending "day time" as a number and sends clocks instead, each one a registry entry
+ * the dimension type points at through `default_clock`. A dimension with no clock (the Nether) is
+ * simply never updated, which is why its sky never moves.
+ */
+public data class SetTimePacket(
+    val gameTime: Long,
+    val clocks: List<ClockUpdate>,
+) {
+    public fun write(buffer: ByteBuffer) {
+        buffer.writeLong(gameTime)
+        buffer.writeVarInt(clocks.size)
+        for (clock in clocks) {
+            // parity: `WorldClock.STREAM_CODEC` is `holderRegistry`, so this is the plain id. With
+            // one added, `/time` in the overworld drove the End's clock and nothing changed.
+            buffer.writeVarInt(clock.clockId)
+            buffer.writeVarLong(clock.totalTicks)
+            buffer.writeFloat(clock.partialTick)
+            buffer.writeFloat(clock.rate)
+        }
+    }
+
+    public companion object {
+        public const val ID: Int = 0x71
+
+        /** parity: `WorldClocks`, whose registration order is the id the holder carries. */
+        public const val OVERWORLD_CLOCK: Int = 0
+        public const val END_CLOCK: Int = 1
+
+        public fun read(buffer: ByteBuffer): SetTimePacket {
+            val gameTime = buffer.readLong()
+            val count = buffer.readVarInt()
+            return SetTimePacket(
+                gameTime,
+                List(count) {
+                    ClockUpdate(
+                        clockId = buffer.readVarInt(),
+                        totalTicks = buffer.readVarLong(),
+                        partialTick = buffer.readFloat(),
+                        rate = buffer.readFloat(),
+                    )
+                },
+            )
+        }
+    }
+}
+
+/**
+ * Clientbound, id 0x0a: the difficulty the client should show, and whether it may change it.
+ * Mirrors `ClientboundChangeDifficultyPacket`.
+ */
+public data class ChangeDifficultyPacket(
+    val difficulty: Int,
+    val locked: Boolean,
+) {
+    public fun write(buffer: ByteBuffer) {
+        buffer.writeByte(difficulty.toByte())
+        buffer.writeBoolean(locked)
+    }
+
+    public companion object {
+        public const val ID: Int = 0x0a
+
+        public fun read(buffer: ByteBuffer): ChangeDifficultyPacket =
+            ChangeDifficultyPacket(buffer.readByte().toInt(), buffer.readBoolean())
+    }
+}
+
+/**
+ * Clientbound, id 0x54: every block that changed inside one 16x16x16 section, in one packet.
+ * Mirrors `ClientboundSectionBlocksUpdatePacket`.
+ *
+ * The section coordinate packs as `SectionPos.asLong` (22 bits x, 20 bits y, 22 bits z), and each
+ * change as a varlong of `stateId << 12 | (x << 8 | z << 4 | y)`, which is why a section can only
+ * carry 4096 distinct positions.
+ */
+public data class SectionBlocksUpdatePacket(
+    val sectionX: Int,
+    val sectionY: Int,
+    val sectionZ: Int,
+    /** Section-relative positions, already packed the way the wire wants them. */
+    val positions: ShortArray,
+    val blockStateIds: IntArray,
+) {
+    public fun write(buffer: ByteBuffer) {
+        buffer.writeLong(packSection(sectionX, sectionY, sectionZ))
+        buffer.writeVarInt(positions.size)
+        for (index in positions.indices) {
+            buffer.writeVarLong((blockStateIds[index].toLong() shl 12) or (positions[index].toLong() and 0xFFFL))
+        }
+    }
+
+    override fun equals(other: Any?): Boolean =
+        other is SectionBlocksUpdatePacket &&
+            sectionX == other.sectionX &&
+            sectionY == other.sectionY &&
+            sectionZ == other.sectionZ &&
+            positions.contentEquals(other.positions) &&
+            blockStateIds.contentEquals(other.blockStateIds)
+
+    override fun hashCode(): Int {
+        var result = sectionX
+        result = 31 * result + sectionY
+        result = 31 * result + sectionZ
+        result = 31 * result + positions.contentHashCode()
+        return 31 * result + blockStateIds.contentHashCode()
+    }
+
+    public companion object {
+        public const val ID: Int = 0x54
+
+        /** parity: `SectionPos.sectionRelativePos`, whose order is x, then z, then y. */
+        public fun packPosition(
+            x: Int,
+            y: Int,
+            z: Int,
+        ): Short = (((x and 15) shl 8) or ((z and 15) shl 4) or (y and 15)).toShort()
+
+        public fun packSection(
+            x: Int,
+            y: Int,
+            z: Int,
+        ): Long =
+            ((x.toLong() and 0x3FFFFFL) shl 42) or
+                ((z.toLong() and 0x3FFFFFL) shl 20) or
+                (y.toLong() and 0xFFFFFL)
+
+        public fun read(buffer: ByteBuffer): SectionBlocksUpdatePacket {
+            val packed = buffer.readLong()
+            val count = buffer.readVarInt()
+            val positions = ShortArray(count)
+            val states = IntArray(count)
+            for (index in 0 until count) {
+                val change = buffer.readVarLong()
+                positions[index] = (change and 0xFFFL).toShort()
+                states[index] = (change ushr 12).toInt()
+            }
+            return SectionBlocksUpdatePacket(
+                sectionX = ((packed shl 0) shr 42).toInt(),
+                sectionY = ((packed shl 44) shr 44).toInt(),
+                sectionZ = ((packed shl 22) shr 42).toInt(),
+                positions = positions,
+                blockStateIds = states,
+            )
+        }
     }
 }
 
