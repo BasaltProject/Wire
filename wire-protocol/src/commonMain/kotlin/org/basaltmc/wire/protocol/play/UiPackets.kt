@@ -237,6 +237,10 @@ public enum class BossBarOverlay {
     NOTCHED_10,
     NOTCHED_12,
     NOTCHED_20,
+    ;
+
+    /** What `/bossbar set <id> style` takes, which is `BossBarOverlay.getSerializedName`. */
+    public val commandName: String get() = name.lowercase()
 }
 
 /**
@@ -387,5 +391,196 @@ public data class BossEventPacket(
                 },
             )
         }
+    }
+}
+
+/** parity: `Team.Visibility`, whose ids are what the wire carries. */
+public enum class NameTagVisibility(
+    public val serializedName: String,
+) {
+    ALWAYS("always"),
+    NEVER("never"),
+    HIDE_FOR_OTHER_TEAMS("hideForOtherTeams"),
+    HIDE_FOR_OWN_TEAM("hideForOwnTeam"),
+    ;
+
+    public companion object {
+        public fun byName(name: String): NameTagVisibility? = entries.firstOrNull { it.serializedName == name }
+    }
+}
+
+/** parity: `Team.CollisionRule`. */
+public enum class CollisionRule(
+    public val serializedName: String,
+) {
+    ALWAYS("always"),
+    NEVER("never"),
+    PUSH_OTHER_TEAMS("pushOtherTeams"),
+    PUSH_OWN_TEAM("pushOwnTeam"),
+    ;
+
+    public companion object {
+        public fun byName(name: String): CollisionRule? = entries.firstOrNull { it.serializedName == name }
+    }
+}
+
+/** parity: `TeamColor`, which is the sixteen chat colours in their own order. */
+public enum class TeamColor(
+    /** parity: `TeamColor`'s own packed RGB, which is what a waypoint icon carries. */
+    public val rgb: Int,
+) {
+    BLACK(0x000000),
+    DARK_BLUE(0x0000AA),
+    DARK_GREEN(0x00AA00),
+    DARK_AQUA(0x00AAAA),
+    DARK_RED(0xAA0000),
+    DARK_PURPLE(0xAA00AA),
+    GOLD(0xFFAA00),
+    GRAY(0xAAAAAA),
+    DARK_GRAY(0x555555),
+    BLUE(0x5555FF),
+    GREEN(0x55FF55),
+    AQUA(0x55FFFF),
+    RED(0xFF5555),
+    LIGHT_PURPLE(0xFF55FF),
+    YELLOW(0xFFFF55),
+    WHITE(0xFFFFFF),
+    ;
+
+    public companion object {
+        public fun byName(name: String): TeamColor? = entries.firstOrNull { it.name.equals(name, ignoreCase = true) }
+    }
+}
+
+/**
+ * Creates, changes, removes or populates a team. Mirrors `ClientboundSetPlayerTeamPacket`.
+ *
+ * The method decides what follows the name: parameters for add and change, a member list for add,
+ * join and leave, and nothing at all for remove.
+ */
+public data class SetPlayerTeamPacket(
+    val teamName: String,
+    val method: Int,
+    val parameters: Parameters? = null,
+    val members: List<String> = emptyList(),
+) {
+    public data class Parameters(
+        val displayName: Component,
+        val prefix: Component = Component.empty(),
+        val suffix: Component = Component.empty(),
+        val nameTagVisibility: NameTagVisibility = NameTagVisibility.ALWAYS,
+        val collisionRule: CollisionRule = CollisionRule.ALWAYS,
+        val color: TeamColor? = null,
+        val friendlyFire: Boolean = true,
+        val seeFriendlyInvisibles: Boolean = true,
+    ) {
+        /** parity: `PlayerTeam.packOptions`: bit 0 friendly fire, bit 1 seeing friendly invisibles. */
+        public val options: Byte
+            get() {
+                var flags = 0
+                if (friendlyFire) flags = flags or 1
+                if (seeFriendlyInvisibles) flags = flags or 2
+                return flags.toByte()
+            }
+
+        public fun write(buffer: ByteBuffer) {
+            buffer.writeAnonymousNbt(ComponentNbt.serialize(displayName))
+            buffer.writeAnonymousNbt(ComponentNbt.serialize(prefix))
+            buffer.writeAnonymousNbt(ComponentNbt.serialize(suffix))
+            buffer.writeVarInt(nameTagVisibility.ordinal)
+            buffer.writeVarInt(collisionRule.ordinal)
+            buffer.writeBoolean(color != null)
+            color?.let { buffer.writeVarInt(it.ordinal) }
+            buffer.writeByte(options)
+        }
+
+        public companion object {
+            public fun read(buffer: ByteBuffer): Parameters {
+                val displayName = ComponentNbt.deserialize(buffer.readAnonymousNbt())
+                val prefix = ComponentNbt.deserialize(buffer.readAnonymousNbt())
+                val suffix = ComponentNbt.deserialize(buffer.readAnonymousNbt())
+                val visibility = NameTagVisibility.entries[buffer.readVarInt()]
+                val collision = CollisionRule.entries[buffer.readVarInt()]
+                val color = if (buffer.readBoolean()) TeamColor.entries[buffer.readVarInt()] else null
+                val options = buffer.readByte().toInt()
+                return Parameters(
+                    displayName,
+                    prefix,
+                    suffix,
+                    visibility,
+                    collision,
+                    color,
+                    friendlyFire = options and 1 != 0,
+                    seeFriendlyInvisibles = options and 2 != 0,
+                )
+            }
+        }
+    }
+
+    public fun write(buffer: ByteBuffer) {
+        buffer.writeProtocolString(teamName)
+        buffer.writeByte(method.toByte())
+        if (method == METHOD_ADD || method == METHOD_CHANGE) {
+            requireNotNull(parameters) { "method $method needs parameters" }.write(buffer)
+        }
+        if (method == METHOD_ADD || method == METHOD_JOIN || method == METHOD_LEAVE) {
+            buffer.writeVarInt(members.size)
+            for (member in members) buffer.writeProtocolString(member)
+        }
+    }
+
+    public companion object {
+        public const val ID: Int = 0x6d
+        public const val METHOD_ADD: Int = 0
+        public const val METHOD_REMOVE: Int = 1
+        public const val METHOD_CHANGE: Int = 2
+        public const val METHOD_JOIN: Int = 3
+        public const val METHOD_LEAVE: Int = 4
+
+        public fun read(buffer: ByteBuffer): SetPlayerTeamPacket {
+            val name = buffer.readProtocolString()
+            val method = buffer.readByte().toInt()
+            val parameters =
+                if (method == METHOD_ADD || method == METHOD_CHANGE) Parameters.read(buffer) else null
+            val members =
+                if (method == METHOD_ADD || method == METHOD_JOIN || method == METHOD_LEAVE) {
+                    List(buffer.readVarInt()) { buffer.readProtocolString() }
+                } else {
+                    emptyList()
+                }
+            return SetPlayerTeamPacket(name, method, parameters, members)
+        }
+    }
+}
+
+/**
+ * Clientbound, id 0x8c: opens a dialog screen. Mirrors `ClientboundShowDialogPacket`.
+ *
+ * The dialog travels as a holder: a registry reference is its id plus one, which is the form used
+ * here, since a dialog worth showing is one the client was sent in the `minecraft:dialog` registry.
+ */
+public data class ShowDialogPacket(
+    val dialogId: Int,
+) {
+    public fun write(buffer: ByteBuffer) {
+        // parity: `Dialog.STREAM_CODEC` is `ByteBufCodecs.holder`, not `holderRegistry`, so here the
+        // id really does carry the plus one: zero is reserved for an inline dialog.
+        buffer.writeVarInt(dialogId + 1)
+    }
+
+    public companion object {
+        public const val ID: Int = 0x8c
+
+        public fun read(buffer: ByteBuffer): ShowDialogPacket = ShowDialogPacket(buffer.readVarInt() - 1)
+    }
+}
+
+/** Clientbound, id 0x8b: closes whatever dialog is open. Mirrors `ClientboundClearDialogPacket`. */
+public object ClearDialogPacket {
+    public const val ID: Int = 0x8b
+
+    /** Nothing follows the id, so writing one is writing its frame. */
+    public fun write(buffer: ByteBuffer) {
+        // Deliberately empty: the packet is its own id.
     }
 }

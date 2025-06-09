@@ -149,4 +149,32 @@ class UiPacketsTest {
         assertTrue(!properties.playMusic)
         assertTrue(properties.createWorldFog)
     }
+
+    @Test
+    fun aTeamRoundTripsWithItsParametersAndMembers() {
+        val packet =
+            SetPlayerTeamPacket(
+                teamName = "red",
+                method = SetPlayerTeamPacket.METHOD_ADD,
+                parameters =
+                    SetPlayerTeamPacket.Parameters(
+                        displayName = Component.text("Red"),
+                        prefix = Component.text("["),
+                        suffix = Component.text("]"),
+                        nameTagVisibility = NameTagVisibility.HIDE_FOR_OTHER_TEAMS,
+                        collisionRule = CollisionRule.PUSH_OWN_TEAM,
+                        color = TeamColor.RED,
+                        friendlyFire = false,
+                        seeFriendlyInvisibles = true,
+                    ),
+                members = listOf("Alice", "Bob"),
+            )
+        assertEquals(packet, roundTrip(packet, { p, b -> p.write(b) }, SetPlayerTeamPacket::read))
+    }
+
+    @Test
+    fun removingATeamCarriesNothingButItsName() {
+        val packet = SetPlayerTeamPacket("red", SetPlayerTeamPacket.METHOD_REMOVE)
+        assertEquals(packet, roundTrip(packet, { p, b -> p.write(b) }, SetPlayerTeamPacket::read))
+    }
 }
