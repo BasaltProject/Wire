@@ -159,4 +159,44 @@ class EntityPacketsTest {
         buffer.writeByte(0xFF.toByte())
         assertFailsWith<org.basaltmc.wire.protocol.ProtocolException> { SetEntityDataPacket.read(buffer) }
     }
+
+    @Test
+    fun trackedWaypointRoundTripsWithAndWithoutColour() {
+        for (color in listOf(null, 0x55FFFF)) {
+            val buffer = ByteBuffer()
+            val packet =
+                TrackedWaypointPacket(
+                    operation = TrackedWaypointPacket.Operation.TRACK,
+                    entityUuid = Uuid.fromLongs(1L, 2L),
+                    style = "minecraft:default",
+                    color = color,
+                    x = 10,
+                    y = 64,
+                    z = -20,
+                )
+            packet.write(buffer)
+            assertEquals(packet, TrackedWaypointPacket.read(buffer))
+        }
+    }
+
+    @Test
+    fun trackedWaypointWritesTheColourAsThreeBytes() {
+        // parity: `ByteBufCodecs.RGB_COLOR`. A fourth byte shifts the waypoint type and the client
+        // drops the connection decoding it, which is exactly what happened with `/waypoint modify`.
+        val withColour = ByteBuffer()
+        val without = ByteBuffer()
+        val base =
+            TrackedWaypointPacket(
+                operation = TrackedWaypointPacket.Operation.UPDATE,
+                entityUuid = Uuid.fromLongs(1L, 2L),
+                style = "minecraft:default",
+                color = null,
+                x = 0,
+                y = 0,
+                z = 0,
+            )
+        base.copy(color = 0x123456).write(withColour)
+        base.write(without)
+        assertEquals(3, withColour.readableBytes - without.readableBytes)
+    }
 }
