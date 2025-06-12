@@ -207,3 +207,29 @@ public data class ConfigurationKeepAlivePacket(
             ConfigurationKeepAlivePacket(buffer.readLong())
     }
 }
+
+/**
+ * Clientbound id 0x01 in Configuration: `ClientboundCustomPayloadPacket` carrying `minecraft:brand`.
+ *
+ * What the client shows in F3 as `"<brand>" server`. Without it that line reads `"null"`, because
+ * the client has nothing to name the server with.
+ */
+public data class BrandPacket(
+    val brand: String,
+) {
+    public fun write(buffer: ByteBuffer) {
+        buffer.writeProtocolString(CHANNEL)
+        buffer.writeProtocolString(brand)
+    }
+
+    public companion object {
+        public const val ID: Int = 1
+        public const val CHANNEL: String = "minecraft:brand"
+
+        public fun read(buffer: ByteBuffer): BrandPacket {
+            val channel = buffer.readProtocolString()
+            require(channel == CHANNEL) { "not a brand payload: '$channel'" }
+            return BrandPacket(buffer.readProtocolString())
+        }
+    }
+}
