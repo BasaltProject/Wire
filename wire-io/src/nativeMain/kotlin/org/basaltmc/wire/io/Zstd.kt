@@ -135,6 +135,10 @@ public object Zstd {
         getErrorName(result)?.let { throw ZstdException(it) }
     }
 
+    internal fun check(result: Long) {
+        checkError(result)
+    }
+
     private fun concatenate(chunks: List<ByteArray>): ByteArray {
         val result = ByteArray(chunks.sumOf { it.size })
         var offset = 0
@@ -143,5 +147,58 @@ public object Zstd {
             offset += chunk.size
         }
         return result
+    }
+}
+
+/**
+ * Pull-style decompression over one zstd frame sitting in [input] between [inputFrom] and [inputTo]:
+ * every read lands directly in the caller's buffer, so a stream of any size is consumed without a
+ * whole decompressed copy ever existing. The counterpart of [Zstd.compressStreaming], for readers.
+ *
+ * Close it when done; a frame is only valid if [frameComplete] is true once everything expected has
+ * been read.
+ */
+public class ZstdStreamReader(
+    private val input: ByteArray,
+    inputFrom: Int = 0,
+    private val inputTo: Int = input.size,
+) : AutoCloseable {
+    private val decompressor = zstdDecompressor()
+    private var inputStart = inputFrom
+    private var lastResult = -1L
+
+    /** Whether the zstd frame ended exactly where the reads stopped, with no bytes left over. */
+    public val frameComplete: Boolean get() = lastResult == 0L && inputStart == inputTo
+
+    /** Fills [dest] from [offset] with [length] decompressed bytes, or throws on a truncated stream. */
+    public fun readFully(
+        dest: ByteArray,
+        offset: Int = 0,
+        length: Int = dest.size - offset,
+    ) {
+        var outputStart = offset
+        val outputEnd = offset + length
+        while (outputStart < outputEnd) {
+            val result =
+                decompressor.decompressStream(
+                    outputByteArray = dest,
+                    outputEnd = outputEnd,
+                    outputStart = outputStart,
+                    inputByteArray = input,
+                    inputEnd = inputTo,
+                    inputStart = inputStart,
+                )
+            Zstd.check(result)
+            lastResult = result
+            val consumed = decompressor.inputBytesProcessed
+            val produced = decompressor.outputBytesProcessed
+            inputStart += consumed
+            outputStart += produced
+            if (consumed == 0 && produced == 0) throw ZstdException("truncated zstd stream")
+        }
+    }
+
+    override fun close() {
+        decompressor.close()
     }
 }

@@ -14,3 +14,9 @@ public expect fun processCpuMicros(): Long?
  * a constant is what puts eight generation threads on a four-core machine.
  */
 public expect fun cpuCoreCount(): Int?
+
+/**
+ * Physical memory this process occupies right now, in bytes, or null where the platform cannot
+ * say. The number an operator's own `top` shows, as opposed to any runtime-internal heap counter.
+ */
+public expect fun processResidentBytes(): Long?
