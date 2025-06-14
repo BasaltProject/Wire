@@ -13,41 +13,51 @@ import org.basaltmc.wire.text.ComponentNbt
 /**
  * One stack on the wire: how many, of what, plus whatever data components it carries.
  *
- * Components are the open-ended part (enchantments, a custom name, damage) and each one has a codec
- * of its own keyed by registry id. This build **writes** stacks with none and **refuses to read**
- * one that has any, rather than pretending: a component cannot be skipped without knowing its
- * length, so a reader that ignored them would not know where the next stack begins and would
- * desynchronise the whole stream. That is the boundary of the inventory support in this build, and
- * it is a boundary that reports itself.
+ * The components are a *patch*, vanilla's `DataComponentPatch`: what this stack adds on top of its
+ * item's defaults, and what it removes from them. Both directions are carried, because a stack that
+ * a client echoes back must come out of here as the stack that went in.
+ *
+ * Only the components with a case in [ItemComponent] are understood; the rest ride along as bytes
+ * ([ItemComponent.Raw]) when the form they arrived in says how long they are. In the undelimited
+ * form it does not, so an unknown component there is still refused rather than guessed at: skipping
+ * it blindly would lose track of where the next stack begins and desynchronise the stream.
  */
 public data class WireItemStack(
     val itemId: Int,
     val count: Int,
-    /**
-     * Enchantment registry id to level, written as the `minecraft:enchantments` component.
-     *
-     * The one component this build writes, because it is the one a command can set. Its payload is
-     * the map vanilla's `ItemEnchantments` codec reads: a varint count, then a registry id and a
-     * level per entry.
-     */
-    val enchantments: Map<Int, Int> = emptyMap(),
+    /** What this stack adds to its item's defaults, in the order it was written. */
+    val components: List<ItemComponent> = emptyList(),
+    /** Component ids this stack removes from its item's defaults. */
+    val removedComponents: List<Int> = emptyList(),
 ) {
+    /** The `minecraft:enchantments` levels, or empty: by far the most asked-for component. */
+    val enchantments: Map<Int, Int>
+        get() =
+            components
+                .filterIsInstance<ItemComponent.Enchantments>()
+                .firstOrNull { !it.stored }
+                ?.levels
+                .orEmpty()
+
+    /** The `minecraft:damage` this stack has taken, or 0 when it carries none. */
+    val damage: Int
+        get() =
+            components
+                .filterIsInstance<ItemComponent.Number>()
+                .firstOrNull { it.id == ItemComponent.DAMAGE }
+                ?.value ?: 0
+
     public fun write(buffer: ByteBuffer) {
         buffer.writeVarInt(count)
         if (count <= 0) return
         buffer.writeVarInt(itemId)
-        // The component patch: what this stack adds, then what it removes.
-        buffer.writeVarInt(if (enchantments.isEmpty()) 0 else 1)
-        buffer.writeVarInt(0)
-        if (enchantments.isEmpty()) return
-        buffer.writeVarInt(ENCHANTMENTS_COMPONENT)
-        buffer.writeVarInt(enchantments.size)
-        for ((enchantment, level) in enchantments) {
-            // parity: `Enchantment.STREAM_CODEC` is `holderRegistry`, which writes the plain id.
-            // Adding one landed every enchantment on the next entry of the registry.
-            buffer.writeVarInt(enchantment)
-            buffer.writeVarInt(level)
+        buffer.writeVarInt(components.size)
+        buffer.writeVarInt(removedComponents.size)
+        for (component in components) {
+            buffer.writeVarInt(component.id)
+            component.writePayload(buffer)
         }
+        for (id in removedComponents) buffer.writeVarInt(id)
     }
 
     public companion object {
@@ -55,7 +65,18 @@ public data class WireItemStack(
         public val EMPTY: WireItemStack = WireItemStack(0, 0)
 
         /** parity: `minecraft:enchantments`' index in `DataComponents`' own registration order. */
-        public const val ENCHANTMENTS_COMPONENT: Int = 13
+        public const val ENCHANTMENTS_COMPONENT: Int = ItemComponent.ENCHANTMENTS
+
+        public fun enchanted(
+            itemId: Int,
+            count: Int,
+            enchantments: Map<Int, Int>,
+        ): WireItemStack =
+            WireItemStack(
+                itemId,
+                count,
+                if (enchantments.isEmpty()) emptyList() else listOf(ItemComponent.Enchantments(enchantments)),
+            )
 
         public fun write(
             buffer: ByteBuffer,
@@ -70,31 +91,23 @@ public data class WireItemStack(
             val itemId = buffer.readVarInt()
             val added = buffer.readVarInt()
             val removed = buffer.readVarInt()
-            if (removed != 0) {
-                throw ProtocolException("Item stacks that remove data components are not supported yet")
-            }
-            // The one component this build can read back is the one it writes; anything else has an
-            // unknown length, and skipping blindly would lose track of where the next stack begins.
-            var enchantments = emptyMap<Int, Int>()
-            repeat(added) {
-                val component = buffer.readVarInt()
-                if (component != ENCHANTMENTS_COMPONENT) {
-                    throw ProtocolException("Data component $component is not supported yet on item $itemId")
+            val components =
+                List(added) {
+                    val id = buffer.readVarInt()
+                    ItemComponent.readPayload(buffer, id, length = null)
+                        ?: throw ProtocolException("Data component $id is not supported yet on item $itemId")
                 }
-                enchantments =
-                    buildMap { repeat(buffer.readVarInt()) { put(buffer.readVarInt(), buffer.readVarInt()) } }
-            }
-            return WireItemStack(itemId, count, enchantments)
+            return WireItemStack(itemId, count, components, List(removed) { buffer.readVarInt() })
         }
 
         /**
          * The same stack in the delimited form `set_creative_slot` uses
          * (`ItemStack.OPTIONAL_UNTRUSTED_STREAM_CODEC` over `DataComponentPatch.DELIMITED_STREAM_CODEC`).
          *
-         * Every component is length-prefixed here, so unlike [read] the ones this build does not
-         * model are skipped instead of costing the session. The enchantments are read back: a
-         * creative client echoes a slot whenever the inventory screen opens, and dropping them
-         * there stripped an enchanted item its owner had merely looked at.
+         * Every component is length-prefixed here, so unlike [read] nothing has to be understood to
+         * be kept: a creative client echoes a slot whenever the inventory screen opens, and an
+         * earlier version of this dropped whatever it could not name, stripping an enchanted item
+         * its owner had merely looked at.
          */
         public fun readDelimited(buffer: ByteBuffer): WireItemStack? {
             val count = buffer.readVarInt()
@@ -102,21 +115,18 @@ public data class WireItemStack(
             val itemId = buffer.readVarInt()
             val added = buffer.readVarInt()
             val removed = buffer.readVarInt()
-            var enchantments = emptyMap<Int, Int>()
-            repeat(added) {
-                val component = buffer.readVarInt()
-                val length = buffer.readVarInt()
-                val before = buffer.readableBytes
-                if (component == ENCHANTMENTS_COMPONENT) {
-                    enchantments =
-                        buildMap { repeat(buffer.readVarInt()) { put(buffer.readVarInt(), buffer.readVarInt()) } }
+            val components =
+                List(added) {
+                    val id = buffer.readVarInt()
+                    val length = buffer.readVarInt()
+                    val before = buffer.readableBytes
+                    val component = ItemComponent.readPayload(buffer, id, length)
+                    // Whatever was read, the next component starts where this one's length said.
+                    buffer.readBytes(length - (before - buffer.readableBytes))
+                    component ?: ItemComponent.Raw(id, ByteArray(0))
                 }
-                // Whatever was read, the next component starts where this one's length said it does.
-                buffer.readBytes(length - (before - buffer.readableBytes))
-            }
             // Removals are just the type ids, with no payload to skip.
-            repeat(removed) { buffer.readVarInt() }
-            return WireItemStack(itemId, count, enchantments)
+            return WireItemStack(itemId, count, components, List(removed) { buffer.readVarInt() })
         }
     }
 }

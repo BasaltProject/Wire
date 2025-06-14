@@ -19,6 +19,16 @@ class CommandPacketsTest {
         val parsers =
             listOf(
                 ArgumentParser.BrigadierString(ArgumentParser.BrigadierString.Kind.GREEDY_PHRASE),
+                ArgumentParser.BrigadierFloat(),
+                ArgumentParser.BrigadierFloat(min = 0f),
+                ArgumentParser.BrigadierFloat(min = 0f, max = 2f),
+                ArgumentParser.Function,
+                ArgumentParser.HexColor,
+                ArgumentParser.ResourceOrTag("minecraft:worldgen/biome"),
+                ArgumentParser.ResourceOrTagKey("minecraft:worldgen/structure"),
+                ArgumentParser.ResourceSelector("minecraft:test_instance"),
+                ArgumentParser.TemplateMirror,
+                ArgumentParser.TemplateRotation,
                 ArgumentParser.BrigadierInteger(),
                 ArgumentParser.BrigadierInteger(min = 0),
                 ArgumentParser.BrigadierInteger(min = -7, max = 7),

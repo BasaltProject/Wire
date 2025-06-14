@@ -34,13 +34,13 @@ class InventoryPacketsTest {
     @Test
     fun aStackCarryingComponentsIsRefusedRatherThanMisread() {
         val buffer = ByteBuffer()
-        // Hand-written: one component added, and one this build has no codec for (1 is
-        // `minecraft:max_stack_size`, not the enchantments it can read).
+        // Hand-written: one component added, and one this build has no codec for (7 is
+        // `minecraft:minimum_attack_charge`, whose payload is a float nothing here writes).
         buffer.writeByte(1)
         buffer.writeByte(1)
         buffer.writeByte(1)
         buffer.writeByte(0)
-        buffer.writeByte(1)
+        buffer.writeByte(7)
 
         // Refused, because a component cannot be skipped without knowing its length: a reader that
         // ignored it would not know where the next stack starts.
@@ -112,7 +112,15 @@ class InventoryPacketsTest {
         val packet = ServerboundSetCreativeModeSlotPacket.read(buffer)
 
         assertEquals(36, packet.slot)
-        assertEquals(WireItemStack(itemId = 55, count = 1), packet.item)
+        assertEquals(
+            WireItemStack(
+                itemId = 55,
+                count = 1,
+                components = listOf(ItemComponent.Raw(7, byteArrayOf(1, 2, 3))),
+                removedComponents = listOf(9),
+            ),
+            packet.item,
+        )
         // Everything was consumed: a leftover byte here is a desynchronised stream, which is how a
         // misparse turns into the server holding an item the player never picked.
         assertEquals(0, buffer.readableBytes)
@@ -165,7 +173,7 @@ class InventoryPacketsTest {
     @Test
     fun anEnchantedStackRoundTripsItsComponent() {
         val buffer = ByteBuffer()
-        val stack = WireItemStack(itemId = 900, count = 1, enchantments = mapOf(3 to 5, 7 to 1))
+        val stack = WireItemStack.enchanted(itemId = 900, count = 1, enchantments = mapOf(3 to 5, 7 to 1))
         stack.write(buffer)
         assertEquals(stack, WireItemStack.read(buffer))
     }
@@ -201,6 +209,9 @@ class InventoryPacketsTest {
 
         val decoded = assertNotNull(WireItemStack.readDelimited(buffer))
         assertEquals(mapOf(3 to 5), decoded.enchantments)
+        // The unmodelled one rides along as bytes rather than being dropped, so writing the stack
+        // back out gives the client what it sent.
+        assertEquals(ItemComponent.Raw(999, byteArrayOf(1, 2, 3)), decoded.components.last())
         assertEquals(0, buffer.readableBytes)
     }
 
@@ -209,7 +220,7 @@ class InventoryPacketsTest {
         // parity: `Enchantment.STREAM_CODEC` is `holderRegistry`. Writing id plus one put every
         // enchantment on the next registry entry: asking for efficiency gave feather falling.
         val buffer = ByteBuffer()
-        WireItemStack(itemId = 7, count = 1, enchantments = mapOf(12 to 5)).write(buffer)
+        WireItemStack.enchanted(itemId = 7, count = 1, enchantments = mapOf(12 to 5)).write(buffer)
         buffer.readVarInt() // count
         buffer.readVarInt() // item id
         buffer.readVarInt() // added components
