@@ -286,6 +286,14 @@ public data class SetEntityDataPacket(
          */
         public const val PLAYER_SKIN_PARTS_INDEX: Int = 16
 
+        /** parity: `Entity.DATA_SHARED_FLAGS_ID`, whose lowest bit is "this entity is on fire". */
+        public const val SHARED_FLAGS_INDEX: Int = 0
+
+        /** parity: `Entity.DATA_AIR_SUPPLY_ID`, the ticks of air left, which the client draws as bubbles. */
+        public const val AIR_SUPPLY_INDEX: Int = 1
+
+        public const val FLAG_ON_FIRE: Int = 0x01
+
         private const val BYTE_SERIALIZER = 0
         private const val INT_SERIALIZER = 1
         private const val FLOAT_SERIALIZER = 3
@@ -307,6 +315,20 @@ public data class SetEntityDataPacket(
             entityId: Int,
             stack: WireItemStack?,
         ): SetEntityDataPacket = SetEntityDataPacket(entityId, listOf(Entry.Item(ITEM_FRAME_STACK_INDEX, stack)))
+
+        /** The air left and whether this entity is burning, which is what the HUD draws. */
+        public fun submersion(
+            entityId: Int,
+            airSupply: Int,
+            onFire: Boolean,
+        ): SetEntityDataPacket =
+            SetEntityDataPacket(
+                entityId,
+                listOf(
+                    Entry.Bytes(SHARED_FLAGS_INDEX, (if (onFire) FLAG_ON_FIRE else 0).toByte()),
+                    Entry.Ints(AIR_SUPPLY_INDEX, airSupply),
+                ),
+            )
 
         /** Which skin layers a player has switched on, straight from their own client settings. */
         public fun skinParts(
