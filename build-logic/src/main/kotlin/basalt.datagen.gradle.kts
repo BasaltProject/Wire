@@ -71,10 +71,21 @@ tasks.register("generate") {
         val durability = parseDurabilityComponents(File(reportsDir, "minecraft/components/item"))
         writeDurabilityTable(File(registryDir, "VanillaItemDurability.kt"), durability)
 
+        val shapes = extractBlockShapes(workDir)
+        writeShapeTable(File(registryDir, "VanillaBlockShapes.kt"), shapes)
+
+        val definitions = parseStateDefinitions(File(reportsDir, "blocks.json").readText())
+        writeStateDefinitionTable(File(registryDir, "VanillaBlockStateDefinitions.kt"), definitions)
+
+        val armour = parseArmourComponents(File(reportsDir, "minecraft/components/item"))
+        writeArmourTable(File(registryDir, "VanillaItemArmour.kt"), armour)
+
         println(
             "Regenerated ${blockStates.size} block default states, ${items.size} items, " +
                 "${hardness.size} block hardness entries, ${toolRules.size} tool(s), " +
-                "${components.size} data component type(s) and ${durability.size} damageable item(s) from $jarPath.",
+                "${components.size} data component type(s), ${durability.size} damageable item(s), " +
+                "${shapes.second.size} block state shape(s), ${definitions.size} state definition(s) " +
+                "and ${armour.size} piece(s) of armour from $jarPath.",
         )
     }
 }
@@ -169,16 +180,7 @@ fun extractBlockHardness(
     jarFile: File,
     workDir: File,
 ): List<Triple<String, Float, Boolean>> {
-    // The bundler unpacks the real server jar next to itself the first time it runs; the harness
-    // has to compile and run against that, not against the bundler.
-    val versionsDir = File(workDir, "versions")
-    val serverJar =
-        versionsDir.walkTopDown().firstOrNull { it.isFile && it.name.startsWith("server-") && it.extension == "jar" }
-            ?: error("Could not find the unpacked server jar under ${versionsDir.absolutePath}")
-    val librariesDir = File(workDir, "libraries")
-    val classpath =
-        (listOf(serverJar) + librariesDir.walkTopDown().filter { it.extension == "jar" })
-            .joinToString(File.pathSeparator) { it.absolutePath }
+    val classpath = harnessClasspath(workDir)
 
     val harnessDir = File(workDir, "harness")
     harnessDir.mkdirs()
@@ -406,5 +408,306 @@ fun writeDurabilityTable(
         BODY,
             )
         """.trimIndent().replace("BODY", body) + "\n",
+    )
+}
+
+
+/**
+ * Every block state's collision shape, light dampening and sturdy faces.
+ *
+ * None of this is reported by the data generator: shapes live in the block classes, so a harness
+ * asks the real ones. Coordinates come out as multiples of 1/32 and are stored as thirty-seconds,
+ * which is exact for every vanilla block and lets a face be rasterised into a 32x32 mask.
+ *
+ * Returns the distinct entries and one index per block state id, in id order.
+ */
+fun extractBlockShapes(workDir: File): Pair<List<String>, List<Int>> {
+    val classpath = harnessClasspath(workDir)
+    val harnessDir = File(workDir, "harness")
+    harnessDir.mkdirs()
+    File(harnessDir, "DumpShapes.java").writeText(DUMP_SHAPES_SOURCE)
+    runHarness(
+        listOf("javac", "-nowarn", "-cp", classpath, "-d", harnessDir.absolutePath, File(harnessDir, "DumpShapes.java").absolutePath),
+        workDir,
+    )
+    val output = File(harnessDir, "shapes.tsv")
+    runHarness(listOf("java", "-cp", "${harnessDir.absolutePath}${File.pathSeparator}$classpath", "DumpShapes"), workDir, output)
+
+    val entries = LinkedHashMap<String, Int>()
+    val index = mutableListOf<Pair<Int, Int>>()
+    for (line in output.readLines()) {
+        if (!line.startsWith("SHAPE\t")) continue
+        val columns = line.split('\t')
+        val stateId = columns[1].toInt()
+        val boxes =
+            columns[7]
+                .split(';')
+                .filter { it.isNotEmpty() }
+                .joinToString(";") { box -> box.split(',').joinToString(",") { toThirtySeconds(it) } }
+        val entry = "${columns[3]}|${columns[4]}|${columns[6]}|$boxes"
+        index += stateId to entries.getOrPut(entry) { entries.size }
+    }
+    check(index.isNotEmpty()) { "The shape harness printed nothing" }
+    val byState = IntArray(index.maxOf { it.first } + 1)
+    for ((stateId, entryIndex) in index) byState[stateId] = entryIndex
+    return entries.keys.toList() to byState.toList()
+}
+
+fun toThirtySeconds(coordinate: String): String {
+    val scaled = coordinate.toDouble() * 32.0
+    val rounded = Math.round(scaled).toInt()
+    check(Math.abs(scaled - rounded) < 1.0E-6) { "Shape coordinate $coordinate is not a multiple of 1/32" }
+    return rounded.toString()
+}
+
+/**
+ * The unpacked server jar plus its libraries, which every harness here compiles against.
+ *
+ * The bundler unpacks the real server jar next to itself the first time it runs, so a harness has
+ * to build against that, not against the bundler.
+ */
+fun harnessClasspath(workDir: File): String {
+    val versionsDir = File(workDir, "versions")
+    val serverJar =
+        versionsDir.walkTopDown().firstOrNull { it.isFile && it.name.startsWith("server-") && it.extension == "jar" }
+            ?: error("Could not find the unpacked server jar under ${versionsDir.absolutePath}")
+    val librariesDir = File(workDir, "libraries")
+    return (listOf(serverJar) + librariesDir.walkTopDown().filter { it.extension == "jar" })
+        .joinToString(File.pathSeparator) { it.absolutePath }
+}
+
+val DUMP_SHAPES_SOURCE =
+    """
+    import net.minecraft.SharedConstants;
+    import net.minecraft.core.BlockPos;
+    import net.minecraft.core.Direction;
+    import net.minecraft.core.registries.BuiltInRegistries;
+    import net.minecraft.server.Bootstrap;
+    import net.minecraft.world.level.EmptyBlockGetter;
+    import net.minecraft.world.level.block.Block;
+    import net.minecraft.world.level.block.state.BlockState;
+    import net.minecraft.world.phys.AABB;
+    import net.minecraft.world.phys.shapes.CollisionContext;
+    import net.minecraft.world.phys.shapes.Shapes;
+    import net.minecraft.world.phys.shapes.VoxelShape;
+
+    public final class DumpShapes {
+        public static void main(String[] args) {
+            SharedConstants.tryDetectVersion();
+            Bootstrap.bootStrap();
+            StringBuilder out = new StringBuilder();
+            for (Block block : BuiltInRegistries.BLOCK) {
+                for (BlockState state : block.getStateDefinition().getPossibleStates()) {
+                    VoxelShape collision;
+                    try {
+                        collision = state.getCollisionShape(EmptyBlockGetter.INSTANCE, BlockPos.ZERO, CollisionContext.empty());
+                    } catch (Throwable t) {
+                        collision = Shapes.block();
+                    }
+                    StringBuilder boxes = new StringBuilder();
+                    for (AABB box : collision.toAabbs()) {
+                        if (boxes.length() > 0) boxes.append(';');
+                        boxes.append(box.minX).append(',').append(box.minY).append(',').append(box.minZ).append(',')
+                             .append(box.maxX).append(',').append(box.maxY).append(',').append(box.maxZ);
+                    }
+                    StringBuilder sturdy = new StringBuilder();
+                    for (Direction direction : Direction.values()) {
+                        boolean value;
+                        try {
+                            value = state.isFaceSturdy(EmptyBlockGetter.INSTANCE, BlockPos.ZERO, direction);
+                        } catch (Throwable t) {
+                            value = false;
+                        }
+                        sturdy.append(value ? '1' : '0');
+                    }
+                    out.append("SHAPE\t").append(Block.getId(state)).append('\t')
+                       .append(BuiltInRegistries.BLOCK.getKey(block)).append('\t')
+                       .append(state.getLightDampening()).append('\t')
+                       .append(state.blocksMotion() ? 1 : 0).append('\t')
+                       .append(state.propagatesSkylightDown() ? 1 : 0).append('\t')
+                       .append(sturdy).append('\t')
+                       .append(boxes).append('\n');
+                }
+            }
+            System.out.print(out);
+        }
+    }
+    """.trimIndent()
+
+val SHAPE_INDEX_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+
+fun writeShapeTable(
+    file: File,
+    shapes: Pair<List<String>, List<Int>>,
+) {
+    val (entries, index) = shapes
+    val entryBody = entries.joinToString(",\n") { "        \"$it\"" }
+    val encoded =
+        buildString {
+            for (entryIndex in index) {
+                append(SHAPE_INDEX_ALPHABET[entryIndex / SHAPE_INDEX_ALPHABET.length])
+                append(SHAPE_INDEX_ALPHABET[entryIndex % SHAPE_INDEX_ALPHABET.length])
+            }
+        }
+    val indexBody = encoded.chunked(100).joinToString(" +\n") { "        \"$it\"" }
+    file.writeText(
+        """
+        package org.basaltmc.server.registry
+
+        /**
+         * Every distinct block shape, from the real server jar's own block classes: light
+         * dampening, whether it blocks movement, which faces are sturdy (down, up, north, south,
+         * west, east) and the boxes of the collision shape in thirty-seconds of a block.
+         */
+        internal val ALL_BLOCK_SHAPES: List<String> =
+            listOf(
+        SHAPE_ENTRIES_BODY,
+            )
+
+        /**
+         * Which of [ALL_BLOCK_SHAPES] each block state uses, two characters per state id in id
+         * order. A table of one entry per state would be thirty thousand lines of source for what
+         * fits here in a few hundred.
+         */
+        internal val BLOCK_SHAPE_INDEX: String =
+        SHAPE_INDEX_BODY
+        """.trimIndent().replace("SHAPE_ENTRIES_BODY", entryBody).replace("SHAPE_INDEX_BODY", indexBody) + "\n",
+    )
+}
+
+
+/**
+ * Every block's state definition: its first state id and each property with its values, in the
+ * order the ids run through them.
+ *
+ * The report lists a block's properties in its own order, which for a dozen blocks (every chest,
+ * `moving_piston`) is not the order the state ids vary in, so the order is worked out from the
+ * states themselves rather than trusted. With this, any block state id turns into its properties
+ * and back without a hand-written table per family.
+ */
+fun parseStateDefinitions(json: String): List<String> {
+    val root = Json.parseToJsonElement(json) as JsonObject
+    return root.entries
+        .mapNotNull { (block, value) ->
+            val definition = value as JsonObject
+            val states =
+                (definition.getValue("states") as JsonArray)
+                    .map { it as JsonObject }
+                    .associate { state ->
+                        val properties =
+                            (state["properties"] as? JsonObject)
+                                .orEmpty()
+                                .mapValues { (_, property) -> property.jsonPrimitive.content }
+                        state.getValue("id").jsonPrimitive.content.toInt() to properties
+                    }
+            val base = states.keys.min()
+            val values =
+                (definition["properties"] as? JsonObject)
+                    ?.mapValues { (_, property) -> (property as JsonArray).map { it.jsonPrimitive.content } }
+                    ?: return@mapNotNull null
+
+            // A property's stride is how far apart two states differing only in it are; the one
+            // that moves the ids furthest is the outermost of the nested loops that built them.
+            val baseProperties = states.getValue(base)
+            val strides =
+                values.keys.associateWith { name ->
+                    val wanted = baseProperties + (name to values.getValue(name)[1])
+                    (states.entries.first { it.value == wanted }.key - base)
+                }
+            val ordered = values.keys.sortedByDescending { strides.getValue(it) }
+            "$base|${block.substringAfter(':')}|" +
+                ordered.joinToString(";") { name -> "$name=${values.getValue(name).joinToString(",")}" }
+        }.sortedBy { it.substringBefore('|').toInt() }
+}
+
+fun writeStateDefinitionTable(
+    file: File,
+    definitions: List<String>,
+) {
+    val body = definitions.joinToString(",\n") { "        \"$it\"" }
+    file.writeText(
+        """
+        package org.basaltmc.server.registry
+
+        /**
+         * Every block with more than one state: `<first state id>|<block>|<property>=<values>;...`.
+         *
+         * The ids of a block run through its properties as nested loops, the first property here
+         * being the outermost, so a state id and a set of property values convert into each other
+         * with arithmetic instead of a table of thirty thousand entries.
+         */
+        internal val ALL_BLOCK_STATE_DEFINITIONS: List<String> =
+            listOf(
+        STATE_DEFINITIONS_BODY,
+            )
+        """.trimIndent().replace("STATE_DEFINITIONS_BODY", body) + "\n",
+    )
+}
+
+
+/**
+ * Every item that protects whoever wears it: its armour, its toughness, the knockback it resists
+ * and the slot it goes in, from the item component reports' own `minecraft:attribute_modifiers`.
+ *
+ * Only modifiers that apply to an armour slot count. A weapon's attack damage lives in the same
+ * component and is somebody else's business.
+ */
+fun parseArmourComponents(componentsDir: File): List<String> {
+    if (!componentsDir.isDirectory) return emptyList()
+    val slurper = groovy.json.JsonSlurper()
+    return componentsDir
+        .listFiles { file -> file.extension == "json" }
+        .orEmpty()
+        .sortedBy { it.name }
+        .mapNotNull { file ->
+            @Suppress("UNCHECKED_CAST")
+            val root = slurper.parse(file) as Map<String, Any?>
+            @Suppress("UNCHECKED_CAST")
+            val components = root["components"] as? Map<String, Any?> ?: return@mapNotNull null
+            @Suppress("UNCHECKED_CAST")
+            val modifiers = components["minecraft:attribute_modifiers"] as? List<Map<String, Any?>> ?: return@mapNotNull null
+            var armour = 0.0
+            var toughness = 0.0
+            var knockbackResistance = 0.0
+            var slot = ""
+            for (modifier in modifiers) {
+                val where = modifier["slot"] as? String ?: continue
+                if (where !in ARMOUR_SLOTS) continue
+                val amount = (modifier["amount"] as? Number)?.toDouble() ?: continue
+                slot = where
+                when (modifier["type"] as? String) {
+                    "minecraft:armor" -> armour = amount
+                    "minecraft:armor_toughness" -> toughness = amount
+                    "minecraft:knockback_resistance" -> knockbackResistance = amount
+                }
+            }
+            if (slot.isEmpty() || (armour == 0.0 && toughness == 0.0 && knockbackResistance == 0.0)) {
+                null
+            } else {
+                "${file.nameWithoutExtension}|$slot|$armour|$toughness|$knockbackResistance"
+            }
+        }
+}
+
+val ARMOUR_SLOTS = setOf("head", "chest", "legs", "feet", "body")
+
+fun writeArmourTable(
+    file: File,
+    entries: List<String>,
+) {
+    val body = entries.joinToString(",\n") { "        \"$it\"" }
+    file.writeText(
+        """
+        package org.basaltmc.server.registry
+
+        /**
+         * Every piece of armour: `<item>|<slot>|<armour>|<toughness>|<knockback resistance>`, from
+         * the real item component reports.
+         */
+        internal val ALL_ITEM_ARMOUR: List<String> =
+            listOf(
+        ARMOUR_BODY,
+            )
+        """.trimIndent().replace("ARMOUR_BODY", body) + "\n",
     )
 }
