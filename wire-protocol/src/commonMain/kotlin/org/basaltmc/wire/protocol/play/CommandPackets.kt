@@ -319,6 +319,9 @@ public sealed class ArgumentParser(
     /** `minecraft:loot_table`: a loot table id or an inline table. */
     public data object LootTable : ArgumentParser(52)
 
+    /** `minecraft:loot_predicate`: a predicate id or an inline predicate. */
+    public data object LootPredicate : ArgumentParser(53)
+
     /** `minecraft:dialog`: a dialog id or an inline dialog. */
     public data object Dialog : ArgumentParser(55)
 
@@ -407,6 +410,7 @@ public sealed class ArgumentParser(
                 50 -> TemplateRotation
                 51 -> Heightmap
                 52 -> LootTable
+                53 -> LootPredicate
                 55 -> Dialog
                 56 -> Uuid
                 else -> error("no argument parser registered for id $registryId")

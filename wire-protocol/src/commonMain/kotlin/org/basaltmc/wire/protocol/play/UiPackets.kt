@@ -1,6 +1,7 @@
 package org.basaltmc.wire.protocol.play
 
 import org.basaltmc.wire.io.ByteBuffer
+import org.basaltmc.wire.nbt.NbtCompound
 import org.basaltmc.wire.protocol.ProtocolException
 import org.basaltmc.wire.protocol.readAnonymousNbt
 import org.basaltmc.wire.protocol.readBoolean
@@ -58,6 +59,13 @@ public sealed interface NumberFormat {
         override val typeId: Int get() = 0
     }
 
+    /** The number drawn as usual but with this style, which travels as the style half of a component. */
+    public data class Styled(
+        val style: NbtCompound,
+    ) : NumberFormat {
+        override val typeId: Int get() = 1
+    }
+
     public data class Fixed(
         val value: Component,
     ) : NumberFormat {
@@ -66,15 +74,18 @@ public sealed interface NumberFormat {
 
     public fun write(buffer: ByteBuffer) {
         buffer.writeVarInt(typeId)
-        if (this is Fixed) buffer.writeAnonymousNbt(ComponentNbt.serialize(value))
+        when (this) {
+            is Fixed -> buffer.writeAnonymousNbt(ComponentNbt.serialize(value))
+            is Styled -> buffer.writeAnonymousNbt(style)
+            Blank -> Unit
+        }
     }
 
     public companion object {
-        // `styled` (1) is deliberately not implemented: it carries a Style, and nothing here needs a
-        // number that is coloured rather than absent or replaced.
         public fun read(buffer: ByteBuffer): NumberFormat =
             when (val id = buffer.readVarInt()) {
                 0 -> Blank
+                1 -> Styled(buffer.readAnonymousNbt() as NbtCompound)
                 2 -> Fixed(ComponentNbt.deserialize(buffer.readAnonymousNbt()))
                 else -> throw ProtocolException("Unsupported number format type: $id")
             }
