@@ -328,7 +328,14 @@ public data class SetEntityDataPacket(
         /** parity: `Entity.DATA_AIR_SUPPLY_ID`, the ticks of air left, which the client draws as bubbles. */
         public const val AIR_SUPPLY_INDEX: Int = 1
 
+        /** parity: `Entity`'s own bit numbers for the shared flags byte. */
         public const val FLAG_ON_FIRE: Int = 0x01
+        public const val FLAG_SNEAKING: Int = 0x02
+        public const val FLAG_SPRINTING: Int = 0x08
+        public const val FLAG_SWIMMING: Int = 0x10
+        public const val FLAG_INVISIBLE: Int = 0x20
+        public const val FLAG_GLOWING: Int = 0x40
+        public const val FLAG_FALL_FLYING: Int = 0x80
 
         private const val BYTE_SERIALIZER = 0
         private const val INT_SERIALIZER = 1
@@ -354,17 +361,38 @@ public data class SetEntityDataPacket(
             stack: WireItemStack?,
         ): SetEntityDataPacket = SetEntityDataPacket(entityId, listOf(Entry.Item(ITEM_FRAME_STACK_INDEX, stack)))
 
-        /** The air left and whether this entity is burning, which is what the HUD draws. */
+        /**
+         * The air left and the shared flags, which is what the HUD draws and what everyone else
+         * sees: burning, crouching, sprinting.
+         *
+         * The flags are one byte for all of them, so a caller that knows about only one of them
+         * erases the rest. That is exactly what used to happen to crouching: it was written by the
+         * drowning tick, which knew about fire and nothing else.
+         */
         public fun submersion(
             entityId: Int,
             airSupply: Int,
-            onFire: Boolean,
+            flags: Int,
         ): SetEntityDataPacket =
             SetEntityDataPacket(
                 entityId,
                 listOf(
-                    Entry.Bytes(SHARED_FLAGS_INDEX, (if (onFire) FLAG_ON_FIRE else 0).toByte()),
+                    Entry.Bytes(SHARED_FLAGS_INDEX, flags.toByte()),
                     Entry.Ints(AIR_SUPPLY_INDEX, airSupply),
+                ),
+            )
+
+        /** The flags and the pose together: how an entity is standing, for everyone watching. */
+        public fun posture(
+            entityId: Int,
+            flags: Int,
+            pose: Pose,
+        ): SetEntityDataPacket =
+            SetEntityDataPacket(
+                entityId,
+                listOf(
+                    Entry.Bytes(SHARED_FLAGS_INDEX, flags.toByte()),
+                    Entry.Poses(POSE_INDEX, pose),
                 ),
             )
 
@@ -510,6 +538,98 @@ public data class ClientboundTakeItemEntityPacket(
 
         public fun read(buffer: ByteBuffer): ClientboundTakeItemEntityPacket =
             ClientboundTakeItemEntityPacket(buffer.readVarInt(), buffer.readVarInt(), buffer.readVarInt())
+    }
+}
+
+/**
+ * Clientbound, id 0x2e: a one-off effect at a position. Mirrors `ClientboundLevelEventPacket`.
+ *
+ * The one this build sends is 2001, the block-break puff of particles and its sound: the breaker
+ * plays its own, so without this everyone else sees blocks vanish in silence.
+ */
+public data class LevelEventPacket(
+    val event: Int,
+    val pos: BlockPos,
+    val data: Int,
+    val global: Boolean = false,
+) {
+    public fun write(buffer: ByteBuffer) {
+        buffer.writeInt(event)
+        buffer.writeLong(pos.pack())
+        buffer.writeInt(data)
+        buffer.writeBoolean(global)
+    }
+
+    public companion object {
+        public const val ID: Int = 0x2e
+
+        /** parity: `LevelEvent.PARTICLES_DESTROY_BLOCK`, whose data is the broken block's state id. */
+        public const val PARTICLES_DESTROY_BLOCK: Int = 2001
+
+        public fun read(buffer: ByteBuffer): LevelEventPacket =
+            LevelEventPacket(
+                buffer.readInt(),
+                BlockPos.unpack(buffer.readLong()),
+                buffer.readInt(),
+                buffer.readBoolean(),
+            )
+    }
+}
+
+/**
+ * Clientbound, id 0x05: the cracks on a block somebody is mining.
+ *
+ * parity: `ClientboundBlockDestructionPacket`. The progress is the crack stage, 0 to 9, and
+ * anything outside that range clears it: the digger predicts its own cracks, everyone else only
+ * sees them because of this.
+ */
+public data class BlockDestructionPacket(
+    val entityId: Int,
+    val pos: BlockPos,
+    val stage: Int,
+) {
+    public fun write(buffer: ByteBuffer) {
+        buffer.writeVarInt(entityId)
+        buffer.writeLong(pos.pack())
+        buffer.writeByte(stage.toByte())
+    }
+
+    public companion object {
+        public const val ID: Int = 0x05
+
+        /** parity: `ServerPlayerGameMode`'s own range, and 10 as the "no cracks" value it sends. */
+        public const val STAGES: Int = 10
+        public const val NONE: Int = 10
+
+        public fun read(buffer: ByteBuffer): BlockDestructionPacket =
+            BlockDestructionPacket(
+                buffer.readVarInt(),
+                BlockPos.unpack(buffer.readLong()),
+                buffer.readByte().toInt() and 0xFF,
+            )
+    }
+}
+
+/**
+ * Clientbound, id 0x53: where an entity's head is looking. Mirrors `ClientboundRotateHeadPacket`.
+ *
+ * The rotation packets carry the *body*, and a player's head is tracked apart from it: without
+ * this, another player's head only ever tips up and down, and never turns to look sideways.
+ */
+public data class RotateHeadPacket(
+    val entityId: Int,
+    val headYaw: Float,
+) {
+    public fun write(buffer: ByteBuffer) {
+        buffer.writeVarInt(entityId)
+        buffer.writeByte(packDegrees(headYaw))
+    }
+
+    public companion object {
+        public const val ID: Int = 0x53
+
+        public fun read(buffer: ByteBuffer): RotateHeadPacket =
+            RotateHeadPacket(buffer.readVarInt(), unpackDegrees(buffer.readByte()))
     }
 }
 
