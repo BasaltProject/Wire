@@ -219,6 +219,18 @@ public data class SetEntityDataPacket(
             val level: Int,
         ) : Entry
 
+        /** An optional block position, `EntityDataSerializers.OPTIONAL_BLOCK_POS` (serializer 11). */
+        public data class OptionalBlockPos(
+            override val index: Int,
+            val pos: BlockPos?,
+        ) : Entry
+
+        /** A pose, `EntityDataSerializers.POSE` (serializer 20), written as its own id. */
+        public data class Poses(
+            override val index: Int,
+            val pose: Pose,
+        ) : Entry
+
         /** A holder in a synchronized dynamic registry, encoded as its VarInt id. */
         public data class RegistryId(
             override val index: Int,
@@ -263,6 +275,15 @@ public data class SetEntityDataPacket(
                     buffer.writeVarInt(entry.professionId)
                     buffer.writeVarInt(entry.level)
                 }
+                is Entry.OptionalBlockPos -> {
+                    buffer.writeVarInt(OPTIONAL_BLOCK_POS_SERIALIZER)
+                    buffer.writeBoolean(entry.pos != null)
+                    entry.pos?.let { buffer.writeLong(it.pack()) }
+                }
+                is Entry.Poses -> {
+                    buffer.writeVarInt(POSE_SERIALIZER)
+                    buffer.writeVarInt(entry.pose.ordinal)
+                }
                 is Entry.RegistryId -> {
                     buffer.writeVarInt(CAT_VARIANT_SERIALIZER)
                     buffer.writeVarInt(entry.value)
@@ -287,6 +308,20 @@ public data class SetEntityDataPacket(
          */
         public const val PLAYER_SKIN_PARTS_INDEX: Int = 16
 
+        /**
+         * parity: `Player.DATA_PLAYER_ABSORPTION_ID`, the yellow hearts.
+         *
+         * 26.2 put `Avatar` between `LivingEntity` and `Player` (main hand and skin parts, 15 and
+         * 16), so this moved: it is not the 15 older versions used.
+         */
+        public const val PLAYER_ABSORPTION_INDEX: Int = 17
+
+        /** parity: `Entity.DATA_POSE`, which is what draws a player lying in a bed. */
+        public const val POSE_INDEX: Int = 6
+
+        /** parity: `LivingEntity.SLEEPING_POS_ID`, the bed they are lying in. */
+        public const val SLEEPING_POS_INDEX: Int = 14
+
         /** parity: `Entity.DATA_SHARED_FLAGS_ID`, whose lowest bit is "this entity is on fire". */
         public const val SHARED_FLAGS_INDEX: Int = 0
 
@@ -300,6 +335,8 @@ public data class SetEntityDataPacket(
         private const val FLOAT_SERIALIZER = 3
         private const val ITEM_STACK_SERIALIZER = 7
         private const val BOOLEAN_SERIALIZER = 8
+        private const val OPTIONAL_BLOCK_POS_SERIALIZER = 11
+        private const val POSE_SERIALIZER = 20
         private const val ROTATIONS_SERIALIZER = 9
         private const val VILLAGER_DATA_SERIALIZER = 18
         private const val CAT_VARIANT_SERIALIZER = 21
@@ -337,6 +374,25 @@ public data class SetEntityDataPacket(
             skinParts: Byte,
         ): SetEntityDataPacket = SetEntityDataPacket(entityId, listOf(Entry.Bytes(PLAYER_SKIN_PARTS_INDEX, skinParts)))
 
+        /** Lying in the bed at [bed], or standing again when it is null. */
+        public fun sleeping(
+            entityId: Int,
+            bed: BlockPos?,
+        ): SetEntityDataPacket =
+            SetEntityDataPacket(
+                entityId,
+                listOf(
+                    Entry.Poses(POSE_INDEX, if (bed == null) Pose.STANDING else Pose.SLEEPING),
+                    Entry.OptionalBlockPos(SLEEPING_POS_INDEX, bed),
+                ),
+            )
+
+        /** The yellow hearts on top of a player's own health bar. */
+        public fun playerAbsorption(
+            entityId: Int,
+            amount: Float,
+        ): SetEntityDataPacket = SetEntityDataPacket(entityId, listOf(Entry.Floats(PLAYER_ABSORPTION_INDEX, amount)))
+
         public fun read(buffer: ByteBuffer): SetEntityDataPacket {
             val entityId = buffer.readVarInt()
             val entries = mutableListOf<Entry>()
@@ -350,6 +406,12 @@ public data class SetEntityDataPacket(
                         FLOAT_SERIALIZER -> Entry.Floats(index, buffer.readFloat())
                         ITEM_STACK_SERIALIZER -> Entry.Item(index, WireItemStack.read(buffer))
                         BOOLEAN_SERIALIZER -> Entry.Booleans(index, buffer.readBoolean())
+                        OPTIONAL_BLOCK_POS_SERIALIZER ->
+                            Entry.OptionalBlockPos(
+                                index,
+                                if (buffer.readBoolean()) BlockPos.unpack(buffer.readLong()) else null,
+                            )
+                        POSE_SERIALIZER -> Entry.Poses(index, Pose.entries[buffer.readVarInt()])
                         ROTATIONS_SERIALIZER ->
                             Entry.Rotations(index, buffer.readFloat(), buffer.readFloat(), buffer.readFloat())
                         VILLAGER_DATA_SERIALIZER ->
@@ -749,6 +811,61 @@ public data class UpdateAttributesPacket(
                     AttributeSnapshot(id, base, modifiers)
                 }
             return UpdateAttributesPacket(entityId, attributes)
+        }
+    }
+}
+
+/**
+ * What made an entity flash red, and where the hit came from.
+ *
+ * parity: `ClientboundDamageEventPacket`. The damage type travels as a holder of the synced
+ * `minecraft:damage_type` registry, and the two entity ids as "id plus one", so zero means nobody.
+ */
+public data class DamageEventPacket(
+    val entityId: Int,
+    /** The index of the damage type in the `minecraft:damage_type` registry, as sent to the client. */
+    val damageType: Int,
+    /** Whoever is blamed for the hit, or -1 for a hit nobody dealt. */
+    val causeEntityId: Int = -1,
+    /** What actually touched them (an arrow, say), or -1. */
+    val directEntityId: Int = -1,
+    val sourceX: Double? = null,
+    val sourceY: Double? = null,
+    val sourceZ: Double? = null,
+) {
+    public fun write(buffer: ByteBuffer) {
+        buffer.writeVarInt(entityId)
+        // A holder: 0 would mean the type follows inline, so a registry id is written as id + 1.
+        buffer.writeVarInt(damageType + 1)
+        buffer.writeVarInt(causeEntityId + 1)
+        buffer.writeVarInt(directEntityId + 1)
+        val hasPosition = sourceX != null && sourceY != null && sourceZ != null
+        buffer.writeBoolean(hasPosition)
+        if (hasPosition) {
+            buffer.writeDouble(sourceX)
+            buffer.writeDouble(sourceY)
+            buffer.writeDouble(sourceZ)
+        }
+    }
+
+    public companion object {
+        public const val ID: Int = 0x19
+
+        public fun read(buffer: ByteBuffer): DamageEventPacket {
+            val entityId = buffer.readVarInt()
+            val damageType = buffer.readVarInt() - 1
+            val causeEntityId = buffer.readVarInt() - 1
+            val directEntityId = buffer.readVarInt() - 1
+            if (!buffer.readBoolean()) return DamageEventPacket(entityId, damageType, causeEntityId, directEntityId)
+            return DamageEventPacket(
+                entityId,
+                damageType,
+                causeEntityId,
+                directEntityId,
+                buffer.readDouble(),
+                buffer.readDouble(),
+                buffer.readDouble(),
+            )
         }
     }
 }

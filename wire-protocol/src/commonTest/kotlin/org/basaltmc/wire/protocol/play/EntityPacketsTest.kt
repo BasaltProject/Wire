@@ -151,6 +151,45 @@ class EntityPacketsTest {
     }
 
     @Test
+    fun damageEventRoundTrips() {
+        val buffer = ByteBuffer()
+        val packet = DamageEventPacket(entityId = 4, damageType = 12, causeEntityId = -1, directEntityId = -1)
+        packet.write(buffer)
+        assertEquals(packet, DamageEventPacket.read(buffer))
+    }
+
+    @Test
+    fun damageEventCarriesWhereTheHitCameFrom() {
+        val buffer = ByteBuffer()
+        val packet =
+            DamageEventPacket(
+                entityId = 4,
+                damageType = 0,
+                causeEntityId = 9,
+                directEntityId = 10,
+                sourceX = 1.0,
+                sourceY = 64.0,
+                sourceZ = -2.0,
+            )
+        packet.write(buffer)
+        assertEquals(packet, DamageEventPacket.read(buffer))
+    }
+
+    @Test
+    fun absorptionMetadataRoundTrips() {
+        val buffer = ByteBuffer()
+        // 17, right after `Avatar`'s two: an older version would say 15 and paint no yellow hearts.
+        val packet = SetEntityDataPacket.playerAbsorption(entityId = 7, amount = 8f)
+        packet.write(buffer)
+
+        val decoded = SetEntityDataPacket.read(buffer)
+        assertEquals(packet, decoded)
+        val entry = decoded.entries.single() as SetEntityDataPacket.Entry.Floats
+        assertEquals(SetEntityDataPacket.PLAYER_ABSORPTION_INDEX, entry.index)
+        assertEquals(8f, entry.value)
+    }
+
+    @Test
     fun setEntityDataRejectsAnUnknownSerializer() {
         val buffer = ByteBuffer()
         buffer.writeVarInt(1)
