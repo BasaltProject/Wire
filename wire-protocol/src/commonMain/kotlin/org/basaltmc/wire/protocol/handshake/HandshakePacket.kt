@@ -23,7 +23,7 @@ public enum class ClientIntent(
 }
 
 /**
- * Mirrors vanilla's `net.minecraft.network.protocol.handshake.ClientIntentionPacket` — the only
+ * Mirrors vanilla's `net.minecraft.network.protocol.handshake.ClientIntentionPacket`: the only
  * packet in the handshake state, always id 0x00. Field layout confirmed against the decompiled
  * 26.2 server jar.
  */

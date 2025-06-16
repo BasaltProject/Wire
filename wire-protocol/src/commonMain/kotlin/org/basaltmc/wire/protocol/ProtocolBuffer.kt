@@ -8,7 +8,7 @@ import kotlin.uuid.Uuid
 
 /**
  * Protocol-level read/write helpers on top of `wire-io`'s [ByteBuffer]. String encoding is
- * plain UTF-8 (VarInt-prefixed byte length), unlike NBT's modified UTF-8 — confirmed against the
+ * plain UTF-8 (VarInt-prefixed byte length), unlike NBT's modified UTF-8: confirmed against the
  * decompiled `net.minecraft.network.Utf8String`, not assumed.
  */
 public fun ByteBuffer.writeVarInt(value: Int): Unit = VarInt.write(this, value)

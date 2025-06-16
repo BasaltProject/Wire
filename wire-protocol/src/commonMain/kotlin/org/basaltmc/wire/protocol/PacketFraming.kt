@@ -9,7 +9,7 @@ import org.basaltmc.wire.io.ByteBuffer
  * Uncompressed: `VarInt packetLength, [packet id + data]`.
  *
  * Compressed (once a threshold is negotiated via `ClientboundLoginCompressionPacket`):
- * `VarInt packetLength, VarInt dataLength, payload` — `dataLength = 0` and an uncompressed
+ * `VarInt packetLength, VarInt dataLength, payload`: `dataLength = 0` and an uncompressed
  * `payload` when the packet is smaller than the threshold, otherwise `dataLength` is the
  * uncompressed size and `payload` is zlib-deflated.
  */

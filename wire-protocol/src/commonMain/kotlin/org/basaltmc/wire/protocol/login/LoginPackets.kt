@@ -155,7 +155,7 @@ public data class GameProfile(
 
 /**
  * Clientbound, id 0x02: login success. Mirrors `ClientboundLoginFinishedPacket`. Notably carries
- * a `sessionId` field alongside the [GameProfile] in this version — confirmed against the
+ * a `sessionId` field alongside the [GameProfile] in this version: confirmed against the
  * decompiled 26.2 jar, not present in older protocol documentation.
  */
 @OptIn(ExperimentalUuidApi::class)
