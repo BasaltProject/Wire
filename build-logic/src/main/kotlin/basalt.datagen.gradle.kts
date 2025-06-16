@@ -828,6 +828,7 @@ class BlockSupportData(
     val rules: List<String>,
     val index: List<Int>,
     val randomTick: List<Int>,
+    val families: List<Pair<String, String>>,
 )
 
 /**
@@ -859,12 +860,14 @@ fun extractBlockSupport(workDir: File): BlockSupportData {
     val wetByState = HashMap<Int, List<String>>()
     val supportLines = mutableListOf<List<String>>()
     val randomTick = mutableListOf<Int>()
+    val families = mutableListOf<Pair<String, String>>()
     for (line in output.readLines()) {
         val columns = line.split('\t')
         when (columns.firstOrNull()) {
             "RANDOMTICK" -> randomTick += columns[1].toInt()
             "WET" -> wetByState[columns[1].toInt()] = columns.drop(2).map { it.substringAfter('=') }
             "SUPPORT" -> supportLines += columns
+            "FAMILY" -> families += columns[1] to columns[2].trimEnd(',')
         }
     }
     check(supportLines.isNotEmpty()) { "The support harness printed nothing" }
@@ -885,7 +888,13 @@ fun extractBlockSupport(workDir: File): BlockSupportData {
         val rule = (dry + wet).joinToString("|") { token -> encodeSupportToken(token, sets) }
         index[stateId] = FIRST_SUPPORT_RULE + rules.getOrPut(rule) { rules.size }
     }
-    return BlockSupportData(sets.keys.map { encodeBlockSet(it) }, rules.keys.toList(), index.toList(), randomTick)
+    return BlockSupportData(
+        sets.keys.map { encodeBlockSet(it) },
+        rules.keys.toList(),
+        index.toList(),
+        randomTick,
+        families,
+    )
 }
 
 /** 0 means nothing holds this state up; 1 means the rule is one this build does not model. */
@@ -937,6 +946,15 @@ fun writeSupportTable(
         }
     val indexBody = encoded.chunked(100).joinToString(" +\n") { "        \"$it\"" }
     val tickBody = support.randomTick.chunked(20).joinToString(",\n") { row -> "        " + row.joinToString(", ") }
+    val byFamily = LinkedHashMap<String, MutableList<String>>()
+    for ((blockId, names) in support.families) {
+        for (name in names.split(',').filter { it.isNotEmpty() }) byFamily.getOrPut(name) { mutableListOf() } += blockId
+    }
+    val familyBody =
+        byFamily.entries.joinToString(",\n") { (name, ids) ->
+            val encoded = encodeBlockSet(ids.joinToString(","))
+            "        \"" + name + "\" to \"" + encoded + "\""
+        }
     file.writeText(
         """
         package org.basaltmc.server.registry
@@ -962,12 +980,23 @@ fun writeSupportTable(
             intArrayOf(
         TICK_BODY,
             )
+
+        /**
+         * Which blocks are a fence, a gate, panes, leaves or a wall, and which refuse to be
+         * connected to at all: what `connectsTo` and `attachsTo` ask about, as base64 bitsets over
+         * block registry ids.
+         */
+        internal val BLOCK_FAMILIES: List<Pair<String, String>> =
+            listOf(
+        FAMILY_BODY,
+            )
         """.trimIndent()
             .replace("SUPPORT_KDOC", SUPPORT_KDOC)
             .replace("RULES_BODY", rulesBody)
             .replace("SETS_BODY", setsBody)
             .replace("INDEX_BODY", indexBody)
-            .replace("TICK_BODY", tickBody) + "\n",
+            .replace("TICK_BODY", tickBody)
+            .replace("FAMILY_BODY", familyBody) + "\n",
     )
 }
 
@@ -994,8 +1023,14 @@ val DUMP_BLOCK_SUPPORT_SOURCE =
     import net.minecraft.tags.TagLoader;
     import net.minecraft.world.level.LevelReader;
     import net.minecraft.world.level.block.Block;
+    import net.minecraft.tags.BlockTags;
     import net.minecraft.world.level.block.Blocks;
+    import net.minecraft.world.level.block.FenceBlock;
+    import net.minecraft.world.level.block.FenceGateBlock;
+    import net.minecraft.world.level.block.IronBarsBlock;
+    import net.minecraft.world.level.block.LeavesBlock;
     import net.minecraft.world.level.block.SupportType;
+    import net.minecraft.world.level.block.WallBlock;
     import net.minecraft.world.level.block.state.BlockState;
     import net.minecraft.world.level.material.Fluids;
 
@@ -1024,6 +1059,26 @@ val DUMP_BLOCK_SUPPORT_SOURCE =
             for (Block block : BuiltInRegistries.BLOCK) blocks.add(block);
 
             StringBuilder out = new StringBuilder();
+            for (Block block : blocks) {
+                StringBuilder families = new StringBuilder();
+                BlockState state = block.defaultBlockState();
+                if (block instanceof FenceBlock) families.append("fence,");
+                if (block instanceof FenceGateBlock) families.append("gate,");
+                if (block instanceof IronBarsBlock) families.append("bars,");
+                if (block instanceof LeavesBlock) families.append("leaves,");
+                if (block instanceof WallBlock) families.append("wall,");
+                if (state.is(BlockTags.FENCES)) families.append("fences_tag,");
+                if (state.is(BlockTags.WOODEN_FENCES)) families.append("wooden_fences_tag,");
+                if (state.is(BlockTags.WALLS)) families.append("walls_tag,");
+                if (state.is(BlockTags.PREVENTS_NEARBY_LEAF_DECAY)) families.append("prevents_decay,");
+                if (state.is(BlockTags.MAINTAINS_FARMLAND)) families.append("maintains_farmland,");
+                if (state.is(BlockTags.SUPPORTS_CACTUS)) families.append("supports_cactus,");
+                    if (Block.isExceptionForConnection(state)) families.append("exception,");
+                if (families.length() > 0) {
+                    out.append("FAMILY\t").append(BuiltInRegistries.BLOCK.getId(block)).append('\t')
+                       .append(families).append('\n');
+                }
+            }
             int always = 0;
             int composite = 0;
             for (Block block : blocks) {
