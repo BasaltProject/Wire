@@ -41,6 +41,40 @@ public data class BlockEntityDataPacket(
 }
 
 /**
+ * Clientbound, id 0x07: a one-off event on a block, as two bytes the block itself gives meaning to.
+ *
+ * Mirrors `ClientboundBlockEventPacket`. It is how a chest lid opens, a note block plays and a
+ * piston is drawn sliding: none of that is a change of state, so nothing else carries it. What the
+ * two bytes mean is up to the block, which is why they are named after the packet and not after any
+ * one use.
+ */
+public data class BlockEventPacket(
+    val pos: BlockPos,
+    val b0: Int,
+    val b1: Int,
+    val blockId: Int,
+) {
+    public fun write(buffer: ByteBuffer) {
+        buffer.writeLong(pos.pack())
+        buffer.writeByte(b0.toByte())
+        buffer.writeByte(b1.toByte())
+        buffer.writeVarInt(blockId)
+    }
+
+    public companion object {
+        public const val ID: Int = 0x07
+
+        public fun read(buffer: ByteBuffer): BlockEventPacket =
+            BlockEventPacket(
+                BlockPos.unpack(buffer.readLong()),
+                buffer.readByte().toInt() and 0xff,
+                buffer.readByte().toInt() and 0xff,
+                buffer.readVarInt(),
+            )
+    }
+}
+
+/**
  * Clientbound, id 0x3c: open the sign editor. Mirrors `ClientboundOpenSignEditorPacket`.
  *
  * The client refuses to edit a sign it was not asked to edit, so placing one without this leaves a

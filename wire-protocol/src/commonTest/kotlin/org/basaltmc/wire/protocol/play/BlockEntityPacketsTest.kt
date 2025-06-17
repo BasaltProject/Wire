@@ -30,6 +30,29 @@ class BlockEntityPacketsTest {
     }
 
     @Test
+    fun blockEventRoundTrips() {
+        val buffer = ByteBuffer()
+        BlockEventPacket(BlockPos(-30, 5, 400), b0 = 1, b1 = 3, blockId = 218).write(buffer)
+
+        val read = BlockEventPacket.read(buffer)
+        assertEquals(BlockPos(-30, 5, 400), read.pos)
+        assertEquals(1, read.b0)
+        assertEquals(3, read.b1)
+        assertEquals(218, read.blockId)
+    }
+
+    /** Both bytes are unsigned on the wire, so a note block's twenty-fourth pitch is not a -24. */
+    @Test
+    fun blockEventBytesAreUnsigned() {
+        val buffer = ByteBuffer()
+        BlockEventPacket(BlockPos(0, 0, 0), b0 = 200, b1 = 255, blockId = 1).write(buffer)
+
+        val read = BlockEventPacket.read(buffer)
+        assertEquals(200, read.b0)
+        assertEquals(255, read.b1)
+    }
+
+    @Test
     fun openSignEditorRoundTrips() {
         val buffer = ByteBuffer()
         OpenSignEditorPacket(BlockPos(-4, 70, 12), isFrontText = false).write(buffer)
