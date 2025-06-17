@@ -839,9 +839,11 @@ class BlockSupportData(
     val rules: List<String>,
     val index: List<Int>,
     val randomTick: List<Int>,
+    val conductors: List<Int>,
     val families: List<Pair<String, String>>,
     val fireOdds: List<Triple<Int, Int, Int>>,
     val weathering: List<Pair<String, String>>,
+    val fuels: List<Pair<String, Int>>,
 )
 
 /**
@@ -873,18 +875,22 @@ fun extractBlockSupport(workDir: File): BlockSupportData {
     val wetByState = HashMap<Int, List<String>>()
     val supportLines = mutableListOf<List<String>>()
     val randomTick = mutableListOf<Int>()
+    val conductors = mutableListOf<Int>()
     val families = mutableListOf<Pair<String, String>>()
     val fireOdds = mutableListOf<Triple<Int, Int, Int>>()
     val weathering = mutableListOf<Pair<String, String>>()
+    val fuels = mutableListOf<Pair<String, Int>>()
     for (line in output.readLines()) {
         val columns = line.split('\t')
         when (columns.firstOrNull()) {
             "RANDOMTICK" -> randomTick += columns[1].toInt()
+            "CONDUCTOR" -> conductors += columns[1].toInt()
             "WET" -> wetByState[columns[1].toInt()] = columns.drop(2).map { it.substringAfter('=') }
             "SUPPORT" -> supportLines += columns
             "FAMILY" -> families += columns[1] to columns[2].trimEnd(',')
             "FIRE" -> fireOdds += Triple(columns[1].toInt(), columns[2].toInt(), columns[3].toInt())
             "COPPER" -> weathering += columns[1].substringAfter(':') to columns[2].substringAfter(':')
+            "FUEL" -> fuels += columns[1] to columns[2].toInt()
         }
     }
     check(supportLines.isNotEmpty()) { "The support harness printed nothing" }
@@ -910,9 +916,11 @@ fun extractBlockSupport(workDir: File): BlockSupportData {
         rules.keys.toList(),
         index.toList(),
         randomTick,
+        conductors,
         families,
         fireOdds,
         weathering,
+        fuels,
     )
 }
 
@@ -965,10 +973,14 @@ fun writeSupportTable(
         }
     val indexBody = encoded.chunked(100).joinToString(" +\n") { "        \"$it\"" }
     val tickBody = support.randomTick.chunked(20).joinToString(",\n") { row -> "        " + row.joinToString(", ") }
+    val conductorBody =
+        support.conductors.chunked(20).joinToString(",\n") { row -> "        " + row.joinToString(", ") }
     val byFamily = LinkedHashMap<String, MutableList<String>>()
     for ((blockId, names) in support.families) {
         for (name in names.split(',').filter { it.isNotEmpty() }) byFamily.getOrPut(name) { mutableListOf() } += blockId
     }
+    val fuelBody =
+        support.fuels.joinToString(",\n") { (item, ticks) -> "        \"" + item + "\" to " + ticks }
     val copperBody =
         support.weathering.joinToString(",\n") { (from, to) ->
             "        \"" + from + "\" to \"" + to + "\""
@@ -1008,6 +1020,24 @@ fun writeSupportTable(
         TICK_BODY,
             )
 
+        /**
+         * How long each item burns in a furnace, in ticks. parity: `FuelValues.vanillaBurnTimes`,
+         * which vanilla builds in code rather than in data, so this is that call's answer.
+         */
+        internal val ALL_FUEL_VALUES: List<Pair<String, Int>> =
+            listOf(
+        FUEL_BODY,
+            )
+
+        /**
+         * The states redstone treats as solid: a signal reaches through them and a wire climbs over
+         * them. parity: `BlockStateBase.isRedstoneConductor`.
+         */
+        internal val REDSTONE_CONDUCTOR_STATES: IntArray =
+            intArrayOf(
+        CONDUCTOR_BODY,
+            )
+
         /** What each copper block turns into as it weathers. parity: `WeatheringCopper.NEXT_BY_BLOCK`. */
         internal val ALL_WEATHERING_STEPS: List<Pair<String, String>> =
             listOf(
@@ -1038,9 +1068,11 @@ fun writeSupportTable(
             .replace("SETS_BODY", setsBody)
             .replace("INDEX_BODY", indexBody)
             .replace("TICK_BODY", tickBody)
+            .replace("CONDUCTOR_BODY", conductorBody)
             .replace("FAMILY_BODY", familyBody)
             .replace("FIRE_BODY", fireBody)
-            .replace("COPPER_BODY", copperBody) + "\n",
+            .replace("COPPER_BODY", copperBody)
+            .replace("FUEL_BODY", fuelBody) + "\n",
     )
 }
 
@@ -1069,6 +1101,9 @@ val DUMP_BLOCK_SUPPORT_SOURCE =
     import net.minecraft.world.level.block.Block;
     import net.minecraft.tags.BlockTags;
     import net.minecraft.world.level.block.Blocks;
+    import net.minecraft.world.flag.FeatureFlags;
+    import net.minecraft.world.item.Item;
+    import net.minecraft.world.level.block.entity.FuelValues;
     import net.minecraft.world.level.block.Fallable;
     import net.minecraft.world.level.block.FallingBlock;
     import net.minecraft.world.level.block.FireBlock;
@@ -1168,6 +1203,11 @@ val DUMP_BLOCK_SUPPORT_SOURCE =
                 for (BlockState state : block.getStateDefinition().getPossibleStates()) {
                     int id = Block.getId(state);
                     if (state.isRandomlyTicking()) out.append("RANDOMTICK\t").append(id).append('\n');
+                    // What redstone treats as solid: the states a signal travels through and that a
+                    // wire climbs over. parity: `BlockBehaviour.Properties.isRedstoneConductor`.
+                    if (state.isRedstoneConductor(level, ORIGIN)) {
+                        out.append("CONDUCTOR\t").append(id).append('\n');
+                    }
                     WORLD.clear();
                     if (survives(state, level)) {
                         always++;
@@ -1229,6 +1269,24 @@ val DUMP_BLOCK_SUPPORT_SOURCE =
                         out.append("WET\t").append(id).append('\t').append(wetLine).append('\n');
                     }
                 }
+            }
+            // What a furnace burns and for how long. Vanilla builds this in code, not in data, so
+            // the only honest source is calling it.
+            FuelValues fuels = FuelValues.vanillaBurnTimes(
+                    RegistryAccess.fromRegistryOfRegistries(BuiltInRegistries.REGISTRY), FeatureFlags.VANILLA_SET);
+            // Straight off the map it keeps: asking `burnDuration` wants an ItemStack, and a stack
+            // cannot be built here because the item components are not bound in this harness.
+            try {
+                java.lang.reflect.Field valuesField = FuelValues.class.getDeclaredField("values");
+                valuesField.setAccessible(true);
+                for (Map.Entry<?, ?> entry : ((Map<?, ?>) valuesField.get(fuels)).entrySet()) {
+                    int ticks = ((Number) entry.getValue()).intValue();
+                    if (ticks <= 0) continue;
+                    out.append("FUEL\t").append(BuiltInRegistries.ITEM.getKey((Item) entry.getKey()).getPath())
+                       .append('\t').append(ticks).append('\n');
+                }
+            } catch (ReflectiveOperationException failure) {
+                throw new IllegalStateException("FuelValues.values moved: " + failure, failure);
             }
             System.err.println("always=" + always + " composite=" + composite);
             System.out.print(out);
