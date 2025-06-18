@@ -6,6 +6,7 @@ import org.basaltmc.wire.protocol.readAnonymousNbt
 import org.basaltmc.wire.protocol.readBoolean
 import org.basaltmc.wire.protocol.readVarInt
 import org.basaltmc.wire.protocol.writeAnonymousNbt
+import org.basaltmc.wire.protocol.writeBoolean
 import org.basaltmc.wire.protocol.writeVarInt
 import org.basaltmc.wire.text.Component
 import org.basaltmc.wire.text.ComponentNbt
@@ -359,6 +360,9 @@ public data class OpenScreenPacket(
         /** `minecraft:crafter_3x3`, the nine slots of a crafter with no result slot. */
         public const val CRAFTER_MENU: Int = 7
 
+        /** `minecraft:merchant`, a villager's own window. */
+        public const val MERCHANT_MENU: Int = 19
+
         /** The three cookers, whose screens differ only in which recipes their book offers. */
         public const val FURNACE_MENU: Int = 14
         public const val BLAST_FURNACE_MENU: Int = 10
@@ -426,4 +430,138 @@ public data class ContainerSetDataPacket(
                 value = buffer.readShort().toInt(),
             )
     }
+}
+
+/** One thing a merchant asks for: an item, how many, and the components it has to match. */
+public data class MerchantCost(
+    val itemId: Int,
+    val count: Int,
+) {
+    public fun write(buffer: ByteBuffer) {
+        buffer.writeVarInt(itemId)
+        buffer.writeVarInt(count)
+        // parity: `DataComponentExactPredicate`, empty for every trade the jar ships as data.
+        buffer.writeVarInt(0)
+    }
+
+    public companion object {
+        public fun read(buffer: ByteBuffer): MerchantCost {
+            val itemId = buffer.readVarInt()
+            val count = buffer.readVarInt()
+            val exactComponents = buffer.readVarInt()
+            repeat(exactComponents) {
+                buffer.readVarInt()
+                buffer.readVarInt()
+            }
+            return MerchantCost(itemId, count)
+        }
+    }
+}
+
+/** One offer as the client draws it. Mirrors `MerchantOffer`'s own stream form. */
+public data class MerchantOffer(
+    val costA: MerchantCost,
+    val result: WireItemStack,
+    val costB: MerchantCost?,
+    val outOfStock: Boolean,
+    val uses: Int,
+    val maxUses: Int,
+    val experience: Int,
+    val specialPrice: Int,
+    val priceMultiplier: Float,
+    val demand: Int,
+) {
+    public fun write(buffer: ByteBuffer) {
+        costA.write(buffer)
+        result.write(buffer)
+        buffer.writeBoolean(costB != null)
+        costB?.write(buffer)
+        buffer.writeBoolean(outOfStock)
+        buffer.writeInt(uses)
+        buffer.writeInt(maxUses)
+        buffer.writeInt(experience)
+        buffer.writeInt(specialPrice)
+        buffer.writeFloat(priceMultiplier)
+        buffer.writeInt(demand)
+    }
+}
+
+/**
+ * Clientbound, id 0x33: the trades a merchant is offering. Mirrors `ClientboundMerchantOffersPacket`.
+ *
+ * Sent right after the merchant window opens, and again whenever a trade is taken: the client draws
+ * the list it was last sent and nothing else.
+ */
+public data class MerchantOffersPacket(
+    val containerId: Int,
+    val offers: List<MerchantOffer>,
+    val level: Int,
+    val experience: Int,
+    val showProgress: Boolean,
+    val canRestock: Boolean,
+) {
+    public fun write(buffer: ByteBuffer) {
+        buffer.writeVarInt(containerId)
+        buffer.writeVarInt(offers.size)
+        for (offer in offers) offer.write(buffer)
+        buffer.writeVarInt(level)
+        buffer.writeVarInt(experience)
+        buffer.writeBoolean(showProgress)
+        buffer.writeBoolean(canRestock)
+    }
+
+    public companion object {
+        public const val ID: Int = 0x33
+    }
+}
+
+/**
+ * Serverbound, id 0x33: which of the offers the player picked. Mirrors `ServerboundSelectTradePacket`.
+ */
+public data class SelectTradePacket(
+    val index: Int,
+) {
+    public fun write(buffer: ByteBuffer) {
+        buffer.writeVarInt(index)
+    }
+
+    public companion object {
+        public const val ID: Int = 0x33
+
+        public fun read(buffer: ByteBuffer): SelectTradePacket = SelectTradePacket(buffer.readVarInt())
+    }
+}
+
+/**
+ * Serverbound, id 0x11: a button inside an open window. Mirrors `ServerboundContainerButtonClickPacket`.
+ *
+ * The lectern is what makes this worth having: its pages are buttons (one back, two forward, three
+ * to take the book, and a hundred plus the page to jump straight to one).
+ */
+public data class ContainerButtonClickPacket(
+    val containerId: Int,
+    val buttonId: Int,
+) {
+    public fun write(buffer: ByteBuffer) {
+        buffer.writeVarInt(containerId)
+        buffer.writeVarInt(buttonId)
+    }
+
+    public companion object {
+        public const val ID: Int = 0x11
+
+        /** parity: `LecternMenu.clickMenuButton`'s own numbering. */
+        public const val LECTERN_PREVIOUS_PAGE: Int = 1
+        public const val LECTERN_NEXT_PAGE: Int = 2
+        public const val LECTERN_TAKE_BOOK: Int = 3
+        public const val LECTERN_JUMP_TO_PAGE: Int = 100
+
+        public fun read(buffer: ByteBuffer): ContainerButtonClickPacket =
+            ContainerButtonClickPacket(buffer.readVarInt(), buffer.readVarInt())
+    }
+}
+
+/** `minecraft:lectern`, whose window is one book and a page number. */
+public object LecternMenuType {
+    public const val ID: Int = 17
 }

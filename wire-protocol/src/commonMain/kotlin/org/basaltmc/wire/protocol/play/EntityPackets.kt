@@ -1116,3 +1116,58 @@ public data class EntityPositionSyncPacket(
             )
     }
 }
+
+/**
+ * Serverbound, id 0x1a: somebody right-clicked an entity. Mirrors `ServerboundInteractPacket`.
+ *
+ * This is how a player feeds an animal, opens a villager's trades, or gets on a boat. The point is
+ * where on the entity the click landed, which is what tells sitting on a boat from riding it.
+ */
+public data class InteractPacket(
+    val entityId: Int,
+    val hand: Int,
+    val x: Double,
+    val y: Double,
+    val z: Double,
+    val usingSecondaryAction: Boolean,
+) {
+    public fun write(buffer: ByteBuffer) {
+        buffer.writeVarInt(entityId)
+        buffer.writeVarInt(hand)
+        LowPrecisionVec3.write(buffer, x, y, z)
+        buffer.writeBoolean(usingSecondaryAction)
+    }
+
+    public companion object {
+        public const val ID: Int = 0x1a
+
+        /** parity: `InteractionHand`, whose ids are the main hand and then the off hand. */
+        public const val MAIN_HAND: Int = 0
+        public const val OFF_HAND: Int = 1
+
+        public fun read(buffer: ByteBuffer): InteractPacket {
+            val entityId = buffer.readVarInt()
+            val hand = buffer.readVarInt()
+            val location = LowPrecisionVec3.read(buffer)
+            return InteractPacket(entityId, hand, location[0], location[1], location[2], buffer.readBoolean())
+        }
+    }
+}
+
+/**
+ * Serverbound, id 0x01: somebody hit an entity. Mirrors `ServerboundAttackPacket`, which 26.2 split
+ * out of the interact packet.
+ */
+public data class AttackPacket(
+    val entityId: Int,
+) {
+    public fun write(buffer: ByteBuffer) {
+        buffer.writeVarInt(entityId)
+    }
+
+    public companion object {
+        public const val ID: Int = 0x01
+
+        public fun read(buffer: ByteBuffer): AttackPacket = AttackPacket(buffer.readVarInt())
+    }
+}
