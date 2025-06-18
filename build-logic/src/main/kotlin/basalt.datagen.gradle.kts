@@ -89,6 +89,12 @@ tasks.register("generate") {
         val movement = extractBlockMovement(workDir)
         writeMovementTable(File(registryDir, "VanillaBlockMovement.kt"), movement)
 
+        val itemBlocks = extractItemBlocks(workDir)
+        writeItemBlockTable(File(registryDir, "VanillaItemBlocks.kt"), itemBlocks)
+
+        val instruments = extractBlockInstruments(workDir)
+        writeInstrumentTable(File(registryDir, "VanillaBlockInstruments.kt"), instruments)
+
         val entityTypes = extractEntityTypes(workDir)
         writeEntityTypeTable(File(registryDir, "VanillaEntityTypeShapes.kt"), entityTypes)
 
@@ -1585,6 +1591,165 @@ fun writeMovementTable(
          * classes (see `basalt.datagen`).
          */
         internal val ALL_BLOCK_MOVEMENT: List<BlockMovementEntry> =
+            listOf(
+        ${'$'}body,
+            )
+        """.trimIndent().replace("${'$'}body", body) + "\n",
+    )
+}
+
+/**
+ * Which block each item puts down, for the items whose block is not called the same thing.
+ *
+ * Vanilla keeps it in the `BlockItem` instance (`getBlock()`), which is code, so the real registry
+ * is asked directly. Without it a handful of very ordinary items cannot be placed at all: redstone
+ * dust, string, every seed, cocoa beans.
+ */
+fun extractItemBlocks(workDir: File): List<Pair<String, String>> {
+    val classpath = harnessClasspath(workDir)
+    val harnessDir = File(workDir, "harness")
+    harnessDir.mkdirs()
+    File(harnessDir, "DumpItemBlocks.java").writeText(
+        """
+        import net.minecraft.SharedConstants;
+        import net.minecraft.core.registries.BuiltInRegistries;
+        import net.minecraft.resources.Identifier;
+        import net.minecraft.server.Bootstrap;
+        import net.minecraft.world.item.BlockItem;
+        import net.minecraft.world.item.Item;
+
+        public final class DumpItemBlocks {
+            public static void main(String[] args) {
+                SharedConstants.tryDetectVersion();
+                Bootstrap.bootStrap();
+                for (Item item : BuiltInRegistries.ITEM) {
+                    if (!(item instanceof BlockItem blockItem)) {
+                        continue;
+                    }
+                    Identifier itemId = BuiltInRegistries.ITEM.getKey(item);
+                    Identifier blockId = BuiltInRegistries.BLOCK.getKey(blockItem.getBlock());
+                    System.out.println(itemId + "\t" + blockId);
+                }
+            }
+        }
+        """.trimIndent(),
+    )
+
+    runHarness(
+        listOf("javac", "-cp", classpath, "-d", harnessDir.absolutePath, File(harnessDir, "DumpItemBlocks.java").absolutePath),
+        workDir,
+    )
+    val output = File(harnessDir, "item-blocks.tsv")
+    runHarness(
+        listOf("java", "-cp", "${harnessDir.absolutePath}${File.pathSeparator}$classpath", "DumpItemBlocks"),
+        workDir,
+        output,
+    )
+
+    return output
+        .readLines()
+        .filter { it.contains('\t') && it.contains("minecraft:") }
+        .map { line ->
+            val columns = line.split('\t')
+            val item = columns[0].substring(columns[0].indexOf("minecraft:")).removePrefix("minecraft:")
+            val block = columns[1].substring(columns[1].indexOf("minecraft:")).removePrefix("minecraft:")
+            item to block
+        }.filter { it.first != it.second }
+        .sortedBy { it.first }
+}
+
+fun writeItemBlockTable(
+    file: File,
+    entries: List<Pair<String, String>>,
+) {
+    val body = entries.joinToString(",\n") { (item, block) -> "        \"$item\" to \"$block\"" }
+    file.writeText(
+        """
+        package org.basaltmc.server.registry
+
+        /**
+         * The items whose block is not called the same as they are. Anything absent puts down the
+         * block of its own name, which is nearly all of them.
+         *
+         * Not reported by the data generator, so it comes from a harness run against the real
+         * classes (see `basalt.datagen`).
+         */
+        internal val ALL_ITEM_BLOCKS: List<Pair<String, String>> =
+            listOf(
+        ${'$'}body,
+            )
+        """.trimIndent().replace("${'$'}body", body) + "\n",
+    )
+}
+
+/**
+ * Which instrument a note block plays when it stands on each block. Vanilla keeps it in
+ * `BlockBehaviour.Properties.instrument`, which is code, so the real states are asked directly.
+ */
+fun extractBlockInstruments(workDir: File): List<Pair<String, String>> {
+    val classpath = harnessClasspath(workDir)
+    val harnessDir = File(workDir, "harness")
+    harnessDir.mkdirs()
+    File(harnessDir, "DumpInstruments.java").writeText(
+        """
+        import net.minecraft.SharedConstants;
+        import net.minecraft.core.registries.BuiltInRegistries;
+        import net.minecraft.resources.Identifier;
+        import net.minecraft.server.Bootstrap;
+        import net.minecraft.world.level.block.Block;
+
+        public final class DumpInstruments {
+            public static void main(String[] args) {
+                SharedConstants.tryDetectVersion();
+                Bootstrap.bootStrap();
+                for (Block block : BuiltInRegistries.BLOCK) {
+                    Identifier id = BuiltInRegistries.BLOCK.getKey(block);
+                    System.out.println(
+                        id + "\t" + block.defaultBlockState().instrument().getSerializedName());
+                }
+            }
+        }
+        """.trimIndent(),
+    )
+
+    runHarness(
+        listOf("javac", "-cp", classpath, "-d", harnessDir.absolutePath, File(harnessDir, "DumpInstruments.java").absolutePath),
+        workDir,
+    )
+    val output = File(harnessDir, "instruments.tsv")
+    runHarness(
+        listOf("java", "-cp", "${harnessDir.absolutePath}${File.pathSeparator}$classpath", "DumpInstruments"),
+        workDir,
+        output,
+    )
+
+    return output
+        .readLines()
+        .filter { it.contains('\t') && it.contains("minecraft:") }
+        .map { line ->
+            val columns = line.split('\t')
+            columns[0].substring(columns[0].indexOf("minecraft:")).removePrefix("minecraft:") to columns[1]
+        }.filter { it.second != "harp" }
+        .sortedBy { it.first }
+}
+
+fun writeInstrumentTable(
+    file: File,
+    entries: List<Pair<String, String>>,
+) {
+    val body = entries.joinToString(",\n") { (block, instrument) -> "        \"$block\" to \"$instrument\"" }
+    file.writeText(
+        """
+        package org.basaltmc.server.registry
+
+        /**
+         * Which instrument a note block plays over each block. Anything absent is the harp, which is
+         * what every ordinary block gives.
+         *
+         * Not reported by the data generator, so it comes from a harness run against the real
+         * classes (see `basalt.datagen`).
+         */
+        internal val ALL_BLOCK_INSTRUMENTS: List<Pair<String, String>> =
             listOf(
         ${'$'}body,
             )
