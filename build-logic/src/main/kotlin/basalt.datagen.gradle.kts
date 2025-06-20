@@ -89,6 +89,9 @@ tasks.register("generate") {
         val movement = extractBlockMovement(workDir)
         writeMovementTable(File(registryDir, "VanillaBlockMovement.kt"), movement)
 
+        val blockEntities = extractBlockEntityTypes(workDir)
+        writeBlockEntityTable(File(registryDir, "VanillaBlockEntityTypes.kt"), blockEntities)
+
         val itemBlocks = extractItemBlocks(workDir)
         writeItemBlockTable(File(registryDir, "VanillaItemBlocks.kt"), itemBlocks)
 
@@ -1595,6 +1598,108 @@ fun writeMovementTable(
         ${'$'}body,
             )
         """.trimIndent().replace("${'$'}body", body) + "\n",
+    )
+}
+
+/**
+ * Every block entity type in registry order, and which blocks own one.
+ *
+ * The order is the protocol id a chunk packet carries, and the ownership is what decides whether a
+ * block gets one at all: a bell without its block entity is a bell nobody can see.
+ */
+fun extractBlockEntityTypes(workDir: File): List<Pair<String, List<String>>> {
+    val classpath = harnessClasspath(workDir)
+    val harnessDir = File(workDir, "harness")
+    harnessDir.mkdirs()
+    File(harnessDir, "DumpBlockEntities.java").writeText(
+        """
+        import java.util.ArrayList;
+        import java.util.List;
+        import net.minecraft.SharedConstants;
+        import net.minecraft.core.registries.BuiltInRegistries;
+        import net.minecraft.resources.Identifier;
+        import net.minecraft.server.Bootstrap;
+        import net.minecraft.world.level.block.Block;
+        import net.minecraft.world.level.block.entity.BlockEntityType;
+
+        public final class DumpBlockEntities {
+            public static void main(String[] args) {
+                SharedConstants.tryDetectVersion();
+                Bootstrap.bootStrap();
+                for (BlockEntityType<?> type : BuiltInRegistries.BLOCK_ENTITY_TYPE) {
+                    Identifier id = BuiltInRegistries.BLOCK_ENTITY_TYPE.getKey(type);
+                    List<String> blocks = new ArrayList<>();
+                    for (Block block : BuiltInRegistries.BLOCK) {
+                        if (type.isValid(block.defaultBlockState())) {
+                            blocks.add(BuiltInRegistries.BLOCK.getKey(block).toString());
+                        }
+                    }
+                    System.out.println(id + "\t" + String.join(",", blocks));
+                }
+            }
+        }
+        """.trimIndent(),
+    )
+
+    runHarness(
+        listOf("javac", "-cp", classpath, "-d", harnessDir.absolutePath, File(harnessDir, "DumpBlockEntities.java").absolutePath),
+        workDir,
+    )
+    val output = File(harnessDir, "block-entities.tsv")
+    runHarness(
+        listOf("java", "-cp", "${harnessDir.absolutePath}${File.pathSeparator}$classpath", "DumpBlockEntities"),
+        workDir,
+        output,
+    )
+
+    // The registry is walked in order, so the line number is the protocol id: the harness prints
+    // through the game's own logger, whose prefix makes any leading number unreliable.
+    return output
+        .readLines()
+        .filter { it.contains('\t') && it.contains("minecraft:") }
+        .map { line ->
+            val columns = line.split('\t')
+            val name = columns[0].substring(columns[0].indexOf("minecraft:")).removePrefix("minecraft:")
+            val blocks =
+                columns.getOrElse(1) { "" }
+                    .split(',')
+                    .filter { it.isNotBlank() }
+                    .map { it.substringAfter("minecraft:") }
+            name to blocks
+        }
+}
+
+fun writeBlockEntityTable(
+    file: File,
+    entries: List<Pair<String, List<String>>>,
+) {
+    val names = entries.joinToString(",\n") { "        \"${it.first}\"" }
+    val owners =
+        entries
+            .flatMap { (type, blocks) -> blocks.map { it to type } }
+            .sortedBy { it.first }
+            .joinToString(",\n") { (block, type) -> "        \"$block\" to \"$type\"" }
+    file.writeText(
+        """
+        package org.basaltmc.server.registry
+
+        /**
+         * Every block entity type, in the registry order that is its protocol id.
+         *
+         * Not reported by the data generator, so it comes from a harness run against the real
+         * classes (see `basalt.datagen`).
+         */
+        internal val ALL_BLOCK_ENTITY_TYPE_NAMES: List<String> =
+            listOf(
+        ${'$'}names,
+            )
+
+        /** Which block entity type each block owns. A block absent from this list has none. */
+        internal val ALL_BLOCK_ENTITY_OWNERS: List<Pair<String, String>> =
+            listOf(
+        ${'$'}owners,
+            )
+        """.trimIndent().replace("${'$'}names", names).replace("${'$'}owners", owners) + "\n",
     )
 }
 
