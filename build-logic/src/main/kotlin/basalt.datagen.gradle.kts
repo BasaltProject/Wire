@@ -89,6 +89,12 @@ tasks.register("generate") {
         val movement = extractBlockMovement(workDir)
         writeMovementTable(File(registryDir, "VanillaBlockMovement.kt"), movement)
 
+        val remainders = extractCraftingRemainders(workDir)
+        writeRemainderTable(File(registryDir, "VanillaCraftingRemainders.kt"), remainders)
+
+        val trimMaterials = extractTrimMaterials(reportsDir)
+        writeTrimMaterialTable(File(registryDir, "VanillaTrimMaterials.kt"), trimMaterials)
+
         val blockEntities = extractBlockEntityTypes(workDir)
         writeBlockEntityTable(File(registryDir, "VanillaBlockEntityTypes.kt"), blockEntities)
 
@@ -1594,6 +1600,135 @@ fun writeMovementTable(
          * classes (see `basalt.datagen`).
          */
         internal val ALL_BLOCK_MOVEMENT: List<BlockMovementEntry> =
+            listOf(
+        ${'$'}body,
+            )
+        """.trimIndent().replace("${'$'}body", body) + "\n",
+    )
+}
+
+/**
+ * What each item leaves behind when it is crafted with: a bucket, a bottle, a bowl.
+ *
+ * parity: `Item.getCraftingRemainder`, which is code rather than data, so the real registry is asked
+ * directly. Without it a cake eats three milk buckets and gives nothing back.
+ */
+fun extractCraftingRemainders(workDir: File): List<Pair<String, String>> {
+    val classpath = harnessClasspath(workDir)
+    val harnessDir = File(workDir, "harness")
+    harnessDir.mkdirs()
+    File(harnessDir, "DumpRemainders.java").writeText(
+        """
+        import net.minecraft.SharedConstants;
+        import net.minecraft.core.registries.BuiltInRegistries;
+        import net.minecraft.resources.Identifier;
+        import net.minecraft.server.Bootstrap;
+        import net.minecraft.world.item.Item;
+        import net.minecraft.world.item.ItemStackTemplate;
+
+        public final class DumpRemainders {
+            public static void main(String[] args) {
+                SharedConstants.tryDetectVersion();
+                Bootstrap.bootStrap();
+                for (Item item : BuiltInRegistries.ITEM) {
+                    ItemStackTemplate remainder = item.getCraftingRemainder();
+                    if (remainder == null) {
+                        continue;
+                    }
+                    Identifier id = BuiltInRegistries.ITEM.getKey(item);
+                    Identifier left = BuiltInRegistries.ITEM.getKey(remainder.item().value());
+                    System.out.println(id + "\t" + left);
+                }
+            }
+        }
+        """.trimIndent(),
+    )
+
+    runHarness(
+        listOf("javac", "-cp", classpath, "-d", harnessDir.absolutePath, File(harnessDir, "DumpRemainders.java").absolutePath),
+        workDir,
+    )
+    val output = File(harnessDir, "remainders.tsv")
+    runHarness(
+        listOf("java", "-cp", "${harnessDir.absolutePath}${File.pathSeparator}$classpath", "DumpRemainders"),
+        workDir,
+        output,
+    )
+
+    return output
+        .readLines()
+        .filter { it.contains('\t') && it.contains("minecraft:") }
+        .map { line ->
+            val columns = line.split('\t')
+            val item = columns[0].substring(columns[0].indexOf("minecraft:")).removePrefix("minecraft:")
+            item to columns[1].substringAfter("minecraft:").trim()
+        }.sortedBy { it.first }
+}
+
+fun writeRemainderTable(
+    file: File,
+    entries: List<Pair<String, String>>,
+) {
+    val body = entries.joinToString(",\n") { (item, left) -> "        \"$item\" to \"$left\"" }
+    file.writeText(
+        """
+        package org.basaltmc.server.registry
+
+        /**
+         * What each item leaves in the grid when it is crafted with. An item absent from here is
+         * used up, which is nearly all of them.
+         *
+         * Not reported by the data generator, so it comes from a harness run against the real
+         * classes (see `basalt.datagen`).
+         */
+        internal val ALL_CRAFTING_REMAINDERS: List<Pair<String, String>> =
+            listOf(
+        ${'$'}body,
+            )
+        """.trimIndent().replace("${'$'}body", body) + "\n",
+    )
+}
+
+/**
+ * Which trim material each item provides, read from the generator's own item component report.
+ *
+ * An iron ingot provides `minecraft:iron`; an item that provides nothing cannot trim armour at all,
+ * which is the whole rule a smithing trim recipe checks. Asked of the report rather than of a
+ * harness because an item's components are not bound at bootstrap.
+ */
+fun extractTrimMaterials(reportsDir: File): List<Pair<String, String>> {
+    val itemsDir = File(reportsDir, "minecraft/components/item")
+    if (!itemsDir.isDirectory) return emptyList()
+    val key = "\"minecraft:provides_trim_material\""
+    return itemsDir
+        .listFiles()
+        .orEmpty()
+        .filter { it.name.endsWith(".json") }
+        .mapNotNull { file ->
+            val text = file.readText()
+            val at = text.indexOf(key)
+            if (at < 0) return@mapNotNull null
+            // Past the key itself, whose own name carries a colon.
+            val material = text.substring(at + key.length).substringAfter('"').substringBefore('"')
+            file.name.removeSuffix(".json") to material.removePrefix("minecraft:")
+        }.sortedBy { it.first }
+}
+
+fun writeTrimMaterialTable(
+    file: File,
+    entries: List<Pair<String, String>>,
+) {
+    val body = entries.joinToString(",\n") { (item, material) -> "        \"$item\" to \"$material\"" }
+    file.writeText(
+        """
+        package org.basaltmc.server.registry
+
+        /**
+         * Which trim material each item provides. An item absent from this list cannot trim armour.
+         *
+         * Read from the item component report the data generator writes (see `basalt.datagen`).
+         */
+        internal val ALL_TRIM_MATERIALS: List<Pair<String, String>> =
             listOf(
         ${'$'}body,
             )

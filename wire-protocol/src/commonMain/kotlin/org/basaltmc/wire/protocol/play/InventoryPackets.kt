@@ -357,6 +357,12 @@ public data class OpenScreenPacket(
         /** `minecraft:generic_9x3`, the three rows a single chest and a barrel show. */
         public const val CHEST_MENU: Int = 2
 
+        /** `minecraft:smithing`, three slots in and one out. */
+        public const val SMITHING_MENU: Int = 21
+
+        /** `minecraft:stonecutter`, one slot in, one out, and a list of buttons. */
+        public const val STONECUTTER_MENU: Int = 24
+
         /** `minecraft:generic_9x6`, the six rows a double chest shows. */
         public const val DOUBLE_CHEST_MENU: Int = 5
 
