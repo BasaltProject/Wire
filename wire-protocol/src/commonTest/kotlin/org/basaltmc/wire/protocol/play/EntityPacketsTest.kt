@@ -312,4 +312,22 @@ class EntityPacketsTest {
             read.entries.last(),
         )
     }
+
+    @Test
+    fun setEntityMotionRoundTrips() {
+        val buffer = ByteBuffer()
+        SetEntityMotionPacket(77, 0.4, -0.1, 0.25).write(buffer)
+        val read = SetEntityMotionPacket.read(buffer)
+        assertEquals(77, read.entityId)
+        assertTrue(abs(0.4 - read.velocityX) < 0.001)
+        assertTrue(abs(-0.1 - read.velocityY) < 0.001)
+        assertTrue(abs(0.25 - read.velocityZ) < 0.001)
+    }
+
+    @Test
+    fun hurtAnimationRoundTrips() {
+        val buffer = ByteBuffer()
+        HurtAnimationPacket(9, 137.5f).write(buffer)
+        assertEquals(HurtAnimationPacket(9, 137.5f), HurtAnimationPacket.read(buffer))
+    }
 }
