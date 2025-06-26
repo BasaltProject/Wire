@@ -6,7 +6,8 @@ import org.basaltmc.wire.protocol.writeVarInt
 /** One row of a stonecutter's list: what goes in, and the stack the button shows. */
 public data class StonecutterOption(
     val inputItemIds: List<Int>,
-    val result: WireItemStack,
+    val resultItemId: Int,
+    val resultCount: Int,
 )
 
 /**
@@ -34,7 +35,13 @@ public data class UpdateRecipesPacket(
             buffer.writeVarInt(option.inputItemIds.size + 1)
             for (id in option.inputItemIds) buffer.writeVarInt(id)
             buffer.writeVarInt(ITEM_STACK_SLOT_DISPLAY)
-            option.result.write(buffer)
+            // parity: `ItemStackTemplate.STREAM_CODEC`, which is not an item stack: the item comes
+            // first and the count second, and a stack's own order left every button showing air.
+            buffer.writeVarInt(option.resultItemId)
+            buffer.writeVarInt(option.resultCount)
+            // An empty component patch: nothing added, nothing removed.
+            buffer.writeVarInt(0)
+            buffer.writeVarInt(0)
         }
     }
 
