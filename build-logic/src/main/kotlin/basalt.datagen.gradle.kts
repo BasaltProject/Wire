@@ -83,6 +83,9 @@ tasks.register("generate") {
         val weapons = parseWeaponComponents(File(reportsDir, "minecraft/components/item"))
         writeWeaponTable(File(registryDir, "VanillaItemWeapons.kt"), weapons)
 
+        val stacking = parseStackingComponents(File(reportsDir, "minecraft/components/item"))
+        writeStackingTable(File(registryDir, "VanillaItemStacking.kt"), stacking)
+
         val food = parseFoodComponents(File(reportsDir, "minecraft/components/item"))
         writeFoodTable(File(registryDir, "VanillaItemFood.kt"), food)
 
@@ -740,6 +743,57 @@ fun parseWeaponComponents(componentsDir: File): List<String> {
             }
             if (damage == 0.0 && speed == 0.0) null else "${file.nameWithoutExtension}|$damage|$speed"
         }
+}
+
+/**
+ * How high each item stacks and how long it waits between uses, as `name|stack|cooldownTicks`.
+ *
+ * Both are components rather than code: the ender pearl's second of cooldown and the sixteen it
+ * stacks to are written in its own item file, not in a class.
+ */
+fun parseStackingComponents(componentsDir: File): List<String> {
+    if (!componentsDir.isDirectory) return emptyList()
+    val slurper = groovy.json.JsonSlurper()
+    return componentsDir
+        .listFiles { file -> file.extension == "json" }
+        .orEmpty()
+        .sortedBy { it.name }
+        .mapNotNull { file ->
+            @Suppress("UNCHECKED_CAST")
+            val root = slurper.parse(file) as Map<String, Any?>
+            @Suppress("UNCHECKED_CAST")
+            val components = root["components"] as? Map<String, Any?> ?: return@mapNotNull null
+            val stack = (components["minecraft:max_stack_size"] as? Number)?.toInt() ?: 64
+            @Suppress("UNCHECKED_CAST")
+            val cooldown = components["minecraft:use_cooldown"] as? Map<String, Any?>
+            val seconds = (cooldown?.get("seconds") as? Number)?.toDouble() ?: 0.0
+            val ticks = Math.round(seconds * 20.0).toInt()
+            if (stack == 64 && ticks == 0) null else "${file.nameWithoutExtension}|$stack|$ticks"
+        }
+}
+
+fun writeStackingTable(
+    file: File,
+    entries: List<String>,
+) {
+    val body = entries.joinToString(",\n") { "        \"$it\"" }
+    file.writeText(
+        """
+        package org.basaltmc.server.registry
+
+        /**
+         * How high each item stacks and how many ticks it waits between uses, as
+         * `name|stack|cooldown`. Only the items that differ from the default of sixty-four and no
+         * wait are here.
+         *
+         * From the item component report the data generator writes (see `basalt.datagen`).
+         */
+        internal val ALL_ITEM_STACKING: List<String> =
+            listOf(
+        ${'$'}body,
+            )
+        """.trimIndent().replace("${'$'}body", body) + "\n",
+    )
 }
 
 fun writeWeaponTable(

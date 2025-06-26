@@ -1225,3 +1225,29 @@ public data class HurtAnimationPacket(
             HurtAnimationPacket(buffer.readVarInt(), buffer.readFloat())
     }
 }
+
+/**
+ * Clientbound, id 0x6b: who is riding what. Mirrors `ClientboundSetPassengersPacket`.
+ *
+ * Riding is not a position: a client draws the passenger on the vehicle because this says so, and
+ * a player who mounted without it stays standing beside the cart on every other screen.
+ */
+public data class SetPassengersPacket(
+    val vehicleId: Int,
+    val passengerIds: List<Int>,
+) {
+    public fun write(buffer: ByteBuffer) {
+        buffer.writeVarInt(vehicleId)
+        buffer.writeVarInt(passengerIds.size)
+        for (id in passengerIds) buffer.writeVarInt(id)
+    }
+
+    public companion object {
+        public const val ID: Int = 0x6b
+
+        public fun read(buffer: ByteBuffer): SetPassengersPacket {
+            val vehicleId = buffer.readVarInt()
+            return SetPassengersPacket(vehicleId, List(buffer.readVarInt()) { buffer.readVarInt() })
+        }
+    }
+}

@@ -127,6 +127,14 @@ class EntityPacketsTest {
     }
 
     @Test
+    fun serverboundPickItemFromEntityRoundTrips() {
+        val buffer = ByteBuffer()
+        val packet = ServerboundPickItemFromEntityPacket(entityId = 4211, includeData = true)
+        packet.write(buffer)
+        assertEquals(packet, ServerboundPickItemFromEntityPacket.read(buffer))
+    }
+
+    @Test
     fun serverboundPickItemFromBlockRoundTrips() {
         val buffer = ByteBuffer()
         val packet = ServerboundPickItemFromBlockPacket(BlockPos(1, 64, -1), includeData = true)
@@ -329,5 +337,20 @@ class EntityPacketsTest {
         val buffer = ByteBuffer()
         HurtAnimationPacket(9, 137.5f).write(buffer)
         assertEquals(HurtAnimationPacket(9, 137.5f), HurtAnimationPacket.read(buffer))
+    }
+
+    @Test
+    fun setPassengersRoundTrips() {
+        val buffer = ByteBuffer()
+        val packet = SetPassengersPacket(12, listOf(3, 4))
+        packet.write(buffer)
+        assertEquals(packet, SetPassengersPacket.read(buffer))
+    }
+
+    @Test
+    fun anEmptyPassengerListIsHowSomebodyGetsOff() {
+        val buffer = ByteBuffer()
+        SetPassengersPacket(12, emptyList()).write(buffer)
+        assertEquals(SetPassengersPacket(12, emptyList()), SetPassengersPacket.read(buffer))
     }
 }

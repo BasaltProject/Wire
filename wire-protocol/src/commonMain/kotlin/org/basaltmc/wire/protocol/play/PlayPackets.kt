@@ -1327,6 +1327,28 @@ public data class ServerboundUseItemPacket(
 }
 
 /**
+ * Serverbound, id 0x25: middle-click "pick block" on an entity, which answers with its spawn egg or
+ * with whatever item it is made of. Mirrors `ServerboundPickItemFromEntityPacket`. [includeData]
+ * is the control-click that copies the entity's data, which this build ignores.
+ */
+public data class ServerboundPickItemFromEntityPacket(
+    val entityId: Int,
+    val includeData: Boolean,
+) {
+    public fun write(buffer: ByteBuffer) {
+        buffer.writeVarInt(entityId)
+        buffer.writeBoolean(includeData)
+    }
+
+    public companion object {
+        public const val ID: Int = 0x25
+
+        public fun read(buffer: ByteBuffer): ServerboundPickItemFromEntityPacket =
+            ServerboundPickItemFromEntityPacket(buffer.readVarInt(), buffer.readBoolean())
+    }
+}
+
+/**
  * Serverbound, id 0x24: middle-click "pick block" on a targeted block. Mirrors
  * `ServerboundPickItemFromBlockPacket`. [includeData] asks for the block's block-entity data
  * (a sign's text, a container's contents) copied onto the picked stack; this build ignores it,
