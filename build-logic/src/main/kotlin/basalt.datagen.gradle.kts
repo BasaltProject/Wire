@@ -494,7 +494,7 @@ fun extractBlockShapes(workDir: File): Pair<List<String>, List<Int>> {
                 .filter { it.isNotEmpty() }
                 .joinToString(";") { box -> box.split(',').joinToString(",") { toThirtySeconds(it) } }
         val entry =
-            "${columns[3]}|${columns[4]}|${columns[5]}|${columns[6]}|${columns[8]}|${columns[9]}|${columns[10]}|$boxes"
+            "${columns[3]}|${columns[4]}|${columns[5]}|${columns[6]}|${columns[7]}|${columns[8]}|${columns[9]}|${columns[10]}|$boxes"
         index += stateId to entries.getOrPut(entry) { entries.size }
     }
     check(index.isNotEmpty()) { "The shape harness printed nothing" }
@@ -576,7 +576,7 @@ val DUMP_SHAPES_SOURCE =
                        .append(state.blocksMotion() ? 1 : 0).append('\t')
                        .append(state.canBeReplaced() ? 1 : 0).append('\t')
                        .append(state.isSolid() ? 1 : 0).append('\t')
-                       .append(state.propagatesSkylightDown() ? 1 : 0).append('\t')
+                       .append(state.isSolidRender() ? 1 : 0).append('\t')
                        .append(sturdy).append('\t')
                        .append(centre).append('\t')
                        .append(rigid).append('\t')
@@ -612,7 +612,7 @@ fun writeShapeTable(
                 append(SHAPE_INDEX_ALPHABET[entryIndex % SHAPE_INDEX_ALPHABET.length])
             }
         }
-    val indexBody = encoded.chunked(100).joinToString(" +\n") { "        \"$it\"" }
+    val indexBody = "    " + encoded.chunked(100).joinToString(" +\n        ") { "\"$it\"" }
     file.writeText(
         """
         package org.basaltmc.server.registry
@@ -620,9 +620,9 @@ fun writeShapeTable(
         /**
          * Every distinct block shape, from the real server jar's own block classes: light
          * dampening, whether it blocks movement, whether something placed there replaces it,
-         * whether it counts as solid, which faces are sturdy, which support a centre and which
-         * support a rigid block (down, up, north, south, west, east each time) and the boxes of the
-         * collision shape in thirty-seconds of a block.
+         * whether it counts as solid, whether its occlusion shape renders solid, which faces are
+         * sturdy, which support a centre and which support a rigid block (down, up, north, south,
+         * west, east each time) and the boxes of the collision shape in thirty-seconds of a block.
          */
         internal val ALL_BLOCK_SHAPES: List<String> =
             listOf(
