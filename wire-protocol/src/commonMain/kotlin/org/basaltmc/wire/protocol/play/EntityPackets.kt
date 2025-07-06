@@ -3,14 +3,18 @@ package org.basaltmc.wire.protocol.play
 import org.basaltmc.wire.common.Identifier
 import org.basaltmc.wire.io.ByteBuffer
 import org.basaltmc.wire.protocol.ProtocolException
+import org.basaltmc.wire.protocol.readAnonymousNbt
 import org.basaltmc.wire.protocol.readBoolean
 import org.basaltmc.wire.protocol.readProtocolString
 import org.basaltmc.wire.protocol.readUuid
 import org.basaltmc.wire.protocol.readVarInt
+import org.basaltmc.wire.protocol.writeAnonymousNbt
 import org.basaltmc.wire.protocol.writeBoolean
 import org.basaltmc.wire.protocol.writeProtocolString
 import org.basaltmc.wire.protocol.writeUuid
 import org.basaltmc.wire.protocol.writeVarInt
+import org.basaltmc.wire.text.Component
+import org.basaltmc.wire.text.ComponentNbt
 import kotlin.math.abs
 import kotlin.math.ceil
 import kotlin.math.floor
@@ -191,6 +195,12 @@ public data class SetEntityDataPacket(
             val value: Float,
         ) : Entry
 
+        /** A chat component, `EntityDataSerializers.COMPONENT` (serializer 5): a text display's text. */
+        public data class Text(
+            override val index: Int,
+            val value: Component,
+        ) : Entry
+
         /** An item stack, `EntityDataSerializers.ITEM_STACK` (serializer 7). */
         public data class Item(
             override val index: Int,
@@ -254,6 +264,10 @@ public data class SetEntityDataPacket(
                 is Entry.Floats -> {
                     buffer.writeVarInt(FLOAT_SERIALIZER)
                     buffer.writeFloat(entry.value)
+                }
+                is Entry.Text -> {
+                    buffer.writeVarInt(COMPONENT_SERIALIZER)
+                    buffer.writeAnonymousNbt(ComponentNbt.serialize(entry.value))
                 }
                 is Entry.Item -> {
                     buffer.writeVarInt(ITEM_STACK_SERIALIZER)
@@ -346,6 +360,7 @@ public data class SetEntityDataPacket(
         private const val BYTE_SERIALIZER = 0
         private const val INT_SERIALIZER = 1
         private const val FLOAT_SERIALIZER = 3
+        private const val COMPONENT_SERIALIZER = 5
         private const val ITEM_STACK_SERIALIZER = 7
         private const val BOOLEAN_SERIALIZER = 8
         private const val OPTIONAL_BLOCK_POS_SERIALIZER = 11
@@ -438,6 +453,7 @@ public data class SetEntityDataPacket(
                         BYTE_SERIALIZER -> Entry.Bytes(index, buffer.readByte())
                         INT_SERIALIZER -> Entry.Ints(index, buffer.readVarInt())
                         FLOAT_SERIALIZER -> Entry.Floats(index, buffer.readFloat())
+                        COMPONENT_SERIALIZER -> Entry.Text(index, ComponentNbt.deserialize(buffer.readAnonymousNbt()))
                         ITEM_STACK_SERIALIZER -> Entry.Item(index, WireItemStack.read(buffer))
                         BOOLEAN_SERIALIZER -> Entry.Booleans(index, buffer.readBoolean())
                         OPTIONAL_BLOCK_POS_SERIALIZER ->
