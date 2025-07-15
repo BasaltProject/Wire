@@ -4,8 +4,20 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 class TomlTest {
+    @Test
+    fun anArrayOfTablesIsRefusedRatherThanMisread() {
+        // Taken as an ordinary header it would become a table called "[guides]", which is a file
+        // that means something nobody wrote.
+        val thrown =
+            assertFailsWith<TomlFormatException> {
+                Toml.parse("[[guides]]\nname = \"first\"\n")
+            }
+        assertTrue(thrown.message.orEmpty().contains("Arrays of tables"), thrown.message.orEmpty())
+    }
+
     @Test
     fun parsesTopLevelScalars() {
         val table =
