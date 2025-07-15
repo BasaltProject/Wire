@@ -19,7 +19,7 @@ public data class InitializeBorderPacket(
     val centerZ: Double,
     val oldSize: Double,
     val newSize: Double,
-    val lerpTimeMillis: Long,
+    val lerpTimeTicks: Long,
     val absoluteMaxSize: Int,
     val warningBlocks: Int,
     val warningSeconds: Int,
@@ -29,7 +29,7 @@ public data class InitializeBorderPacket(
         buffer.writeDouble(centerZ)
         buffer.writeDouble(oldSize)
         buffer.writeDouble(newSize)
-        buffer.writeVarLong(lerpTimeMillis)
+        buffer.writeVarLong(lerpTimeTicks)
         buffer.writeVarInt(absoluteMaxSize)
         buffer.writeVarInt(warningBlocks)
         buffer.writeVarInt(warningSeconds)
@@ -47,7 +47,7 @@ public data class InitializeBorderPacket(
                 centerZ = buffer.readDouble(),
                 oldSize = buffer.readDouble(),
                 newSize = buffer.readDouble(),
-                lerpTimeMillis = buffer.readVarLong(),
+                lerpTimeTicks = buffer.readVarLong(),
                 absoluteMaxSize = buffer.readVarInt(),
                 warningBlocks = buffer.readVarInt(),
                 warningSeconds = buffer.readVarInt(),
@@ -88,16 +88,16 @@ public data class SetBorderSizePacket(
     }
 }
 
-/** Clientbound, id 0x59: the border's size, moved to over [lerpTimeMillis]. */
+/** Clientbound, id 0x59: the border's size, moved to over [lerpTimeTicks]. */
 public data class SetBorderLerpSizePacket(
     val oldSize: Double,
     val newSize: Double,
-    val lerpTimeMillis: Long,
+    val lerpTimeTicks: Long,
 ) {
     public fun write(buffer: ByteBuffer) {
         buffer.writeDouble(oldSize)
         buffer.writeDouble(newSize)
-        buffer.writeVarLong(lerpTimeMillis)
+        buffer.writeVarLong(lerpTimeTicks)
     }
 
     public companion object {

@@ -1,6 +1,8 @@
 package org.basaltmc.wire.protocol.play
 
 import org.basaltmc.wire.io.ByteBuffer
+import org.basaltmc.wire.protocol.readProtocolString
+import org.basaltmc.wire.protocol.readVarInt
 import org.basaltmc.wire.protocol.writeVarInt
 
 /** One row of a stonecutter's list: what goes in, and the stack the button shows. */
@@ -14,12 +16,8 @@ public data class StonecutterOption(
  * Clientbound, id 0x85: the recipes a client needs to have itself. Mirrors
  * `ClientboundUpdateRecipesPacket`.
  *
- * The stonecutter is the reason this exists at all: its buttons are drawn by the client from this
- * list, filtered by whatever is in the input slot, and the index it sends back is an index into
- * that filtered list. Without the packet the screen opens empty however many recipes the server
- * knows.
- *
- * The item property sets are the recipe book's own highlighting and are sent empty here.
+ * The stonecutter is why it exists: the client draws its buttons from this list and sends back an
+ * index into it. The item property sets are the recipe book's highlighting and go out empty.
  */
 public data class UpdateRecipesPacket(
     val stonecutter: List<StonecutterOption>,
@@ -47,6 +45,25 @@ public data class UpdateRecipesPacket(
 
     public companion object {
         public const val ID: Int = 0x85
+
+        public fun read(buffer: ByteBuffer): UpdateRecipesPacket {
+            // The property sets go past unread: this server sends none and reads none back.
+            repeat(buffer.readVarInt()) {
+                buffer.readProtocolString()
+                repeat(buffer.readVarInt()) { buffer.readVarInt() }
+            }
+            val options =
+                List(buffer.readVarInt()) {
+                    val inputs = List(buffer.readVarInt() - 1) { buffer.readVarInt() }
+                    buffer.readVarInt() // The kind of slot display, which is always the stack one.
+                    val item = buffer.readVarInt()
+                    val count = buffer.readVarInt()
+                    buffer.readVarInt()
+                    buffer.readVarInt()
+                    StonecutterOption(inputs, item, count)
+                }
+            return UpdateRecipesPacket(options)
+        }
 
         /** parity: `SlotDisplays.bootstrap`, where `item_stack` is the sixth registered. */
         public const val ITEM_STACK_SLOT_DISPLAY: Int = 5
