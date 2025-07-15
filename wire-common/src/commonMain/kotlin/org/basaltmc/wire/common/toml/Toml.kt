@@ -51,6 +51,10 @@ public sealed interface TomlValue {
         public fun stringListOrNull(key: String): List<String>? =
             (entries[key] as? Arr)?.values?.mapNotNull { (it as? Str)?.value }
 
+        /** An array of integers, with the same tolerance for one bad element as [stringListOrNull]. */
+        public fun intListOrNull(key: String): List<Long>? =
+            (entries[key] as? Arr)?.values?.mapNotNull { (it as? Int64)?.value }
+
         public fun keys(): Set<String> = entries.keys
     }
 }
