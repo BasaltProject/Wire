@@ -88,6 +88,16 @@ class EntityPacketsTest {
                         SetEntityDataPacket.Entry.Rotations(17, 3.978817f, 1.5454245f, 0f),
                         SetEntityDataPacket.Entry.VillagerData(20, typeId = 0, professionId = 11, level = 1),
                         SetEntityDataPacket.Entry.RegistryId(20, 1),
+                        SetEntityDataPacket.Entry.RegistryId(
+                            18,
+                            2,
+                            SetEntityDataPacket.RegistryHolder.COW_VARIANT,
+                        ),
+                        SetEntityDataPacket.Entry.RegistryId(
+                            19,
+                            1,
+                            SetEntityDataPacket.RegistryHolder.CHICKEN_SOUND_VARIANT,
+                        ),
                     ),
             )
 
