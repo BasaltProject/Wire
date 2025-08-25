@@ -1,6 +1,5 @@
 import org.jetbrains.kotlin.gradle.ExperimentalKotlinGradlePluginApi
 import org.jetbrains.kotlin.gradle.dsl.ExplicitApiMode
-import org.jetbrains.kotlin.gradle.plugin.mpp.KotlinNativeTarget
 import java.io.File
 
 plugins {
@@ -16,31 +15,63 @@ ktlint {
     }
 }
 
+// Kotlin/Native does not cross-compile between families, so a host builds only its own, and of
+// those only the target it runs: building from source should cost one binary. `-Pbasalt.targets`
+// asks for the rest, `all` or a comma-separated list.
+val hostOs: String = System.getProperty("os.name")
+val hostIsArm: Boolean = System.getProperty("os.arch") in listOf("aarch64", "arm64")
+
+val hostFamily: List<String> =
+    when {
+        hostOs == "Mac OS X" -> listOf("macosArm64", "macosX64")
+        hostOs == "Linux" -> listOf("linuxX64", "linuxArm64")
+        hostOs.startsWith("Windows") -> listOf("mingwX64")
+        else ->
+            error(
+                "No supported Kotlin/Native target for host '$hostOs'. " +
+                    "Basalt builds on macOS, Linux or Windows.",
+            )
+    }
+
+val hostTarget: String =
+    when {
+        hostOs == "Mac OS X" -> if (hostIsArm) "macosArm64" else "macosX64"
+        hostOs == "Linux" -> if (hostIsArm) "linuxArm64" else "linuxX64"
+        else -> "mingwX64"
+    }
+
+val requestedTargets: String = providers.gradleProperty("basalt.targets").getOrElse("host")
+
+val selectedTargets: List<String> =
+    when (requestedTargets) {
+        "host" -> listOf(hostTarget)
+        "all" -> hostFamily
+        else -> requestedTargets.split(',').map { it.trim() }.filter { it.isNotEmpty() }
+    }
+
+check(selectedTargets.isNotEmpty()) { "-Pbasalt.targets names no target at all." }
+
+for (name in selectedTargets) {
+    check(name in hostFamily) {
+        "Unknown target '$name' in -Pbasalt.targets. This host builds ${hostFamily.joinToString()}, " +
+            "or 'host' ($hostTarget), or 'all'."
+    }
+}
+
+// For whoever links an executable: the target this machine can run.
+extra["basaltHostTarget"] = if (hostTarget in selectedTargets) hostTarget else selectedTargets.first()
+
 kotlin {
     explicitApi = ExplicitApiMode.Strict
 
-    val hostOs = System.getProperty("os.name")
-    val isMacOs = hostOs == "Mac OS X"
-    val isLinux = hostOs == "Linux"
-    val isWindows = hostOs.startsWith("Windows")
-
-    val nativeTargets = buildList<KotlinNativeTarget> {
-        if (isMacOs) {
-            add(macosArm64())
-            add(macosX64())
+    for (name in selectedTargets) {
+        when (name) {
+            "macosArm64" -> macosArm64()
+            "macosX64" -> macosX64()
+            "linuxX64" -> linuxX64()
+            "linuxArm64" -> linuxArm64()
+            "mingwX64" -> mingwX64()
         }
-        if (isLinux) {
-            add(linuxX64())
-            add(linuxArm64())
-        }
-        if (isWindows) {
-            add(mingwX64())
-        }
-    }
-
-    check(nativeTargets.isNotEmpty()) {
-        "No supported Kotlin/Native target for host '$hostOs'. " +
-            "Basalt builds on macOS, Linux or Windows."
     }
 
     @OptIn(ExperimentalKotlinGradlePluginApi::class)
