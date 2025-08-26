@@ -4,6 +4,7 @@ import org.basaltmc.wire.multiversion.ComposedTables
 import org.basaltmc.wire.multiversion.ProtocolChain
 import org.basaltmc.wire.multiversion.ProtocolLink
 import org.basaltmc.wire.multiversion.ProtocolVersions
+import org.basaltmc.wire.multiversion.SubstitutionLabels
 
 /**
  * The links this build has, and the chain one client needs.
@@ -155,10 +156,13 @@ public object JavaTranslators {
         )
 
     /** A chain of fresh links for one connection, or null when nothing has to be translated. */
-    public fun chainFor(protocol: Int): ProtocolChain? {
+    public fun chainFor(
+        protocol: Int,
+        labels: SubstitutionLabels? = null,
+    ): ProtocolChain? {
         if (protocol == ProtocolVersions.NATIVE || protocol !in supported) return null
         val used = factories.takeWhile { it.first >= protocol }
         val composed = ComposedTables(used.mapNotNull { tablesByVersion[it.first] })
-        return ProtocolChain(used.map { it.second(composed) }, ContentRewriter(composed))
+        return ProtocolChain(used.map { it.second(composed) }, ContentRewriter(composed, labels))
     }
 }

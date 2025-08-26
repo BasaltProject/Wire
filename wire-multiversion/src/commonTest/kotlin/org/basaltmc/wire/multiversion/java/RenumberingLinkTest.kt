@@ -13,6 +13,7 @@ import org.basaltmc.wire.protocol.play.UpdateAttributesPacket
 import org.basaltmc.wire.protocol.play.WireItemStack
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNotEquals
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -140,7 +141,12 @@ class RenumberingLinkTest {
     @Test
     fun `an id with no counterpart says so rather than guessing`() {
         assertEquals(IdMap.NONE, TABLES_775.attribute.map(BOUNCINESS_776))
-        assertEquals(IdMap.NONE, TABLES_775.entityType.map(SULFUR_CUBE_776))
+    }
+
+    @Test
+    fun `a mob with no counterpart is shown as one the older version has`() {
+        assertNotEquals(IdMap.NONE, TABLES_775.entityType.map(SULFUR_CUBE_776))
+        assertTrue(TABLES_775.entityType.substitutes(SULFUR_CUBE_776))
     }
 
     @Test

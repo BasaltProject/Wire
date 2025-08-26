@@ -6,6 +6,9 @@ public interface IdLookup {
     public fun map(id: Int): Int
 
     public fun unmap(id: Int): Int
+
+    /** Whether [map] answered with something else standing in, rather than with this same thing. */
+    public fun substitutes(id: Int): Boolean
 }
 
 /**
@@ -45,6 +48,11 @@ public class IdMap(
         }
         val substitute = substituteFrom.binarySearch(id)
         return if (substitute >= 0) substituteTo[substitute] else NONE
+    }
+
+    override fun substitutes(id: Int): Boolean {
+        if (!parsed) parse()
+        return substituteFrom.binarySearch(id) >= 0
     }
 
     /** The same lookup backwards, for an id coming from an older client. */

@@ -6,6 +6,7 @@ import org.basaltmc.wire.multiversion.ComposedTables
 import org.basaltmc.wire.multiversion.IdLookup
 import org.basaltmc.wire.multiversion.IdMap
 import org.basaltmc.wire.multiversion.MutablePacket
+import org.basaltmc.wire.multiversion.SubstitutionLabels
 import org.basaltmc.wire.protocol.ProtocolState
 import org.basaltmc.wire.protocol.configuration.TagsPacket
 import org.basaltmc.wire.protocol.play.ArgumentParser
@@ -19,6 +20,7 @@ import org.basaltmc.wire.protocol.play.LevelEventPacket
 import org.basaltmc.wire.protocol.play.LevelParticlesPacket
 import org.basaltmc.wire.protocol.play.MapChunkPacket
 import org.basaltmc.wire.protocol.play.OpenScreenPacket
+import org.basaltmc.wire.protocol.play.RemoveEntitiesPacket
 import org.basaltmc.wire.protocol.play.RemoveMobEffectPacket
 import org.basaltmc.wire.protocol.play.SectionBlocksUpdatePacket
 import org.basaltmc.wire.protocol.play.ServerboundSetCreativeModeSlotPacket
@@ -31,6 +33,7 @@ import org.basaltmc.wire.protocol.play.UpdateMobEffectPacket
 import org.basaltmc.wire.protocol.play.UpdateRecipesPacket
 import org.basaltmc.wire.protocol.play.WireItemStack
 import org.basaltmc.wire.protocol.writeVarInt
+import kotlin.concurrent.AtomicReference
 
 /**
  * Puts every id a packet carries into the numbering of the version at the far end of the chain.
@@ -45,7 +48,17 @@ import org.basaltmc.wire.protocol.writeVarInt
  */
 internal class ContentRewriter(
     private val tables: ComposedTables,
+    /** Null leaves substitutes unnamed, which is what an operator who turned the naming off wants. */
+    private val labels: SubstitutionLabels? = null,
 ) : org.basaltmc.wire.multiversion.PacketContentRewriter {
+    /**
+     * Entities the far end is being shown some other mob in place of: its id, and what it really is.
+     *
+     * Whatever thread has something to say to this session writes here, so the map is replaced
+     * rather than edited. It stays empty for every client whose version has all of this one's mobs.
+     */
+    private val substituted = AtomicReference<Map<Int, Int>>(emptyMap())
+
     private val chunks =
         ChunkRewriter(
             tables.blockStates,
@@ -107,7 +120,16 @@ internal class ContentRewriter(
                     if (spawn.entityType != tables.nativePlayerEntityType) return false
                     return true
                 }
+                if (tables.entityType.substitutes(spawn.entityType)) {
+                    track(spawn.entityId, spawn.entityType)
+                    nameOver(packet, spawn.entityId, spawn.entityType)
+                }
                 encode(packet) { spawn.copy(entityType = type).write(it) }
+            }
+            RemoveEntitiesPacket.ID -> {
+                if (substituted.value.isNotEmpty()) {
+                    forget(decode(packet) { RemoveEntitiesPacket.read(it) }.entityIds)
+                }
             }
             UpdateRecipesPacket.ID -> {
                 val recipes = decode(packet) { UpdateRecipesPacket.read(it) }
@@ -186,9 +208,18 @@ internal class ContentRewriter(
             }
             SetEntityDataPacket.ID -> {
                 val data = decode(packet) { SetEntityDataPacket.read(it) }
-                val entries =
+                val rewritten =
                     data.entries.map { entry ->
                         if (entry is SetEntityDataPacket.Entry.Item) entry.copy(stack = stack(entry.stack)) else entry
+                    }
+                // What a mob standing in for another one is told about itself is held to what every
+                // entity has. Past that the entries belong to the type this client is not being
+                // shown, and reading a size where it expects a variant is how a client crashes.
+                val entries =
+                    if (data.entityId in substituted.value) {
+                        rewritten.filter { it.index <= SetEntityDataPacket.LAST_SHARED_INDEX }
+                    } else {
+                        rewritten
                     }
                 encode(packet) { data.copy(entries = entries).write(it) }
             }
@@ -285,10 +316,11 @@ internal class ContentRewriter(
         return if (mapped == IdMap.NONE) 0 else mapped
     }
 
-    private fun stack(item: WireItemStack?): WireItemStack? {
-        if (item == null || item.count <= 0) return item
-        val id = tables.item.map(item.itemId)
+    private fun stack(source: WireItemStack?): WireItemStack? {
+        if (source == null || source.count <= 0) return source
+        val id = tables.item.map(source.itemId)
         if (id == IdMap.NONE) return null
+        val item = labelled(source)
         // Every component, not only the ones carried as bytes: a release inserts component ids the
         // same way it inserts item ids, so `custom_name` is not the same number in two versions.
         val components =
@@ -306,6 +338,54 @@ internal class ContentRewriter(
                 if (moved == IdMap.NONE) null else moved
             }
         return item.copy(itemId = id, components = components, removedComponents = removed)
+    }
+
+    /** Names a substituted item, in this server's numbering so the component travels down the links. */
+    private fun labelled(item: WireItemStack): WireItemStack {
+        val labels = labels ?: return item
+        if (!tables.item.substitutes(item.itemId)) return item
+        if (item.components.any { it.id == ItemComponent.CUSTOM_NAME }) return item
+        val label = labels.itemLabel(item.itemId) ?: return item
+        return item.copy(components = item.components + ItemComponent.Text(ItemComponent.CUSTOM_NAME, label))
+    }
+
+    private fun track(
+        entityId: Int,
+        nativeType: Int,
+    ) {
+        while (true) {
+            val current = substituted.value
+            if (substituted.compareAndSet(current, current + (entityId to nativeType))) return
+        }
+    }
+
+    private fun forget(entityIds: List<Int>) {
+        while (true) {
+            val current = substituted.value
+            val left = current - entityIds.toSet()
+            if (left.size == current.size || substituted.compareAndSet(current, left)) return
+        }
+    }
+
+    /** Names a substituted mob in its own packet after the spawn: one whose state never changes gets no other. */
+    private fun nameOver(
+        packet: MutablePacket,
+        entityId: Int,
+        nativeType: Int,
+    ) {
+        val label = labels?.entityLabel(nativeType) ?: return
+        val body =
+            ByteBuffer()
+                .also {
+                    SetEntityDataPacket(
+                        entityId,
+                        listOf(
+                            SetEntityDataPacket.Entry.OptionalText(SetEntityDataPacket.CUSTOM_NAME_INDEX, label),
+                            SetEntityDataPacket.Entry.Booleans(SetEntityDataPacket.CUSTOM_NAME_VISIBLE_INDEX, true),
+                        ),
+                    ).write(it)
+                }.toByteArray()
+        packet.extras += SetEntityDataPacket.ID to body
     }
 
     private fun payloadOf(component: ItemComponent): ByteArray {
