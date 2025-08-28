@@ -2,6 +2,7 @@ package org.basaltmc.wire.multiversion.java
 
 import org.basaltmc.wire.io.ByteBuffer
 import org.basaltmc.wire.multiversion.ProtocolVersions
+import org.basaltmc.wire.protocol.play.Pose
 import org.basaltmc.wire.protocol.play.SetEntityDataPacket
 import org.basaltmc.wire.protocol.play.WireItemStack
 import org.basaltmc.wire.protocol.writeAnonymousNbt
@@ -71,10 +72,11 @@ internal class EntityDataRewriter(
 
     private fun write(
         output: ByteBuffer,
-        entry: SetEntityDataPacket.Entry,
+        source: SetEntityDataPacket.Entry,
         index: Int,
         types: IntArray,
     ) {
+        val entry = valued(source) ?: return
         val native = nativeType(entry)
         var mapped = types.getOrElse(native) { NONE }
         // A name is a string of its own below 1.13, which is where the optional kind starts.
@@ -125,6 +127,7 @@ internal class EntityDataRewriter(
                 }
             }
             is SetEntityDataPacket.Entry.Poses -> output.writeVarInt(entry.pose.ordinal)
+
             is SetEntityDataPacket.Entry.VillagerData -> {
                 output.writeVarInt(entry.typeId)
                 output.writeVarInt(entry.professionId)
@@ -142,6 +145,40 @@ internal class EntityDataRewriter(
             }
         }
         return true
+    }
+
+    /** The same field as the far end means it, or null for one it cannot be told at all. */
+    private fun valued(entry: SetEntityDataPacket.Entry): SetEntityDataPacket.Entry? =
+        when (entry) {
+            is SetEntityDataPacket.Entry.Poses -> posed(entry)
+            is SetEntityDataPacket.Entry.VillagerData ->
+                if (farEnd >= ProtocolVersions.V1_14) {
+                    entry
+                } else {
+                    // Below 1.14 a villager is one number, and several of today's jobs are the
+                    // same old one.
+                    SetEntityDataPacket.Entry.Ints(entry.index, OLD_PROFESSIONS[entry.professionId] ?: NITWIT)
+                }
+            else -> entry
+        }
+
+    private fun posed(entry: SetEntityDataPacket.Entry.Poses): SetEntityDataPacket.Entry? {
+        var pose = entry.pose.ordinal
+        // 1.20.3 added four poses at the end, and a client below it has nothing to draw for them.
+        if (farEnd < ProtocolVersions.V1_20_3 && pose >= FIRST_POSE_ADDED_IN_1_20_3) return null
+        // 1.19.3 put sitting in the middle of the list, so everything after it moved.
+        if (farEnd < ProtocolVersions.V1_19_3) {
+            if (pose == SITTING_IN_1_19_3) {
+                pose = STANDING
+            } else if (pose > SITTING_IN_1_19_3) {
+                pose--
+            }
+        }
+        // The frog and the warden brought six poses in 1.19; below that they are all standing.
+        if (farEnd < ProtocolVersions.V1_19 && pose >= FIRST_POSE_ADDED_IN_1_19) pose = STANDING
+        // Still a pose and not a number: the two travel the same way but a client reads the field
+        // by the kind it was announced with.
+        return SetEntityDataPacket.Entry.Poses(entry.index, Pose.entries[pose])
     }
 
     /** A component travels as NBT from 1.20.3, as a string of json below it, as plain text where
@@ -196,5 +233,31 @@ internal class EntityDataRewriter(
         const val VILLAGER_DATA = 18
         const val POSE = 20
         const val CAT_VARIANT = 21
+
+        const val STANDING = 0
+        const val SITTING_IN_1_19_3 = 10
+        const val FIRST_POSE_ADDED_IN_1_19 = 8
+        const val FIRST_POSE_ADDED_IN_1_20_3 = 15
+        const val NITWIT = 5
+
+        /** What each of 1.14's jobs was before it: four smiths were one blacksmith, and so on. */
+        val OLD_PROFESSIONS =
+            mapOf(
+                1 to 3,
+                10 to 3,
+                13 to 3,
+                14 to 3,
+                2 to 4,
+                8 to 4,
+                3 to 1,
+                9 to 1,
+                4 to 2,
+                5 to 0,
+                6 to 0,
+                7 to 0,
+                12 to 0,
+                0 to 5,
+                11 to 5,
+            )
     }
 }
