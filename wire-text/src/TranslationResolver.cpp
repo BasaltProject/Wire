@@ -90,15 +90,15 @@ std::string resolveTemplate(const Component::Translatable& translatable, const L
     if (resolved) {
         return std::move(*resolved);
     }
-    const std::string_view fallback = translatable.fallback ? std::string_view{*translatable.fallback}
-                                                            : std::string_view{translatable.key};
+    const std::string_view fallback =
+        translatable.fallback ? std::string_view{*translatable.fallback} : std::string_view{translatable.key};
     return std::string{table.getOrDefault(translatable.key, fallback)};
 }
 
 std::expected<std::string, TranslationError> resolveTemplateStrict(const Component::Translatable& translatable,
                                                                    const LangTable& table) {
-    const std::string_view fallback = translatable.fallback ? std::string_view{*translatable.fallback}
-                                                            : std::string_view{translatable.key};
+    const std::string_view fallback =
+        translatable.fallback ? std::string_view{*translatable.fallback} : std::string_view{translatable.key};
     const std::string_view format = table.getOrDefault(translatable.key, fallback);
 
     std::string out;
@@ -113,8 +113,7 @@ std::expected<std::string, TranslationError> resolveTemplateStrict(const Compone
         } else if (specifier->kind != 's') {
             return std::unexpected{TranslationError::UnsupportedSpecifier};
         } else {
-            const std::int32_t index =
-                specifier->positional != 0 ? specifier->positional - 1 : nextArgument++;
+            const std::int32_t index = specifier->positional != 0 ? specifier->positional - 1 : nextArgument++;
             if (index < 0 || static_cast<std::size_t>(index) >= translatable.args.size()) {
                 return std::unexpected{TranslationError::ArgumentOutOfRange};
             }

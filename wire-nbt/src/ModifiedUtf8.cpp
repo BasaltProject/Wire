@@ -126,8 +126,7 @@ std::expected<std::string, NbtError> decode(ByteReader& source, std::size_t byte
                 return std::unexpected{NbtError::UnexpectedEnd};
             }
             remaining -= 2;
-            units.push_back(
-                static_cast<std::uint16_t>(((a & 0x0FU) << 12) | ((*b & 0x3FU) << 6) | (*c & 0x3FU)));
+            units.push_back(static_cast<std::uint16_t>(((a & 0x0FU) << 12) | ((*b & 0x3FU) << 6) | (*c & 0x3FU)));
         } else {
             return std::unexpected{NbtError::InvalidUtf8};
         }

@@ -21,11 +21,15 @@ struct ClickEvent {
     std::string value;
 
     [[nodiscard]] static ClickEvent openUrl(std::string url) { return {Action::OpenUrl, std::move(url)}; }
+
     [[nodiscard]] static ClickEvent runCommand(std::string command) { return {Action::RunCommand, std::move(command)}; }
+
     [[nodiscard]] static ClickEvent suggestCommand(std::string command) {
         return {Action::SuggestCommand, std::move(command)};
     }
+
     [[nodiscard]] static ClickEvent changePage(std::int32_t page);
+
     [[nodiscard]] static ClickEvent copyToClipboard(std::string text) {
         return {Action::CopyToClipboard, std::move(text)};
     }

@@ -1,6 +1,4 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
-#include <doctest.h>
-
 #include <basalt/wire/nbt/NbtIO.hpp>
 #include <basalt/wire/text/ComponentJson.hpp>
 #include <basalt/wire/text/ComponentNbt.hpp>
@@ -8,6 +6,8 @@
 #include <basalt/wire/text/MiniMessage.hpp>
 #include <basalt/wire/text/Serializers.hpp>
 #include <basalt/wire/text/TranslationResolver.hpp>
+
+#include <doctest.h>
 
 #include <string>
 #include <unordered_map>
@@ -37,13 +37,12 @@ TEST_CASE("components survive the NBT network form") {
     const Component rich =
         Component::translatable("chat.type.text", {Component::text("Steve"), Component::text("hi")})
             .clickEvent(ClickEvent::openUrl("https://basaltmc.org"))
-            .hoverEvent(HoverEvent{HoverEvent::ShowEntity{"minecraft:pig", "00000000-0000-0000-0000-000000000000",
-                                                          nullptr}})
+            .hoverEvent(
+                HoverEvent{HoverEvent::ShowEntity{"minecraft:pig", "00000000-0000-0000-0000-000000000000", nullptr}})
             .append(Component::text(" more").italic());
     CHECK(roundTrip(rich) == rich);
 
-    const Component selector{
-        Component::Selector{"@a", std::make_shared<const Component>(Component::text(", "))}};
+    const Component selector{Component::Selector{"@a", std::make_shared<const Component>(Component::text(", "))}};
     CHECK(roundTrip(selector) == selector);
 
     const Component score = Component::score("Steve", "kills");
@@ -96,8 +95,7 @@ TEST_CASE("translations resolve vanilla's format subset") {
         {"unsupported", "%d"},
     }};
 
-    CHECK(resolvePlainText(Component::translatable("chat.type.text",
-                                                   {Component::text("Steve"), Component::text("hi")}),
+    CHECK(resolvePlainText(Component::translatable("chat.type.text", {Component::text("Steve"), Component::text("hi")}),
                            table) == "<Steve> hi");
     CHECK(resolvePlainText(Component::translatable("positional", {Component::text("a"), Component::text("b")}),
                            table) == "b then a");
@@ -123,13 +121,12 @@ TEST_CASE("ANSI output only resets when it actually styled something") {
 }
 
 TEST_CASE("components survive the JSON form and its text") {
-    const Component rich =
-        Component::translatable("chat.type.text", {Component::text("Steve"), Component::text("hi")})
-            .color(kGold)
-            .italic(false)
-            .clickEvent(ClickEvent::suggestCommand("/msg Steve "))
-            .hoverEvent(HoverEvent::showText(Component::text("Click to reply")))
-            .append(Component::text("!"));
+    const Component rich = Component::translatable("chat.type.text", {Component::text("Steve"), Component::text("hi")})
+                               .color(kGold)
+                               .italic(false)
+                               .clickEvent(ClickEvent::suggestCommand("/msg Steve "))
+                               .hoverEvent(HoverEvent::showText(Component::text("Click to reply")))
+                               .append(Component::text("!"));
 
     const auto text = basalt::wire::common::writeJson(componentJson::serialize(rich));
     const auto parsed = basalt::wire::common::parseJson(text);

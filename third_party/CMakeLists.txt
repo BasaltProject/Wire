@@ -3,3 +3,4 @@
 
 add_subdirectory(doctest)
 add_subdirectory(simdjson)
+add_subdirectory(zlib)

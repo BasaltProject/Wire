@@ -32,7 +32,7 @@ enum class TranslationError : std::uint8_t {
 
 /// resolveTemplate without the fallback. Vanilla's format string is a small, strict subset of
 /// `String.format`: `%s`, `%N$s` and `%%`, and nothing else.
-[[nodiscard]] std::expected<std::string, TranslationError> resolveTemplateStrict(
-    const Component::Translatable& translatable, const LangTable& table);
+[[nodiscard]] std::expected<std::string, TranslationError>
+resolveTemplateStrict(const Component::Translatable& translatable, const LangTable& table);
 
 } // namespace basalt::wire::text

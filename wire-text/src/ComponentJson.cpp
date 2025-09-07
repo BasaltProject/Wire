@@ -195,8 +195,8 @@ Component deserializeObject(const JsonObject& object) {
     } else if (const std::optional<std::string> keybind = readString(object, "keybind")) {
         payload = Component::Keybind{*keybind};
     } else if (const JsonObject* score = readObject(object, "score")) {
-        payload = Component::Score{readString(*score, "name").value_or(""),
-                                   readString(*score, "objective").value_or("")};
+        payload =
+            Component::Score{readString(*score, "name").value_or(""), readString(*score, "objective").value_or("")};
     } else if (const std::optional<std::string> selector = readString(object, "selector")) {
         Component::Selector value{*selector, nullptr};
         if (const JsonValue* separator = object.find("separator")) {
