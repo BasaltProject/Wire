@@ -7,6 +7,9 @@ basalt_module(wire-common
         src/LogOutput.cpp
         src/Md5.cpp
         src/Mth.cpp
+        src/TickDurations.cpp
+        src/Timings.cpp
+        src/Toml.cpp
         src/Uuid.cpp
     PRIVATE_DEPENDS basalt::simdjson
 )
