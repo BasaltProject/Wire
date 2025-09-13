@@ -1,0 +1,72 @@
+basalt_module(wire-multiversion
+    SOURCES
+        src/CompactBitStorage.cpp
+        src/ChunkRewriter.cpp
+        src/ComposedTables.cpp
+        src/IdMap.cpp
+        src/ProtocolChain.cpp
+        src/ProtocolGate.cpp
+        src/ProtocolVersions.cpp
+        src/SubstitutionLabels.cpp
+        src/java/ContentRewriter.cpp
+        src/java/Tables47.cpp
+        src/java/Tables107.cpp
+        src/java/Tables108.cpp
+        src/java/Tables109.cpp
+        src/java/Tables110.cpp
+        src/java/Tables210.cpp
+        src/java/Tables315.cpp
+        src/java/Tables316.cpp
+        src/java/Tables335.cpp
+        src/java/Tables338.cpp
+        src/java/Tables340.cpp
+        src/java/Tables393.cpp
+        src/java/Tables401.cpp
+        src/java/Tables404.cpp
+        src/java/Tables477.cpp
+        src/java/Tables480.cpp
+        src/java/Tables485.cpp
+        src/java/Tables490.cpp
+        src/java/Tables498.cpp
+        src/java/Tables573.cpp
+        src/java/Tables575.cpp
+        src/java/Tables578.cpp
+        src/java/Tables735.cpp
+        src/java/Tables736.cpp
+        src/java/Tables751.cpp
+        src/java/Tables753.cpp
+        src/java/Tables754.cpp
+        src/java/Tables755.cpp
+        src/java/Tables756.cpp
+        src/java/Tables757.cpp
+        src/java/Tables758.cpp
+        src/java/Tables759.cpp
+        src/java/Tables760.cpp
+        src/java/Tables761.cpp
+        src/java/Tables762.cpp
+        src/java/Tables763.cpp
+        src/java/Tables764.cpp
+        src/java/Tables765.cpp
+        src/java/Tables766.cpp
+        src/java/Tables767.cpp
+        src/java/Tables768.cpp
+        src/java/Tables769.cpp
+        src/java/Tables770.cpp
+        src/java/Tables771.cpp
+        src/java/Tables772.cpp
+        src/java/Tables773.cpp
+        src/java/Tables774.cpp
+        src/java/Tables775.cpp
+        src/java/EntityDataIndexes.cpp
+        src/java/EntityDataRewriter.cpp
+        src/java/EntityDataTypes.cpp
+        src/java/LegacyStacks.cpp
+        src/VersionTables.cpp
+    DEPENDS basalt::wire-common basalt::wire-io basalt::wire-nbt basalt::wire-protocol basalt::wire-text
+)
+
+basalt_test(wire-multiversion-test
+    SOURCES
+        test/MultiversionTest.cpp
+    DEPENDS basalt::wire-multiversion
+)

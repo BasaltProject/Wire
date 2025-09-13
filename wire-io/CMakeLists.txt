@@ -7,8 +7,9 @@ basalt_module(wire-io
         src/Platform.cpp
         src/TcpSocket.cpp
         src/ZipReader.cpp
+        src/Zstd.cpp
     DEPENDS basalt::wire-common
-    PRIVATE_DEPENDS basalt::zlib
+    PRIVATE_DEPENDS basalt::zlib basalt::zstd
 )
 
 basalt_test(wire-io-test
