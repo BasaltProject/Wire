@@ -3,9 +3,13 @@ basalt_module(wire-protocol
         src/PacketFraming.cpp
         src/BlockEntityPackets.cpp
         src/BorderPackets.cpp
+        src/CommandPackets.cpp
         src/ConfigurationPackets.cpp
+        src/EntityData.cpp
+        src/EntityPackets.cpp
         src/HandshakePacket.cpp
         src/HudPackets.cpp
+        src/InventoryPackets.cpp
         src/ItemComponent.cpp
         src/LoginPackets.cpp
         src/LoginPluginPackets.cpp
@@ -13,8 +17,12 @@ basalt_module(wire-protocol
         src/NibbleArray.cpp
         src/PalettedContainer.cpp
         src/ParticleOptions.cpp
+        src/RecipePackets.cpp
         src/SimplePackets.cpp
         src/StatusPackets.cpp
+        src/UiPackets.cpp
+        src/WorldPackets.cpp
+        src/PlayPackets.cpp
         src/PlayerStatePackets.cpp
         src/ProtocolBuffer.cpp
     DEPENDS basalt::wire-common basalt::wire-io basalt::wire-nbt basalt::wire-text
