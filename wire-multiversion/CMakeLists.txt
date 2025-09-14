@@ -9,6 +9,7 @@ basalt_module(wire-multiversion
         src/ProtocolVersions.cpp
         src/SubstitutionLabels.cpp
         src/java/ContentRewriter.cpp
+        src/java/JavaTranslators.cpp
         src/java/Tables47.cpp
         src/java/Tables107.cpp
         src/java/Tables108.cpp
@@ -57,6 +58,14 @@ basalt_module(wire-multiversion
         src/java/Tables773.cpp
         src/java/Tables774.cpp
         src/java/Tables775.cpp
+        src/java/Link107.cpp
+        src/java/Link47.cpp
+        src/java/Link109.cpp
+        src/java/Link110.cpp
+        src/java/Link210.cpp
+        src/java/Link340.cpp
+        src/java/Link404.cpp
+        src/java/Link498.cpp
         src/java/Link578.cpp
         src/java/Link736.cpp
         src/java/Link754.cpp

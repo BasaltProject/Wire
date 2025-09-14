@@ -14,6 +14,8 @@ dependencyResolutionManagement {
     }
 }
 
+// Only the modules that still have Kotlin. A module whose C++ port is finished has had its Kotlin
+// deleted: what it was checked against lives on in the branch this one grew from.
 include(
     ":wire-common",
     ":wire-nbt",
@@ -21,6 +23,4 @@ include(
     ":wire-io",
     ":wire-protocol",
     ":wire-auth",
-    ":wire-multiversion",
-    ":wire-bedrock",
 )
