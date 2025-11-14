@@ -6,7 +6,9 @@ basalt_module(wire-common
         src/Logger.cpp
         src/LogOutput.cpp
         src/Md5.cpp
+        src/Sha256.cpp
         src/Mth.cpp
+        src/Panic.cpp
         src/PlaceholderCondition.cpp
         src/Placeholders.cpp
         src/PlaceholderText.cpp

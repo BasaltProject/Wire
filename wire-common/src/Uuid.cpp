@@ -1,6 +1,7 @@
 #include <basalt/wire/common/Uuid.hpp>
 #include <basalt/wire/common/hash/Md5.hpp>
 
+#include <random>
 #include <string>
 
 namespace basalt::wire::common {
@@ -75,6 +76,15 @@ std::optional<Uuid> Uuid::parse(std::string_view text) {
     if (digits != 32) {
         return std::nullopt;
     }
+    return Uuid{high, low};
+}
+
+Uuid Uuid::random() {
+    // Not seeded from anything reproducible on purpose: these name things that exist only while
+    // the process does, and two servers that agreed on them would be wrong, not right.
+    static thread_local std::mt19937_64 generator{std::random_device{}()};
+    const std::uint64_t high = (generator() & 0xFFFFFFFFFFFF0FFFULL) | 0x0000000000004000ULL;
+    const std::uint64_t low = (generator() & 0x3FFFFFFFFFFFFFFFULL) | 0x8000000000000000ULL;
     return Uuid{high, low};
 }
 

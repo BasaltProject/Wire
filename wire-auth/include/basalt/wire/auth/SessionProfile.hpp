@@ -26,9 +26,8 @@ struct SessionProfile {
 
 /// Verifies a client's claimed username against Mojang's session server after the key exchange.
 ///
-/// parity: MinecraftSessionService.hasJoinedServer. An implementation backed by the real session
-/// server needs an HTTPS client, which lands with libcurl; until then the runtime supplies its own,
-/// and a test supplies a fake.
+/// parity: MinecraftSessionService.hasJoinedServer. `MojangSessionService` is the one backed by the
+/// real session server, over the HTTPS client beside it; a test supplies a fake.
 class SessionService {
 public:
     SessionService() = default;

@@ -1,6 +1,8 @@
 basalt_module(wire-auth
     SOURCES
         src/Cfb8Cipher.cpp
+        src/HttpsClient.cpp
+        src/MojangSessionService.cpp
         src/LegacyForwarding.cpp
         src/ProxyForwarding.cpp
         src/SessionKeyPair.cpp

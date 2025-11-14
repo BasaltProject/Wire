@@ -1,5 +1,6 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <basalt/wire/auth/Cfb8Cipher.hpp>
+#include <basalt/wire/auth/MojangSessionService.hpp>
 #include <basalt/wire/auth/SessionKeyPair.hpp>
 #include <basalt/wire/auth/forwarding/LegacyForwarding.hpp>
 #include <basalt/wire/auth/forwarding/VelocityForwarding.hpp>
@@ -164,4 +165,48 @@ TEST_CASE("velocity forwarding refuses anything it did not sign") {
     // The query asks for the newest version this server reads.
     CHECK(velocity::request() == std::vector<std::uint8_t>{velocity::kMaxSupportedVersion});
     CHECK_FALSE(accepted(velocity::decode(std::vector<std::uint8_t>(8, 0), forwarding)));
+}
+
+TEST_CASE("the session service reads the profile the session server answered with") {
+    // A canned answer, so the test exercises the decoding and never the network.
+    const auto answer = [](std::string_view url) -> std::expected<HttpsResponse, HttpsError> {
+        CHECK(url.find("username=Steve") != std::string_view::npos);
+        CHECK(url.find("serverId=abc") != std::string_view::npos);
+        const std::string body = R"({"id":"8667ba71b85a4004af54457a9734eed7","name":"Steve","properties":)"
+                                 R"([{"name":"textures","value":"blob","signature":"signed"}]})";
+        return HttpsResponse{.status = 200, .body = std::vector<std::uint8_t>(body.begin(), body.end())};
+    };
+    MojangSessionService service{answer};
+
+    const std::optional<SessionProfile> profile = service.hasJoined("Steve", "abc", "");
+    REQUIRE(profile.has_value());
+    CHECK(profile->name == "Steve");
+    CHECK(profile->id.toString() == "8667ba71-b85a-4004-af54-457a9734eed7");
+    REQUIRE(profile->properties.size() == 1);
+    CHECK(profile->properties.front().name == "textures");
+    CHECK(profile->properties.front().signature == "signed");
+}
+
+TEST_CASE("a session server that says nobody joined answers nothing") {
+    // 204 with an empty body is the session server's "that is not them".
+    MojangSessionService refused{[](std::string_view) { return HttpsResponse{.status = 204, .body = {}}; }};
+    CHECK(!refused.hasJoined("Steve", "abc", "").has_value());
+
+    // So does a request that could not be made at all: a login is refused, never let through.
+    MojangSessionService offline{[](std::string_view) { return std::unexpected(HttpsError{"no network"}); }};
+    CHECK(!offline.hasJoined("Steve", "abc", "").has_value());
+}
+
+TEST_CASE("a name is looked up as a dashed uuid") {
+    const auto answer = [](std::string_view url) -> std::expected<HttpsResponse, HttpsError> {
+        CHECK(url.ends_with("/Steve"));
+        const std::string body = R"({"id":"8667ba71b85a4004af54457a9734eed7","name":"Steve"})";
+        return HttpsResponse{.status = 200, .body = std::vector<std::uint8_t>(body.begin(), body.end())};
+    };
+    // Dashed, because every other uuid this server prints is, and two spellings of the same id in
+    // one console is a needless puzzle.
+    CHECK(mojangUuidOf("Steve", answer) == "8667ba71-b85a-4004-af54-457a9734eed7");
+
+    CHECK(
+        !mojangUuidOf("Nobody", [](std::string_view) { return HttpsResponse{.status = 404, .body = {}}; }).has_value());
 }

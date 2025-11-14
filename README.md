@@ -5,15 +5,15 @@
 <h2 align="center">Basalt Wire</h2>
 
 <p align="center">
-  <strong>The Minecraft network layer shared by Basalt Server and Basalt Proxy, in Kotlin/Native. No JVM.</strong>
+  <strong>The Minecraft network layer shared by Basalt Server and Basalt Proxy, in C++23. No JVM.</strong>
 </p>
 
 <p align="center">
   <img alt="Minecraft" src="https://img.shields.io/badge/Minecraft-26.2-62B47A?logo=minecraft&logoColor=white">
   <img alt="Protocol" src="https://img.shields.io/badge/protocol-776-62B47A">
-  <img alt="Kotlin" src="https://img.shields.io/badge/Kotlin-2.4.10-7F52FF?logo=kotlin&logoColor=white">
-  <img alt="Kotlin/Native" src="https://img.shields.io/badge/Kotlin%2FNative-macOS_%7C_Linux_%7C_Windows-7F52FF?logo=kotlin&logoColor=white">
-  <img alt="Build" src="https://img.shields.io/badge/build-Gradle-02303A?logo=gradle&logoColor=white">
+  <img alt="C++" src="https://img.shields.io/badge/C%2B%2B-23-00599C?logo=cplusplus&logoColor=white">
+  <img alt="Platforms" src="https://img.shields.io/badge/platforms-macOS_%7C_Linux_%7C_Windows-00599C">
+  <img alt="Build" src="https://img.shields.io/badge/build-CMake-064F8C?logo=cmake&logoColor=white">
   <img alt="License" src="https://img.shields.io/badge/license-GPL--3.0-green">
 </p>
 
@@ -37,12 +37,12 @@ components that talk to Minecraft clients:
 Both consume it as a git submodule, so a change to a packet lands in both at
 once and there is only one implementation of the protocol to keep correct.
 
-Everything here is written from scratch in Kotlin/Native. There is no JVM in the
+Everything here is written from scratch in C++23. There is no JVM in the
 runtime and no Java library in the build: no Netty, no Adventure, no Gson.
 
 | | |
 |---|---|
-| Language | Kotlin/Native, 100 %. No Java, no JVM at runtime |
+| Language | C++23, 100 %. No Java, no JVM at runtime |
 | Target version | Minecraft 26.2 (protocol 776) |
 | Message model | Adventure-style immutable components; no legacy `§` formatting |
 | Consumed as | A git submodule, composed into the consumer's Gradle build |
@@ -69,55 +69,45 @@ in the consuming repository instead.
 
 ## Using it
 
-Add the submodule, then compose it into the Gradle build.
+Add the submodule, then pull it into the CMake build.
 
 ```bash
 git submodule add https://github.com/BasaltProject/Wire.git wire
 ```
 
-```kotlin
-// settings.gradle.kts
-pluginManagement {
-    includeBuild("wire/build-logic")
-}
+```cmake
+# CMakeLists.txt, before anything that links against a wire module
+add_subdirectory(wire)
 
-dependencyResolutionManagement {
-    versionCatalogs {
-        create("libs") { from(files("wire/gradle/libs.versions.toml")) }
-    }
-}
-
-include(":wire-protocol")
-project(":wire-protocol").projectDir = file("wire/wire-protocol")
+target_link_libraries(your-module PUBLIC basalt::wire-protocol)
 ```
 
-Wire owns the shared build convention (`basalt.native-module`) and the version
-catalog, so consumers inherit one Kotlin version, one ktlint configuration and
-one set of native targets rather than keeping their own in sync.
+Wire owns the shared build functions (`basalt_module`, `basalt_test`,
+`basalt_bench`, the warnings, the sanitizers and `basalt::parity`) and the
+vendored dependencies in `third_party/`, so consumers inherit one set of
+compiler flags and one copy of every dependency rather than keeping their own in
+sync.
 
 Clone a consumer with `--recurse-submodules`, or run
 `git submodule update --init` in an existing clone.
 
 ## Building
 
-Gradle orchestrates the build; it is not part of the runtime.
-
-Kotlin/Native tasks carry the target in their name; replace `MacosArm64` with the
-one you are building for.
+CMake 3.28 or newer, Ninja and Clang.
 
 ```bash
-# Compile, style and test everything on this host
-./gradlew build
+# Configure and build everything on this host
+cmake --preset debug
+cmake --build build/debug
 
-# A single module
-./gradlew :wire-protocol:macosArm64Test
+# Test everything, or a single module
+ctest --preset debug
+./build/debug/wire-nbt/wire-nbt-test
 ```
 
-Supported targets: `macosArm64`, `macosX64`, `linuxX64`, `linuxArm64`,
-`mingwX64`. Kotlin/Native does not cross-compile reliably between host families,
-so a build registers only the targets its own host can produce: macOS builds the
-two macOS targets, Linux the two Linux ones, Windows `mingwX64`. CI covers all
-five across three runners.
+Supported targets: macOS on arm64 and x64, Linux on x64 and arm64, and Windows
+through mingw. Clang cross-compiles between them; CI covers all five across
+three runners.
 
 ## Testing
 
@@ -125,18 +115,14 @@ Every packet codec carries a round-trip test, and every binary format is checked
 against known vectors. The vectors are generated synthetically: no proprietary
 Minecraft file is committed here, extracted here, or distributed here.
 
-Native tests only run on their matching host.
-
 ## Requirements
 
 | Component | Requirement |
 |---|---|
-| JDK | 25, for Gradle only. Not part of the runtime |
-| Kotlin | 2.4.10 |
-| Gradle | Through the included wrapper |
-| Native toolchain | Required to link or run Kotlin/Native binaries on the host |
-
-Use the included wrapper rather than a system Gradle installation.
+| CMake | 3.28 or newer |
+| Generator | Ninja |
+| Compiler | Clang, with C++23 support |
+| ccache | Optional, but the build is much faster with it |
 
 ## Development Status
 
@@ -158,7 +144,7 @@ version. Making them so is the work `wire-multiversion` depends on.
 
 | Repository | What it is |
 |---|---|
-| [Server](https://github.com/BasaltProject/Server) | The Minecraft server itself, in Kotlin/Native |
+| [Server](https://github.com/BasaltProject/Server) | The Minecraft server itself, in C++23 |
 | [Proxy](https://github.com/BasaltProject/Proxy) | The proxy component |
 | [Website](https://github.com/BasaltProject/Website) | The project site, at [basaltmc.org](https://basaltmc.org) |
 

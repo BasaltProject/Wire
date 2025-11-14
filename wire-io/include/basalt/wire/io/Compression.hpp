@@ -115,6 +115,39 @@ private:
     std::unique_ptr<State> state_;
 };
 
+/// Reads a zstd frame piece by piece, so a caller that knows how the decompressed bytes are laid
+/// out never holds them all.
+///
+/// This is the reading half of what `StreamCompressor` does: a Linear region decompresses to its
+/// chunk table followed by the chunk blobs, and a reader that wants one chunk out of it has no
+/// reason to materialise the other thousand. Decompressing whole regions per read was megabytes of
+/// transient on every worker thread, and each of their allocators kept the high-water mark.
+class StreamDecompressor {
+public:
+    explicit StreamDecompressor(std::span<const std::uint8_t> source);
+    /// The reader borrows the bytes rather than copying them, so a temporary handed to it would be
+    /// gone before the first read. Refusing it here turns that into a compile error.
+    explicit StreamDecompressor(std::vector<std::uint8_t>&&) = delete;
+    StreamDecompressor(const StreamDecompressor&) = delete;
+    StreamDecompressor& operator=(const StreamDecompressor&) = delete;
+    ~StreamDecompressor();
+
+    [[nodiscard]] bool valid() const noexcept;
+
+    /// Fills `destination` completely. False when the frame ended first or went wrong, and the
+    /// stream is finished either way.
+    bool readFully(std::span<std::uint8_t> destination);
+
+    /// Whether the frame ended exactly where the reader stopped, with nothing left undelivered.
+    /// What tells a format its own table was right about how much there would be.
+    [[nodiscard]] bool frameComplete() const noexcept;
+
+private:
+    struct State;
+
+    std::unique_ptr<State> state_;
+};
+
 } // namespace zstd
 
 } // namespace basalt::wire::io
