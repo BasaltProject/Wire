@@ -44,11 +44,17 @@ public:
 
     template <typename Message>
     void log(LogLevel level, Message&& message) const {
-        if (static_cast<std::uint8_t>(level) < static_cast<std::uint8_t>(minLevel_)) {
-            return;
-        }
-        logOutput::emit(level, timestamp(), name_, std::forward<Message>(message)());
+        write(level, std::forward<Message>(message), false);
     }
+
+    /// One info line that the next call draws over, for a step whose only news is how far along it
+    /// is. Ended with `endProgress`, which is what puts the console back on a fresh line.
+    template <typename Message>
+    void progress(Message&& message) const {
+        write(LogLevel::Info, std::forward<Message>(message), true);
+    }
+
+    void endProgress() const { logOutput::endInPlace(); }
 
     void setMinLevel(LogLevel level) noexcept { minLevel_ = level; }
 
@@ -73,6 +79,20 @@ public:
     [[nodiscard]] static std::string formatLocalDate(std::int64_t epochSeconds);
 
 private:
+    /// The message is built inside each branch rather than once above them so that a producer
+    /// answering a `const char*` still reaches the sink without a string being made for it.
+    template <typename Message>
+    void write(LogLevel level, Message&& message, bool inPlace) const {
+        if (static_cast<std::uint8_t>(level) < static_cast<std::uint8_t>(minLevel_)) {
+            return;
+        }
+        if (inPlace) {
+            logOutput::emitInPlace(level, timestamp(), name_, std::forward<Message>(message)());
+        } else {
+            logOutput::emit(level, timestamp(), name_, std::forward<Message>(message)());
+        }
+    }
+
     std::string name_;
     LogLevel minLevel_;
 };

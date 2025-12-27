@@ -160,7 +160,7 @@ public:
     }
 
     /// Reads until the peer closes or the ceiling is reached. Answers what came back.
-    [[nodiscard]] std::vector<std::uint8_t> readAll(std::size_t maxBytes) {
+    [[nodiscard]] std::vector<std::uint8_t> readAll(std::size_t maxBytes, const HttpsProgress& onProgress) {
         std::vector<std::uint8_t> answered;
         std::array<unsigned char, 16384> chunk{};
         while (answered.size() < maxBytes) {
@@ -173,6 +173,9 @@ public:
                 break;
             }
             answered.insert(answered.end(), chunk.begin(), chunk.begin() + read);
+            if (onProgress) {
+                onProgress(answered.size());
+            }
         }
         return answered;
     }
@@ -246,7 +249,8 @@ private:
 
 } // namespace
 
-std::expected<HttpsResponse, HttpsError> httpsGet(std::string_view url, std::size_t maxBytes) {
+std::expected<HttpsResponse, HttpsError> httpsGet(std::string_view url, std::size_t maxBytes,
+                                                  const HttpsProgress& onProgress) {
     const std::optional<Url> target = parse(url);
     if (!target.has_value()) {
         return std::unexpected(HttpsError{"'" + std::string{url} + "' is not an https:// address"});
@@ -261,7 +265,7 @@ std::expected<HttpsResponse, HttpsError> httpsGet(std::string_view url, std::siz
     if (const std::optional<HttpsError> failed = session.write(request); failed.has_value()) {
         return std::unexpected(*failed);
     }
-    return decode(session.readAll(maxBytes));
+    return decode(session.readAll(maxBytes, onProgress));
 }
 
 } // namespace basalt::wire::auth

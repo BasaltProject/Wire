@@ -1,7 +1,9 @@
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 #include <expected>
+#include <functional>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -29,11 +31,20 @@ struct HttpsError {
     std::string message;
 };
 
+/// The ceiling a caller gets without asking for one. Large enough for the client jar, small enough
+/// that a server answering with a stream of nonsense is dropped rather than kept in memory.
+inline constexpr std::size_t kDefaultMaxBytes = 512UL * 1024UL * 1024UL;
+
+/// Told how much has arrived so far, headers included, every time more of it does. A caller that
+/// knows the size it asked for turns that into a percentage; one that does not can still say that
+/// something is happening.
+using HttpsProgress = std::function<void(std::size_t bytesSoFar)>;
+
 /// Fetches `url`, which has to be `https://`.
 ///
 /// `maxBytes` is a ceiling on the body, since the caller knows what it asked for and a server that
 /// answers with far more than that is not one to keep reading from.
-[[nodiscard]] std::expected<HttpsResponse, HttpsError> httpsGet(std::string_view url,
-                                                                std::size_t maxBytes = 512UL * 1024UL * 1024UL);
+[[nodiscard]] std::expected<HttpsResponse, HttpsError>
+httpsGet(std::string_view url, std::size_t maxBytes = kDefaultMaxBytes, const HttpsProgress& onProgress = {});
 
 } // namespace basalt::wire::auth

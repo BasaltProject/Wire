@@ -35,4 +35,12 @@ void clearSinks();
 
 void emit(LogLevel level, std::string_view timestamp, std::string_view name, std::string_view message);
 
+/// Draws one line that the next call overwrites, for a step long enough that saying nothing until it
+/// ends looks like a hang. Only the first of a run reaches a sink, and only the first is written at
+/// all where the console takes no escape codes: a log file wants the line, not the animation.
+void emitInPlace(LogLevel level, std::string_view timestamp, std::string_view name, std::string_view message);
+
+/// Ends a run of in-place lines, taking the last one off the console.
+void endInPlace();
+
 } // namespace basalt::wire::common::logOutput

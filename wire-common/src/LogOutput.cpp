@@ -1,6 +1,8 @@
 #include <basalt/wire/common/logging/LogOutput.hpp>
 
+#include <atomic>
 #include <cstdio>
+#include <utility>
 #include <vector>
 
 namespace basalt::wire::common::logOutput {
@@ -17,6 +19,13 @@ constexpr std::string_view kCyan = "\x1B[36m";
 
 bool gUseColor = false;
 std::function<void(const std::function<void()>&)> gAroundConsoleLine;
+
+/// Whether the console's current line belongs to a run of in-place lines rather than to a finished
+/// one. Read by whichever thread logs next, so not a plain bool.
+std::atomic<bool> gInPlace{false};
+
+/// Carriage return and erase to the end of the line, which is what makes a line replaceable.
+constexpr std::string_view kWipeLine = "\r\x1B[K";
 
 std::vector<std::function<void(std::string_view)>>& sinks() {
     static std::vector<std::function<void(std::string_view)>> instance;
@@ -66,7 +75,14 @@ void addSink(std::function<void(std::string_view)> sink) { sinks().push_back(std
 
 void clearSinks() { sinks().clear(); }
 
-void emit(LogLevel level, std::string_view timestamp, std::string_view name, std::string_view message) {
+namespace {
+
+struct Rendered {
+    std::string plain;
+    std::string coloured;
+};
+
+Rendered render(LogLevel level, std::string_view timestamp, std::string_view name, std::string_view message) {
     std::string plain;
     plain.reserve(timestamp.size() + name.size() + message.size() + 24);
     plain += '[';
@@ -104,10 +120,21 @@ void emit(LogLevel level, std::string_view timestamp, std::string_view name, std
         line += kReset;
     }
 
-    const std::string_view console = gUseColor ? std::string_view{line} : std::string_view{plain};
+    return Rendered{.plain = std::move(plain), .coloured = std::move(line)};
+}
+
+} // namespace
+
+void emit(LogLevel level, std::string_view timestamp, std::string_view name, std::string_view message) {
+    const Rendered rendered = render(level, timestamp, name, message);
+    const std::string_view console = gUseColor ? std::string_view{rendered.coloured} : std::string_view{rendered.plain};
     // Flushed on every line: stdout is fully buffered when it is a pipe, and a server whose log
     // only appears when the buffer fills is useless under systemd, Docker or a hosting panel.
     const auto write = [&console]() {
+        // A line that was being drawn in place is finished by this one rather than left half over it.
+        if (gInPlace.exchange(false, std::memory_order_acq_rel) && gUseColor) {
+            std::fwrite(kWipeLine.data(), 1, kWipeLine.size(), stdout);
+        }
         std::fwrite(console.data(), 1, console.size(), stdout);
         std::fputc('\n', stdout);
         std::fflush(stdout);
@@ -119,8 +146,42 @@ void emit(LogLevel level, std::string_view timestamp, std::string_view name, std
     }
 
     for (const auto& sink : sinks()) {
-        sink(plain);
+        sink(rendered.plain);
     }
+}
+
+void emitInPlace(LogLevel level, std::string_view timestamp, std::string_view name, std::string_view message) {
+    const bool first = !gInPlace.load(std::memory_order_acquire);
+    // Without escape codes there is no drawing over anything, so the run is the announcement alone.
+    // Redrawing it as plain lines would fill a piped log with a hundred copies of the same one.
+    if (!gUseColor) {
+        if (first) {
+            emit(level, timestamp, name, message);
+            gInPlace.store(true, std::memory_order_release);
+        }
+        return;
+    }
+    const Rendered rendered = render(level, timestamp, name, message);
+    // Deliberately outside `gAroundConsoleLine`: that hook puts the console prompt back after the
+    // line, and a prompt drawn from column zero would land on top of this one. The prompt comes
+    // back with the next finished line, which is the one that ends the run.
+    std::fwrite(kWipeLine.data(), 1, kWipeLine.size(), stdout);
+    std::fwrite(rendered.coloured.data(), 1, rendered.coloured.size(), stdout);
+    std::fflush(stdout);
+    gInPlace.store(true, std::memory_order_release);
+    if (first) {
+        for (const auto& sink : sinks()) {
+            sink(rendered.plain);
+        }
+    }
+}
+
+void endInPlace() {
+    if (!gInPlace.exchange(false, std::memory_order_acq_rel) || !gUseColor) {
+        return;
+    }
+    std::fwrite(kWipeLine.data(), 1, kWipeLine.size(), stdout);
+    std::fflush(stdout);
 }
 
 } // namespace basalt::wire::common::logOutput
