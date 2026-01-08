@@ -11,11 +11,13 @@
 #include <windows.h>
 #elif defined(__APPLE__)
 #include <mach/mach.h>
+#include <poll.h>
 #include <sys/resource.h>
 #include <termios.h>
 #include <unistd.h>
 #else
 #include <cstdio>
+#include <poll.h>
 #include <sys/resource.h>
 #include <termios.h>
 #include <unistd.h>
@@ -168,6 +170,24 @@ void restoreMode() {
 }
 
 int readByte() { return std::getchar(); }
+
+bool waitForInput(const std::chrono::milliseconds timeout) {
+#if defined(_WIN32)
+    const HANDLE input = GetStdHandle(STD_INPUT_HANDLE);
+    if (input == nullptr || input == INVALID_HANDLE_VALUE) {
+        return true;
+    }
+    return WaitForSingleObject(input, static_cast<DWORD>(timeout.count())) == WAIT_OBJECT_0;
+#else
+    pollfd watched{};
+    watched.fd = STDIN_FILENO;
+    watched.events = POLLIN;
+    const int ready = ::poll(&watched, 1, static_cast<int>(timeout.count()));
+    // An error is reported as ready so the read runs and returns whatever it returns: pretending
+    // there is nothing would spin here forever.
+    return ready != 0;
+#endif
+}
 
 } // namespace terminal
 
