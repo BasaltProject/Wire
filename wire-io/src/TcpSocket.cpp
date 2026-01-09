@@ -1,6 +1,7 @@
 #include <basalt/wire/io/TcpSocket.hpp>
 
 #include <charconv>
+#include <cstdint>
 #include <cstring>
 
 #if defined(_WIN32)

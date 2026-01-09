@@ -4,6 +4,8 @@
 #include <basalt/wire/protocol/status/StatusPackets.hpp>
 #include <basalt/wire/text/ComponentJson.hpp>
 
+#include <cstdint>
+
 namespace basalt::wire::protocol::status {
 namespace {
 

@@ -5,6 +5,7 @@
 #include <basalt/wire/protocol/play/EntityPackets.hpp>
 #include <basalt/wire/protocol/play/InventoryPackets.hpp>
 
+#include <cstdint>
 #include <string>
 #include <vector>
 

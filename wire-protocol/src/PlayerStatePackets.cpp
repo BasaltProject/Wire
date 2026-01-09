@@ -2,6 +2,8 @@
 #include <basalt/wire/protocol/play/PlayerStatePackets.hpp>
 #include <basalt/wire/text/ComponentNbt.hpp>
 
+#include <cstdint>
+
 namespace basalt::wire::protocol::play {
 namespace {
 

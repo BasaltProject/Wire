@@ -1,6 +1,8 @@
 #include <basalt/wire/multiversion/java/Link107.hpp>
 #include <basalt/wire/protocol/play/PlayPackets.hpp>
 
+#include <cstdint>
+
 namespace basalt::wire::multiversion::java {
 
 bool Link107::clientbound(protocol::ProtocolState state, MutablePacket& packet) {

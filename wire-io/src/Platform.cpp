@@ -2,6 +2,7 @@
 
 #include <atomic>
 #include <csignal>
+#include <cstdint>
 #include <cstdio>
 #include <thread>
 

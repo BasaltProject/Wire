@@ -2,6 +2,7 @@
 #include <basalt/wire/protocol/login/LoginPluginPackets.hpp>
 
 #include <algorithm>
+#include <cstdint>
 
 namespace basalt::wire::protocol::login {
 namespace {

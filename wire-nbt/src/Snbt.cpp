@@ -5,6 +5,7 @@
 #include <array>
 #include <cctype>
 #include <charconv>
+#include <cstdint>
 #include <cstdlib>
 #include <system_error>
 

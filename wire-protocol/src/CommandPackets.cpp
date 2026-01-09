@@ -1,6 +1,8 @@
 #include <basalt/wire/protocol/ProtocolBuffer.hpp>
 #include <basalt/wire/protocol/play/CommandPackets.hpp>
 
+#include <cstdint>
+
 namespace basalt::wire::protocol::play {
 namespace {
 

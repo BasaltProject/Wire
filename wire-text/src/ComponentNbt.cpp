@@ -1,5 +1,7 @@
 #include <basalt/wire/text/ComponentNbt.hpp>
 
+#include <cstdint>
+
 namespace basalt::wire::text::componentNbt {
 namespace {
 

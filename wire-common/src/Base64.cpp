@@ -1,6 +1,7 @@
 #include <basalt/wire/common/Base64.hpp>
 
 #include <array>
+#include <cstdint>
 
 namespace basalt::wire::common::base64 {
 namespace {

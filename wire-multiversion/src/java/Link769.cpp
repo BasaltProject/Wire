@@ -3,6 +3,8 @@
 #include <basalt/wire/protocol/VarInt.hpp>
 #include <basalt/wire/protocol/play/SimplePackets.hpp>
 
+#include <cstdint>
+
 namespace basalt::wire::multiversion::java {
 namespace {
 

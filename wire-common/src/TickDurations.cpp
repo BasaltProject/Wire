@@ -1,6 +1,7 @@
 #include <basalt/wire/common/timings/TickDurations.hpp>
 
 #include <algorithm>
+#include <cstdint>
 #include <limits>
 
 namespace basalt::wire::common {

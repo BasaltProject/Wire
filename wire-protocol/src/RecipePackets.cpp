@@ -1,6 +1,8 @@
 #include <basalt/wire/protocol/ProtocolBuffer.hpp>
 #include <basalt/wire/protocol/play/RecipePackets.hpp>
 
+#include <cstdint>
+
 namespace basalt::wire::protocol::play {
 
 bool operator==(const SlotDisplay::Composite& lhs, const SlotDisplay::Composite& rhs) {

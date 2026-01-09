@@ -1,6 +1,7 @@
 #include <basalt/wire/common/placeholder/Placeholders.hpp>
 
 #include <algorithm>
+#include <cstdint>
 #include <format>
 
 namespace basalt::wire::common::placeholder {

@@ -3,6 +3,7 @@
 #include <basalt/wire/protocol/ProtocolBuffer.hpp>
 
 #include <array>
+#include <cstdint>
 #include <cstring>
 #include <mbedtls/md.h>
 

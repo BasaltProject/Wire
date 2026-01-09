@@ -3,6 +3,8 @@
 #include <basalt/wire/protocol/login/LoginPackets.hpp>
 #include <basalt/wire/text/ComponentJson.hpp>
 
+#include <cstdint>
+
 namespace basalt::wire::protocol::login {
 
 void LoginStartPacket::write(io::ByteBuffer& buffer) const {

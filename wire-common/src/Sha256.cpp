@@ -1,6 +1,7 @@
 #include <basalt/wire/common/hash/Sha256.hpp>
 
 #include <bit>
+#include <cstdint>
 #include <vector>
 
 namespace basalt::wire::common {

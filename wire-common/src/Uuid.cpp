@@ -1,6 +1,7 @@
 #include <basalt/wire/common/Uuid.hpp>
 #include <basalt/wire/common/hash/Md5.hpp>
 
+#include <cstdint>
 #include <random>
 #include <string>
 

@@ -3,6 +3,8 @@
 
 #include <basalt/wire/nbt/NbtIO.hpp>
 
+#include <cstdint>
+
 namespace basalt::wire::nbt::nbtIO {
 namespace {
 

@@ -3,6 +3,7 @@
 #include <basalt/wire/protocol/play/PalettedContainer.hpp>
 
 #include <algorithm>
+#include <cstdint>
 
 namespace basalt::wire::multiversion {
 namespace {

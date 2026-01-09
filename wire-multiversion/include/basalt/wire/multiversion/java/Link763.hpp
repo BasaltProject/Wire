@@ -3,6 +3,7 @@
 #include <basalt/wire/multiversion/java/RenumberingLink.hpp>
 #include <basalt/wire/nbt/NbtTag.hpp>
 
+#include <cstdint>
 #include <map>
 #include <string>
 #include <utility>

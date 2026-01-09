@@ -1,5 +1,7 @@
 #include <basalt/wire/multiversion/ComposedTables.hpp>
 
+#include <cstdint>
+
 namespace basalt::wire::multiversion {
 namespace {
 

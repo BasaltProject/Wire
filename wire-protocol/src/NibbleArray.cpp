@@ -1,6 +1,7 @@
 #include <basalt/wire/protocol/play/NibbleArray.hpp>
 
 #include <cassert>
+#include <cstdint>
 
 namespace basalt::wire::protocol::play::nibbleArray {
 

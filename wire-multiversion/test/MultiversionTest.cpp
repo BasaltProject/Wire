@@ -17,6 +17,7 @@
 
 #include <doctest.h>
 
+#include <cstdint>
 #include <map>
 #include <vector>
 

@@ -6,6 +6,8 @@
 #include <basalt/wire/protocol/play/SimplePackets.hpp>
 #include <basalt/wire/protocol/play/WorldPackets.hpp>
 
+#include <cstdint>
+
 namespace basalt::wire::multiversion::java {
 namespace {
 

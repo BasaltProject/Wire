@@ -12,6 +12,7 @@
 
 #include <doctest.h>
 
+#include <cstdint>
 #include <string>
 
 using namespace basalt::wire::common;

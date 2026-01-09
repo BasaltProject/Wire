@@ -1,6 +1,8 @@
 #include <basalt/wire/io/Compression.hpp>
 #include <basalt/wire/io/ZipReader.hpp>
 
+#include <cstdint>
+
 namespace basalt::wire::io {
 namespace {
 

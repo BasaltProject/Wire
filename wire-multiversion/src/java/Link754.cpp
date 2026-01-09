@@ -7,6 +7,7 @@
 #include <basalt/wire/protocol/play/WorldPackets.hpp>
 
 #include <algorithm>
+#include <cstdint>
 #include <vector>
 
 namespace basalt::wire::multiversion::java {

@@ -2,6 +2,7 @@
 
 #include <array>
 #include <chrono>
+#include <cstdint>
 #include <ctime>
 
 namespace basalt::wire::common {

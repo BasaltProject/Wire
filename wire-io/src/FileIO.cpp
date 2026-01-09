@@ -1,5 +1,6 @@
 #include <basalt/wire/io/FileIO.hpp>
 
+#include <cstdint>
 #include <cstdio>
 #include <filesystem>
 #include <system_error>

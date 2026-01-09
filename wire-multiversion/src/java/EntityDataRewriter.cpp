@@ -11,6 +11,7 @@
 #include <basalt/wire/text/Serializers.hpp>
 
 #include <algorithm>
+#include <cstdint>
 #include <utility>
 
 namespace basalt::wire::multiversion::java {

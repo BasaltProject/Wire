@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <charconv>
+#include <cstdint>
 
 namespace basalt::wire::multiversion {
 namespace {

@@ -1,6 +1,7 @@
 #include <basalt/wire/text/TranslationResolver.hpp>
 
 #include <charconv>
+#include <cstdint>
 #include <optional>
 
 namespace basalt::wire::text {

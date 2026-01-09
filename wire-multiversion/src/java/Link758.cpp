@@ -8,6 +8,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cstdint>
 
 namespace basalt::wire::multiversion::java {
 namespace {

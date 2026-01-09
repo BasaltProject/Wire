@@ -1,6 +1,7 @@
 #include <basalt/wire/common/timings/Timings.hpp>
 
 #include <algorithm>
+#include <cstdint>
 
 namespace basalt::wire::common {
 

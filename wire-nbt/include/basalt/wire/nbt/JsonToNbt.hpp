@@ -3,6 +3,7 @@
 #include <basalt/wire/common/json/Json.hpp>
 #include <basalt/wire/nbt/NbtTag.hpp>
 
+#include <cstdint>
 #include <expected>
 
 namespace basalt::wire::nbt {
