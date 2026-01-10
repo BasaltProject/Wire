@@ -228,6 +228,16 @@ TcpListener& TcpListener::operator=(TcpListener&& other) noexcept {
 TcpListener::~TcpListener() { close(); }
 
 void TcpListener::close() noexcept {
+    // Closing the descriptor wakes a blocked accept() on macOS and Windows, but not on Linux: the
+    // acceptor thread stays parked until a connection arrives, so the process never exits. Shutting
+    // the socket down first is what breaks it there, and is a harmless no-op elsewhere.
+    if (handle_ >= 0) {
+#if defined(_WIN32)
+        ::shutdown(static_cast<SOCKET>(handle_), SD_BOTH);
+#else
+        ::shutdown(static_cast<int>(handle_), SHUT_RDWR);
+#endif
+    }
     closeHandle(handle_);
     handle_ = -1;
 }
