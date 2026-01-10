@@ -21,6 +21,7 @@ if(NOT TARGET basalt_warnings)
     include(BasaltWarnings)
     include(BasaltParity)
     include(BasaltSanitizers)
+    include(BasaltPlatform)
     include(BasaltModule)
     include(BasaltEmbed)
     # The script half of basalt_embed_text(), named here so a consumer that pulled Wire in with

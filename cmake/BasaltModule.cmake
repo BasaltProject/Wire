@@ -22,7 +22,7 @@ function(basalt_module NAME)
     )
     target_link_libraries(${NAME}
         PUBLIC ${ARG_DEPENDS}
-        PRIVATE ${ARG_PRIVATE_DEPENDS} basalt::warnings basalt::sanitizers basalt::parity
+        PRIVATE ${ARG_PRIVATE_DEPENDS} basalt::warnings basalt::sanitizers basalt::parity basalt::platform
     )
     set_target_properties(${NAME} PROPERTIES
         CXX_STANDARD 23
@@ -41,7 +41,7 @@ function(basalt_test NAME)
 
     add_executable(${NAME} ${ARG_SOURCES})
     target_link_libraries(${NAME} PRIVATE ${ARG_DEPENDS} basalt::doctest basalt::warnings basalt::sanitizers
-                                    basalt::parity)
+                                    basalt::parity basalt::platform basalt::test_warnings)
     set_target_properties(${NAME} PROPERTIES
         CXX_STANDARD 23
         CXX_STANDARD_REQUIRED ON
@@ -58,7 +58,8 @@ function(basalt_bench NAME)
     cmake_parse_arguments(ARG "" "" "SOURCES;DEPENDS" ${ARGN})
 
     add_executable(${NAME} ${ARG_SOURCES})
-    target_link_libraries(${NAME} PRIVATE ${ARG_DEPENDS} basalt::warnings basalt::sanitizers basalt::parity)
+    target_link_libraries(${NAME} PRIVATE ${ARG_DEPENDS} basalt::warnings basalt::sanitizers basalt::parity
+                                    basalt::platform)
     set_target_properties(${NAME} PROPERTIES
         CXX_STANDARD 23
         CXX_STANDARD_REQUIRED ON
