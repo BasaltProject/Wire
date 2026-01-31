@@ -67,4 +67,38 @@ std::optional<SignUpdatePacket> SignUpdatePacket::read(io::ByteBuffer& buffer) {
     return buffer.failed() ? std::nullopt : std::optional{std::move(packet)};
 }
 
+void SetCommandBlockPacket::write(io::ByteBuffer& buffer) const {
+    buffer.writeLong(pos.pack());
+    writeString(buffer, command);
+    varInt::write(buffer, static_cast<std::int32_t>(mode));
+    std::int32_t flags = 0;
+    if (trackOutput) {
+        flags |= kTrackOutputFlag;
+    }
+    if (conditional) {
+        flags |= kConditionalFlag;
+    }
+    if (automatic) {
+        flags |= kAutomaticFlag;
+    }
+    buffer.writeByte(static_cast<std::uint8_t>(flags));
+}
+
+std::optional<SetCommandBlockPacket> SetCommandBlockPacket::read(io::ByteBuffer& buffer) {
+    SetCommandBlockPacket packet;
+    packet.pos = BlockPos::unpack(buffer.readLong());
+    packet.command = readString(buffer);
+    const std::int32_t mode = varInt::read(buffer);
+    // A mode the client should never send lands on the impulse block, which is what an unknown enum
+    // value does in vanilla's own `readEnum`: it would throw there, and here it is the harmless one.
+    packet.mode = mode == static_cast<std::int32_t>(Mode::Sequence) ? Mode::Sequence
+                  : mode == static_cast<std::int32_t>(Mode::Auto)   ? Mode::Auto
+                                                                    : Mode::Redstone;
+    const std::int32_t flags = buffer.readByte();
+    packet.trackOutput = (flags & kTrackOutputFlag) != 0;
+    packet.conditional = (flags & kConditionalFlag) != 0;
+    packet.automatic = (flags & kAutomaticFlag) != 0;
+    return buffer.failed() ? std::nullopt : std::optional{std::move(packet)};
+}
+
 } // namespace basalt::wire::protocol::play
