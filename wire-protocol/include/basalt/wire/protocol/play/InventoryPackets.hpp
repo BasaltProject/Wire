@@ -314,4 +314,21 @@ struct ContainerButtonClickPacket {
     friend bool operator==(const ContainerButtonClickPacket&, const ContainerButtonClickPacket&) = default;
 };
 
+/// Serverbound, id 0x14: a slot of the open window switched on or off.
+///
+/// Only the crafter has such slots: a switched-off slot takes nothing and a comparator counts it as
+/// full, so this is how a player picks which shape the crafter builds.
+struct ContainerSlotStateChangedPacket {
+    static constexpr std::int32_t kId = 0x14;
+
+    std::int32_t slotId = 0;
+    std::int32_t containerId = 0;
+    bool newState = false;
+
+    void write(io::ByteBuffer& buffer) const;
+    [[nodiscard]] static std::optional<ContainerSlotStateChangedPacket> read(io::ByteBuffer& buffer);
+
+    friend bool operator==(const ContainerSlotStateChangedPacket&, const ContainerSlotStateChangedPacket&) = default;
+};
+
 } // namespace basalt::wire::protocol::play

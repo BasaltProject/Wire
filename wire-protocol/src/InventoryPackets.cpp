@@ -375,4 +375,18 @@ std::optional<ContainerButtonClickPacket> ContainerButtonClickPacket::read(io::B
     return buffer.failed() ? std::nullopt : std::optional{packet};
 }
 
+void ContainerSlotStateChangedPacket::write(io::ByteBuffer& buffer) const {
+    varInt::write(buffer, slotId);
+    varInt::write(buffer, containerId);
+    buffer.writeByte(newState ? 1 : 0);
+}
+
+std::optional<ContainerSlotStateChangedPacket> ContainerSlotStateChangedPacket::read(io::ByteBuffer& buffer) {
+    ContainerSlotStateChangedPacket packet;
+    packet.slotId = varInt::read(buffer);
+    packet.containerId = varInt::read(buffer);
+    packet.newState = buffer.readByte() != 0;
+    return buffer.failed() ? std::nullopt : std::optional{packet};
+}
+
 } // namespace basalt::wire::protocol::play

@@ -942,6 +942,12 @@ TEST_CASE("the container packets round trip") {
     io::ByteBuffer buttonBuffer;
     button.write(buttonBuffer);
     CHECK(*ContainerButtonClickPacket::read(buttonBuffer) == button);
+
+    // The slot comes **before** the window in this one, which is the other way round from the click.
+    const ContainerSlotStateChangedPacket state{4, 7, true};
+    io::ByteBuffer stateBuffer;
+    state.write(stateBuffer);
+    CHECK(*ContainerSlotStateChangedPacket::read(stateBuffer) == state);
 }
 
 TEST_CASE("a container click skips its hashed prediction without losing the stream") {
