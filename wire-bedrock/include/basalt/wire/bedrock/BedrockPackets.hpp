@@ -14,6 +14,17 @@
 
 namespace basalt::wire::bedrock {
 
+/// Every shape below that a protocol changed, changed at the same one: 2168 rewrote the skin, the
+/// metadata, the player list, the chunk, the two resource pack packets and two fields of
+/// `start_game`, and everything older in the window reads the shape underneath. A writer that
+/// takes a protocol takes it for that reason and no other.
+[[nodiscard]] constexpr bool writesNativeShapes(const int protocol) { return protocol >= kNativeBedrockProtocol; }
+
+/// The one shape in the window that also changed somewhere other than 2168: `start_game` grew three
+/// fields at 1001 (two about editor worlds and one asking whether chat is logged), of which 2168
+/// kept the first two and dropped the third. The three protocols below 1001 have none of them.
+inline constexpr int kStartGameGrewProtocol = 1001;
+
 /// What a client asks for before anything else, and the only packet either side sends in the
 /// clear and uncompressed.
 struct RequestNetworkSettings {
@@ -46,7 +57,7 @@ enum class ResourcePackResponse : std::uint8_t {
     Completed = 4,
 };
 
-[[nodiscard]] std::optional<ResourcePackResponse> readResourcePackResponse(io::ByteBuffer& buffer);
+[[nodiscard]] std::optional<ResourcePackResponse> readResourcePackResponse(io::ByteBuffer& buffer, int protocol);
 
 /// The states a client is told it is in. The numbers are the protocol's.
 enum class PlayStatus : std::int32_t {
@@ -60,7 +71,7 @@ void writePlayStatus(io::ByteBuffer& buffer, PlayStatus status);
 
 void writeServerToClientHandshake(io::ByteBuffer& buffer, std::string_view jwt);
 
-void writeResourcePacksInfo(io::ByteBuffer& buffer);
+void writeResourcePacksInfo(io::ByteBuffer& buffer, int protocol);
 
 void writeResourcePackStack(io::ByteBuffer& buffer, std::string_view gameVersion);
 
@@ -97,7 +108,7 @@ struct StartGameInfo {
     std::string worldId;
 };
 
-void writeStartGame(io::ByteBuffer& buffer, const StartGameInfo& info);
+void writeStartGame(io::ByteBuffer& buffer, const StartGameInfo& info, int protocol);
 
 /// What a line of text is for. The number is the protocol's own order, and it decides what the
 /// client does with the line: a chat message gets a name in front, a raw one is printed as it is.
@@ -129,7 +140,7 @@ struct IncomingText {
 /// Moves a player where the server says, rather than where the client thinks it is. The position
 /// is the eyes, like everywhere else in this protocol.
 void writeTeleport(io::ByteBuffer& buffer, std::uint64_t runtimeEntityId, float x, float y, float z, float yaw,
-                   float pitch, std::uint64_t tick);
+                   float pitch, std::uint64_t tick, int protocol);
 
 /// What game a player is playing. The numbers are Bedrock's own: survival, creative, adventure,
 /// then the two that watch.
@@ -214,18 +225,18 @@ void writeNetworkChunkPublisherUpdate(io::ByteBuffer& buffer, std::int32_t x, st
 /// An empty chunk column: every subchunk absent, biomes flat, no block entities. It is what a
 /// client needs to stop waiting for a chunk it was told to expect.
 void writeEmptyLevelChunk(io::ByteBuffer& buffer, std::int32_t chunkX, std::int32_t chunkZ, std::uint32_t subChunkCount,
-                          std::int32_t dimension);
+                          std::int32_t dimension, int protocol);
 
 /// Which bit of the flags field a flag is.
 [[nodiscard]] constexpr std::uint64_t flagBit(const EntityFlag flag) { return 1ULL << static_cast<std::uint8_t>(flag); }
 
 /// One field of entity metadata. Since 2168 the format goes out twice, as a varint and then as a
 /// byte, and the client refuses a packet where the two disagree.
-void writeMetadataLong(io::ByteBuffer& buffer, EntityDataId id, std::int64_t value);
+void writeMetadataLong(io::ByteBuffer& buffer, EntityDataId id, std::int64_t value, int protocol);
 
-void writeMetadataFloat(io::ByteBuffer& buffer, EntityDataId id, float value);
+void writeMetadataFloat(io::ByteBuffer& buffer, EntityDataId id, float value, int protocol);
 
-void writeMetadataString(io::ByteBuffer& buffer, EntityDataId id, std::string_view value);
+void writeMetadataString(io::ByteBuffer& buffer, EntityDataId id, std::string_view value, int protocol);
 
 /// What a player looks like. Bedrock will not draw somebody it has no skin for, and a server that
 /// redistributed Mojang's would be shipping their art, so this is a plain image made here.
@@ -255,10 +266,11 @@ struct PlayerListEntry {
     SkinInfo skin;
 };
 
-void writePlayerListAdd(io::ByteBuffer& buffer, std::span<const PlayerListEntry> entries);
+void writePlayerListAdd(io::ByteBuffer& buffer, std::span<const PlayerListEntry> entries, int protocol);
 
 /// The other half of the same packet: who is no longer here, by uuid.
-void writePlayerListRemove(io::ByteBuffer& buffer, std::span<const std::pair<std::uint64_t, std::uint64_t>> uuids);
+void writePlayerListRemove(io::ByteBuffer& buffer, std::span<const std::pair<std::uint64_t, std::uint64_t>> uuids,
+                           int protocol);
 
 /// Somebody else, as an entity in the world. The position is the eyes, like everywhere else here.
 struct AddPlayerInfo {
@@ -275,7 +287,7 @@ struct AddPlayerInfo {
     std::int32_t gameType = 0;
 };
 
-void writeAddPlayer(io::ByteBuffer& buffer, const AddPlayerInfo& info);
+void writeAddPlayer(io::ByteBuffer& buffer, const AddPlayerInfo& info, int protocol);
 
 /// Where somebody else is now. The rotation goes as a byte a turn, which is all this packet has
 /// room for and is what the client draws from.
@@ -284,6 +296,19 @@ void writeMoveEntity(io::ByteBuffer& buffer, std::uint64_t runtimeEntityId, floa
 
 /// Somebody else is gone. Bedrock removes by the id that never changes, not the runtime one.
 void writeRemoveEntity(io::ByteBuffer& buffer, std::int64_t entityId);
+
+/// A command, as a Bedrock client is told about it. The description is what its own command list
+/// draws next to the name.
+struct CommandInfo {
+    std::string name;
+    std::string description;
+};
+
+/// The commands a client may use. Bedrock parses what is typed against this list before it sends
+/// anything, so a command missing from here cannot be run at all, however well the server handles
+/// it. Only the names go out: every command is declared as taking one optional line of text, which
+/// is what a server that parses its own arguments wants, and the same shape on all five protocols.
+void writeAvailableCommands(io::ByteBuffer& buffer, std::span<const CommandInfo> commands);
 
 /// One of the numbers a client draws its HUD from. Java keeps the bounds to itself and sends only
 /// the value; Bedrock is told all of them, so every attribute carries its own range.

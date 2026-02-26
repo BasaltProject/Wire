@@ -79,7 +79,7 @@ void BedrockConnection::handlePacket(BedrockPacket packet, io::ByteBuffer& body)
         writePlayStatus(scratch_, PlayStatus::LoginSuccess);
         sendPacket(BedrockPacket::PlayStatus, scratch_.readable());
         scratch_.clear();
-        writeResourcePacksInfo(scratch_);
+        writeResourcePacksInfo(scratch_, protocolVersion_);
         sendPacket(BedrockPacket::ResourcePacksInfo, scratch_.readable());
         flush();
         return;
@@ -183,7 +183,7 @@ void BedrockConnection::onResourcePackResponse(io::ByteBuffer& body) {
     if (state_ != BedrockState::ResourcePacks) {
         return;
     }
-    const auto response = readResourcePackResponse(body);
+    const auto response = readResourcePackResponse(body, protocolVersion_);
     if (!response) {
         disconnect("bad resource pack response");
         return;
