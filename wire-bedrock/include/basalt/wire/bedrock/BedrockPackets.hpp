@@ -297,6 +297,35 @@ void writeMoveEntity(io::ByteBuffer& buffer, std::uint64_t runtimeEntityId, floa
 /// Somebody else is gone. Bedrock removes by the id that never changes, not the runtime one.
 void writeRemoveEntity(io::ByteBuffer& buffer, std::int64_t entityId);
 
+/// Which of Bedrock's three dimensions a world is drawn as. The numbers are the protocol's own.
+enum class BedrockDimension : std::int32_t {
+    Overworld = 0,
+    Nether = 1,
+    End = 2,
+};
+
+/// Moves a client to another dimension: the sky, the fog and the chunk cache all come from this.
+/// The client answers when it has finished, and the chunks go out after that.
+void writeChangeDimension(io::ByteBuffer& buffer, BedrockDimension dimension, float x, float y, float z, bool respawn);
+
+/// The sentence on the screen a dead player is shown. Bedrock draws that screen off the health
+/// attribute reaching zero; this only puts the words on it.
+void writeDeathInfo(io::ByteBuffer& buffer, std::string_view cause);
+
+/// Where a respawn has got to. The numbers are the protocol's own order: the server is looking for
+/// somewhere to put them, the server is ready, and the client is.
+enum class RespawnState : std::uint8_t {
+    Searching = 0,
+    ServerReady = 1,
+    ClientReady = 2,
+};
+
+void writeRespawn(io::ByteBuffer& buffer, float x, float y, float z, RespawnState state, std::uint64_t runtimeEntityId);
+
+/// What a client answers with when somebody presses the button. Only the state is read: the
+/// position it sends is where it thinks it was, and the server decides where it goes.
+[[nodiscard]] std::optional<RespawnState> readRespawn(io::ByteBuffer& buffer);
+
 /// A command, as a Bedrock client is told about it. The description is what its own command list
 /// draws next to the name.
 struct CommandInfo {

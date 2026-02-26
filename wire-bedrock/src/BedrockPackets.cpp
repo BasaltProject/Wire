@@ -786,6 +786,41 @@ constexpr std::int32_t kArgMessage = 67;
 
 } // namespace
 
+void writeChangeDimension(io::ByteBuffer& buffer, const BedrockDimension dimension, const float x, const float y,
+                          const float z, const bool respawn) {
+    writeVarInt(buffer, static_cast<std::int32_t>(dimension));
+    writeFloatLE(buffer, x);
+    writeFloatLE(buffer, y);
+    writeFloatLE(buffer, z);
+    writeBool(buffer, respawn);
+    writeBool(buffer, false); // No loading screen of its own.
+}
+
+void writeDeathInfo(io::ByteBuffer& buffer, const std::string_view cause) {
+    writeString(buffer, cause);
+    writeVarUInt(buffer, 0); // No further lines: the cause is the whole sentence.
+}
+
+void writeRespawn(io::ByteBuffer& buffer, const float x, const float y, const float z, const RespawnState state,
+                  const std::uint64_t runtimeEntityId) {
+    writeFloatLE(buffer, x);
+    writeFloatLE(buffer, y);
+    writeFloatLE(buffer, z);
+    buffer.writeByte(static_cast<std::uint8_t>(state));
+    writeVarULong(buffer, runtimeEntityId);
+}
+
+std::optional<RespawnState> readRespawn(io::ByteBuffer& buffer) {
+    static_cast<void>(readFloatLE(buffer));
+    static_cast<void>(readFloatLE(buffer));
+    static_cast<void>(readFloatLE(buffer));
+    const std::uint8_t state = buffer.readByte();
+    if (buffer.failed() || state > static_cast<std::uint8_t>(RespawnState::ClientReady)) {
+        return std::nullopt;
+    }
+    return static_cast<RespawnState>(state);
+}
+
 void writeAvailableCommands(io::ByteBuffer& buffer, const std::span<const CommandInfo> commands) {
     writeVarUInt(buffer, 0); // No enum values, because there are no enums,
     writeVarUInt(buffer, 0); // no subcommand words,
