@@ -319,6 +319,64 @@ void writeStartGame(io::ByteBuffer& buffer, const StartGameInfo& info) {
     writeString(buffer, ""); // No owner.
 }
 
+void writeSetTime(io::ByteBuffer& buffer, const std::int32_t time) { writeVarInt(buffer, time); }
+
+std::optional<std::string> readCommandRequest(io::ByteBuffer& buffer) {
+    std::string command = readString(buffer);
+    if (buffer.failed() || command.empty()) {
+        return std::nullopt;
+    }
+    // A client sends the slash with it; the dispatcher wants the line without one.
+    if (command.front() == '/') {
+        command.erase(command.begin());
+    }
+    return command;
+}
+
+void writeModalFormRequest(io::ByteBuffer& buffer, const std::uint32_t formId, const std::string_view json) {
+    writeVarUInt(buffer, formId);
+    writeString(buffer, json);
+}
+
+void writeCloseForm(io::ByteBuffer& buffer) {
+    static_cast<void>(buffer); // Nothing in it: the packet itself is the message.
+}
+
+std::optional<ModalFormResponse> readModalFormResponse(io::ByteBuffer& buffer) {
+    ModalFormResponse response;
+    response.formId = readVarUInt(buffer);
+    if (buffer.failed()) {
+        return std::nullopt;
+    }
+    if (buffer.readByte() != 0) {
+        response.data = readString(buffer);
+    }
+    // What follows is why it was dismissed, which only matters when there is no answer, and "no
+    // answer" is already what an empty one means here.
+    if (buffer.failed()) {
+        return std::nullopt;
+    }
+    return response;
+}
+
+std::string simpleFormJson(const std::string_view title, const std::string_view content,
+                           const std::span<const std::string> buttons) {
+    common::JsonObject form;
+    form.set("type", common::JsonValue::of(std::string{"form"}));
+    form.set("title", common::JsonValue::of(std::string{title}));
+    form.set("content", common::JsonValue::of(std::string{content}));
+
+    std::vector<common::JsonValue> entries;
+    entries.reserve(buttons.size());
+    for (const std::string& button : buttons) {
+        common::JsonObject entry;
+        entry.set("text", common::JsonValue::of(button));
+        entries.push_back(common::JsonValue::ofObject(std::move(entry)));
+    }
+    form.set("buttons", common::JsonValue::ofArray(std::move(entries)));
+    return common::writeJson(common::JsonValue::ofObject(std::move(form)));
+}
+
 std::optional<PlayerAuthInput> readPlayerAuthInput(io::ByteBuffer& buffer) {
     PlayerAuthInput input;
     // The rotation is split around the position: pitch and yaw lead, the head's own yaw follows the

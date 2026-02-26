@@ -3,6 +3,7 @@ basalt_module(wire-bedrock
         src/BedrockBatch.cpp
         src/BedrockCipher.cpp
         src/BedrockConnection.cpp
+        src/BedrockGate.cpp
         src/BedrockKeys.cpp
         src/BedrockPacketNames.cpp
         src/BedrockPackets.cpp

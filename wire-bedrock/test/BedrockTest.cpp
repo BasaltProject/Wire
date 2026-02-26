@@ -2,6 +2,7 @@
 #include <basalt/wire/bedrock/BedrockBatch.hpp>
 #include <basalt/wire/bedrock/BedrockCipher.hpp>
 #include <basalt/wire/bedrock/BedrockConnection.hpp>
+#include <basalt/wire/bedrock/BedrockGate.hpp>
 #include <basalt/wire/bedrock/BedrockKeys.hpp>
 #include <basalt/wire/bedrock/BedrockPackets.hpp>
 #include <basalt/wire/bedrock/BedrockTypes.hpp>
@@ -663,5 +664,74 @@ TEST_CASE("a line of chat is written the way a client reads one, both shapes") {
         const auto back = readText(buffer);
         REQUIRE(back.has_value());
         CHECK(back->message == " ");
+    }
+}
+
+TEST_CASE("the door tells an old client and a new one apart, and says so by number") {
+    const BedrockGate gate{{kNativeBedrockProtocol}, BedrockFuturePolicy::Refuse};
+
+    CHECK(gate.verdict(kNativeBedrockProtocol).kind == BedrockVerdict::Kind::Speak);
+    CHECK(gate.verdict(kNativeBedrockProtocol).allowed());
+    CHECK(gate.verdict(924).kind == BedrockVerdict::Kind::TooOld);
+    CHECK_FALSE(gate.verdict(924).allowed());
+    CHECK(gate.verdict(kNativeBedrockProtocol + 1).kind == BedrockVerdict::Kind::TooNew);
+
+    // What each one reads is about the other side, not about itself.
+    CHECK(gate.refusalFor(gate.verdict(924), "1.26.40").find("Update your game") != std::string::npos);
+    CHECK(gate.refusalFor(gate.verdict(9999), "1.26.40").find("does not speak your version") != std::string::npos);
+
+    SUBCASE("a newer client is let in when the operator asked for that, and the log is told once") {
+        const BedrockGate warning{{kNativeBedrockProtocol}, BedrockFuturePolicy::Warn};
+        const BedrockVerdict verdict = warning.verdict(9999);
+        CHECK(verdict.kind == BedrockVerdict::Kind::Unknown);
+        CHECK(verdict.warn);
+        CHECK(verdict.allowed());
+
+        const BedrockGate quiet{{kNativeBedrockProtocol}, BedrockFuturePolicy::Accept};
+        CHECK(quiet.verdict(9999).allowed());
+        CHECK_FALSE(quiet.verdict(9999).warn);
+        // Old is old whatever the policy for new ones says.
+        CHECK_FALSE(quiet.verdict(924).allowed());
+    }
+
+    SUBCASE("a word that is not a policy is refused rather than guessed") {
+        CHECK(parseBedrockFuturePolicy("warn") == BedrockFuturePolicy::Warn);
+        CHECK_FALSE(parseBedrockFuturePolicy("maybe").has_value());
+    }
+}
+
+TEST_CASE("a form goes out as json and its answer comes back as a number") {
+    const std::vector<std::string> buttons{"First button", "Second button"};
+    const std::string json = simpleFormJson("Test Menu", "", buttons);
+    CHECK(json == R"({"type":"form","title":"Test Menu","content":"","buttons":[{"text":"First button"},)"
+                  R"({"text":"Second button"}]})");
+
+    io::ByteBuffer request;
+    writeModalFormRequest(request, 7, json);
+    CHECK(readVarUInt(request) == 7);
+    CHECK(readString(request) == json);
+
+    // What a client sends back: the button it pressed, as the json number its UI writes.
+    io::ByteBuffer answer;
+    writeVarUInt(answer, 7);
+    answer.writeByte(1);
+    writeString(answer, "1\n");
+    answer.writeByte(0);
+    const auto back = readModalFormResponse(answer);
+    REQUIRE(back.has_value());
+    CHECK(back->formId == 7);
+    REQUIRE(back->data.has_value());
+    CHECK(*back->data == "1\n");
+
+    SUBCASE("a dismissed form answers with nothing at all, which is not a button") {
+        io::ByteBuffer dismissed;
+        writeVarUInt(dismissed, 7);
+        dismissed.writeByte(0);
+        dismissed.writeByte(1);
+        dismissed.writeByte(0);
+        const auto empty = readModalFormResponse(dismissed);
+        REQUIRE(empty.has_value());
+        CHECK(empty->formId == 7);
+        CHECK_FALSE(empty->data.has_value());
     }
 }

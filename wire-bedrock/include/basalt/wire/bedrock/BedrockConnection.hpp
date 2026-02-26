@@ -2,6 +2,7 @@
 
 #include <basalt/wire/bedrock/BedrockBatch.hpp>
 #include <basalt/wire/bedrock/BedrockCipher.hpp>
+#include <basalt/wire/bedrock/BedrockGate.hpp>
 #include <basalt/wire/bedrock/BedrockKeys.hpp>
 #include <basalt/wire/bedrock/BedrockPacketIds.hpp>
 #include <basalt/wire/bedrock/BedrockPackets.hpp>
@@ -35,7 +36,8 @@ public:
     using ReadyHandler = std::function<void()>;
     using PacketHandler = std::function<void(BedrockPacket, io::ByteBuffer&)>;
 
-    BedrockConnection(RakSession& transport, std::shared_ptr<const EcKeyPair> keys, std::string gameVersion);
+    BedrockConnection(RakSession& transport, std::shared_ptr<const EcKeyPair> keys, std::string gameVersion,
+                      BedrockGate gate = BedrockGate{});
 
     [[nodiscard]] BedrockState state() const noexcept { return state_; }
 
@@ -54,6 +56,13 @@ public:
 
     /// Everything this class does not answer itself.
     void onPacket(PacketHandler handler) { onPacket_ = std::move(handler); }
+
+    /// Called when a client was turned away at the door, with the protocol it claimed and what it
+    /// was told. For the log: the client already has its answer.
+    void onRefused(std::function<void(int, const std::string&)> handler) { onRefused_ = std::move(handler); }
+
+    /// Called when a client newer than this build was let in anyway.
+    void onWarning(std::function<void(int)> handler) { onWarning_ = std::move(handler); }
 
     /// Takes one game payload off RakNet: a batch, maybe encrypted, maybe compressed.
     void receive(std::span<const std::uint8_t> payload);
@@ -76,6 +85,7 @@ private:
     RakSession& transport_;
     std::shared_ptr<const EcKeyPair> keys_;
     std::string gameVersion_;
+    BedrockGate gate_;
 
     BedrockState state_ = BedrockState::AwaitingSettings;
     int protocolVersion_ = 0;
@@ -88,6 +98,8 @@ private:
     LoginHandler onLogin_;
     ReadyHandler onReady_;
     PacketHandler onPacket_;
+    std::function<void(int, const std::string&)> onRefused_;
+    std::function<void(int)> onWarning_;
 
     std::vector<std::vector<std::uint8_t>> outgoing_;
     std::vector<std::vector<std::uint8_t>> incoming_;
