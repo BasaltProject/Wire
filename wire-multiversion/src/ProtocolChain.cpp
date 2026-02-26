@@ -1,5 +1,6 @@
 #include <basalt/wire/io/ByteBuffer.hpp>
 #include <basalt/wire/multiversion/ProtocolChain.hpp>
+#include <basalt/wire/multiversion/java/RegistryMembers.hpp>
 #include <basalt/wire/nbt/NbtTag.hpp>
 #include <basalt/wire/protocol/configuration/ConfigurationPackets.hpp>
 
@@ -45,6 +46,82 @@ std::optional<nbt::NbtTag> withoutAttributes(const std::optional<nbt::NbtTag>& v
     nbt::NbtCompound rewritten = *element;
     rewritten.set("attributes", nbt::NbtTag::ofCompound(std::move(kept)));
     return nbt::NbtTag::ofCompound(std::move(rewritten));
+}
+
+/// Takes out of one element every member the older side has never seen, one and two levels deep,
+/// which is where the shape lives: a client compiled before a member refuses the whole registry
+/// rather than ignoring it. Deeper is a value, and an unexpected value it reads anyway.
+[[nodiscard]] nbt::NbtTag withoutUnknownMembers(const nbt::NbtTag& value, const std::string& registryId,
+                                                std::int32_t older, bool& changed) {
+    const nbt::NbtCompound* element = value.get<nbt::NbtCompound>();
+    if (element == nullptr) {
+        return value;
+    }
+
+    nbt::NbtCompound kept;
+    for (std::size_t index = 0; index < element->size(); ++index) {
+        const std::string& name = element->names()[index];
+        if (!java::versionHasMember(older, registryId, name)) {
+            changed = true;
+            continue;
+        }
+        const nbt::NbtTag& member = element->values()[index];
+        const nbt::NbtCompound* inner = member.get<nbt::NbtCompound>();
+        if (inner == nullptr) {
+            kept.set(name, member);
+            continue;
+        }
+
+        nbt::NbtCompound keptInner;
+        for (std::size_t innerIndex = 0; innerIndex < inner->size(); ++innerIndex) {
+            const std::string path = name + "." + inner->names()[innerIndex];
+            if (!java::versionHasMember(older, registryId, path)) {
+                changed = true;
+                continue;
+            }
+            keptInner.set(inner->names()[innerIndex], inner->values()[innerIndex]);
+        }
+        kept.set(name, nbt::NbtTag::ofCompound(std::move(keptInner)));
+    }
+    return nbt::NbtTag::ofCompound(std::move(kept));
+}
+
+/// The same, over a whole registry packet, after the link has reshaped whatever it knows how to
+/// reshape: what is left that the older side cannot name goes.
+void stripUnknownMembers(protocol::ProtocolState state, MutablePacket& packet, const ProtocolLink& link) {
+    if (state != protocol::ProtocolState::Configuration ||
+        packet.nativeId() != protocol::configuration::RegistryDataPacket::kId) {
+        return;
+    }
+    if (java::registryMembersOf(link.older()).empty()) {
+        return;
+    }
+
+    io::ByteBuffer input = io::ByteBuffer::wrap(packet.body);
+    const auto data = protocol::configuration::RegistryDataPacket::read(input);
+    if (!data) {
+        return;
+    }
+
+    bool changed = false;
+    protocol::configuration::RegistryDataPacket kept;
+    kept.registryId = data->registryId;
+    kept.entries.reserve(data->entries.size());
+    for (const protocol::configuration::RegistryEntry& entry : data->entries) {
+        if (!entry.value.has_value()) {
+            kept.entries.push_back(entry);
+            continue;
+        }
+        kept.entries.push_back(protocol::configuration::RegistryEntry{
+            entry.key, withoutUnknownMembers(*entry.value, data->registryId, link.older(), changed)});
+    }
+    if (!changed) {
+        return;
+    }
+
+    io::ByteBuffer output;
+    kept.write(output);
+    packet.body = output.toVector();
 }
 
 /// Takes out of a registry packet what this link's older side cannot read.
@@ -161,6 +238,11 @@ void ProtocolChain::clientbound(protocol::ProtocolState state, std::int32_t id, 
         }
         if (!dropped && !link.clientbound(state, packet)) {
             dropped = true;
+        }
+        // After the link, never before it: a link that turns one shape into another needs the new
+        // shape to still be there when it runs.
+        if (!dropped) {
+            stripUnknownMembers(state, packet, link);
         }
         renumberCarried(carried, state, link);
         if (!packet.extras.empty()) {
