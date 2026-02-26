@@ -1,5 +1,6 @@
 #pragma once
 
+#include <basalt/wire/bedrock/BedrockEntityData.hpp>
 #include <basalt/wire/bedrock/BedrockPacketIds.hpp>
 #include <basalt/wire/io/ByteBuffer.hpp>
 
@@ -8,6 +9,7 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 namespace basalt::wire::bedrock {
@@ -124,6 +126,15 @@ struct IncomingText {
 
 [[nodiscard]] std::optional<IncomingText> readText(io::ByteBuffer& buffer);
 
+/// Moves a player where the server says, rather than where the client thinks it is. The position
+/// is the eyes, like everywhere else in this protocol.
+void writeTeleport(io::ByteBuffer& buffer, std::uint64_t runtimeEntityId, float x, float y, float z, float yaw,
+                   float pitch, std::uint64_t tick);
+
+/// What game a player is playing. The numbers are Bedrock's own: survival, creative, adventure,
+/// then the two that watch.
+void writeSetPlayerGameType(io::ByteBuffer& buffer, std::int32_t gameType);
+
 /// What a title is for. The number is the protocol's own order.
 enum class TitleType : std::int32_t {
     Clear = 0,
@@ -204,5 +215,101 @@ void writeNetworkChunkPublisherUpdate(io::ByteBuffer& buffer, std::int32_t x, st
 /// client needs to stop waiting for a chunk it was told to expect.
 void writeEmptyLevelChunk(io::ByteBuffer& buffer, std::int32_t chunkX, std::int32_t chunkZ, std::uint32_t subChunkCount,
                           std::int32_t dimension);
+
+/// Which bit of the flags field a flag is.
+[[nodiscard]] constexpr std::uint64_t flagBit(const EntityFlag flag) { return 1ULL << static_cast<std::uint8_t>(flag); }
+
+/// One field of entity metadata. Since 2168 the format goes out twice, as a varint and then as a
+/// byte, and the client refuses a packet where the two disagree.
+void writeMetadataLong(io::ByteBuffer& buffer, EntityDataId id, std::int64_t value);
+
+void writeMetadataFloat(io::ByteBuffer& buffer, EntityDataId id, float value);
+
+void writeMetadataString(io::ByteBuffer& buffer, EntityDataId id, std::string_view value);
+
+/// What a player looks like. Bedrock will not draw somebody it has no skin for, and a server that
+/// redistributed Mojang's would be shipping their art, so this is a plain image made here.
+struct SkinInfo {
+    std::string skinId;
+    /// The json that names the geometry the client already has built in. Empty geometry data is
+    /// how a server says "use that one", which is what every plain humanoid does.
+    std::string resourcePatch = R"({"geometry":{"default":"geometry.humanoid.custom"}})";
+    std::uint32_t width = 64;
+    std::uint32_t height = 64;
+    /// Rows of RGBA, top to bottom. width * height * 4 bytes and no header: Bedrock sends raw
+    /// pixels, not a png.
+    std::vector<std::uint8_t> image;
+};
+
+/// One colour over the whole skin, picked from the name so two players are not the same colour.
+[[nodiscard]] SkinInfo flatSkin(std::string_view name);
+
+/// A line of the list a client draws when it is asked who is here.
+struct PlayerListEntry {
+    /// Bedrock writes a uuid as two little-endian longs, most significant first.
+    std::uint64_t uuidHigh = 0;
+    std::uint64_t uuidLow = 0;
+    std::int64_t entityId = 0;
+    std::string name;
+    std::string xuid;
+    SkinInfo skin;
+};
+
+void writePlayerListAdd(io::ByteBuffer& buffer, std::span<const PlayerListEntry> entries);
+
+/// The other half of the same packet: who is no longer here, by uuid.
+void writePlayerListRemove(io::ByteBuffer& buffer, std::span<const std::pair<std::uint64_t, std::uint64_t>> uuids);
+
+/// Somebody else, as an entity in the world. The position is the eyes, like everywhere else here.
+struct AddPlayerInfo {
+    std::uint64_t uuidHigh = 0;
+    std::uint64_t uuidLow = 0;
+    std::int64_t entityId = 0;
+    std::uint64_t runtimeEntityId = 0;
+    std::string name;
+    float x = 0.0F;
+    float y = 0.0F;
+    float z = 0.0F;
+    float yaw = 0.0F;
+    float pitch = 0.0F;
+    std::int32_t gameType = 0;
+};
+
+void writeAddPlayer(io::ByteBuffer& buffer, const AddPlayerInfo& info);
+
+/// Where somebody else is now. The rotation goes as a byte a turn, which is all this packet has
+/// room for and is what the client draws from.
+void writeMoveEntity(io::ByteBuffer& buffer, std::uint64_t runtimeEntityId, float x, float y, float z, float yaw,
+                     float pitch, bool onGround);
+
+/// Somebody else is gone. Bedrock removes by the id that never changes, not the runtime one.
+void writeRemoveEntity(io::ByteBuffer& buffer, std::int64_t entityId);
+
+/// One of the numbers a client draws its HUD from. Java keeps the bounds to itself and sends only
+/// the value; Bedrock is told all of them, so every attribute carries its own range.
+struct AttributeValue {
+    std::string name;
+    float minimum = 0.0F;
+    float maximum = 0.0F;
+    float value = 0.0F;
+    float defaultValue = 0.0F;
+};
+
+void writeUpdateAttributes(io::ByteBuffer& buffer, std::uint64_t runtimeEntityId,
+                           std::span<const AttributeValue> attributes, std::uint64_t tick);
+
+/// Something that happens to the world rather than to anybody. The numbers are the protocol's own,
+/// and the order of these four is its order and not the obvious one.
+enum class LevelEventType : std::int32_t {
+    StartRaining = 3001,
+    StartThunderstorm = 3002,
+    StopRaining = 3003,
+    StopThunderstorm = 3004,
+};
+
+/// How hard it is raining, as this packet counts it: the whole range of an unsigned short.
+inline constexpr std::int32_t kWeatherStrengthScale = 65535;
+
+void writeLevelEvent(io::ByteBuffer& buffer, LevelEventType type, float x, float y, float z, std::int32_t data);
 
 } // namespace basalt::wire::bedrock
