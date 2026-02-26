@@ -6,6 +6,7 @@ basalt_module(wire-io
         src/LogFile.cpp
         src/Platform.cpp
         src/TcpSocket.cpp
+        src/UdpSocket.cpp
         src/ZipReader.cpp
         src/Zstd.cpp
     DEPENDS basalt::wire-common

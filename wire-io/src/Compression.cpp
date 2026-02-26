@@ -196,6 +196,38 @@ std::expected<std::vector<std::uint8_t>, CompressionError> decompress(std::span<
     return inflateWholeStream(source, kRawDeflateWindowBits, uncompressedSize);
 }
 
+std::expected<std::vector<std::uint8_t>, CompressionError> decompressUnknownSize(std::span<const std::uint8_t> source) {
+    return inflateWholeStream(source, kRawDeflateWindowBits, source.size() * 4);
+}
+
+std::expected<std::vector<std::uint8_t>, CompressionError> compress(std::span<const std::uint8_t> source, int level) {
+    if (source.empty()) {
+        return std::vector<std::uint8_t>{};
+    }
+
+    z_stream stream{};
+    const int initResult =
+        deflateInit2(&stream, level, Z_DEFLATED, kRawDeflateWindowBits, kDefaultMemLevel, Z_DEFAULT_STRATEGY);
+    if (initResult != Z_OK) {
+        return std::unexpected{translate(initResult)};
+    }
+
+    std::vector<std::uint8_t> out(deflateBound(&stream, static_cast<uLong>(source.size())));
+    stream.next_in = const_cast<Bytef*>(source.data());
+    stream.avail_in = static_cast<uInt>(source.size());
+    stream.next_out = out.data();
+    stream.avail_out = static_cast<uInt>(out.size());
+
+    const int result = deflate(&stream, Z_FINISH);
+    const std::size_t written = out.size() - stream.avail_out;
+    deflateEnd(&stream);
+    if (result != Z_STREAM_END) {
+        return std::unexpected{translate(result)};
+    }
+    out.resize(written);
+    return out;
+}
+
 } // namespace rawDeflate
 
 } // namespace basalt::wire::io

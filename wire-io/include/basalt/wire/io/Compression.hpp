@@ -63,11 +63,19 @@ decompress(std::span<const std::uint8_t> source);
 
 } // namespace gzip
 
-/// Bare DEFLATE (RFC 1951), no wrapper at all. What a ZIP entry stores.
+/// Bare DEFLATE (RFC 1951), no wrapper at all. What a ZIP entry stores, and what a Bedrock batch is
+/// compressed with: that protocol never sends the uncompressed size, so its reader is the one that
+/// has to grow.
 namespace rawDeflate {
 
 [[nodiscard]] std::expected<std::vector<std::uint8_t>, CompressionError>
 decompress(std::span<const std::uint8_t> source, std::size_t uncompressedSize);
+
+[[nodiscard]] std::expected<std::vector<std::uint8_t>, CompressionError>
+decompressUnknownSize(std::span<const std::uint8_t> source);
+
+[[nodiscard]] std::expected<std::vector<std::uint8_t>, CompressionError> compress(std::span<const std::uint8_t> source,
+                                                                                  int level = 6);
 
 } // namespace rawDeflate
 
