@@ -319,6 +319,18 @@ void writeStartGame(io::ByteBuffer& buffer, const StartGameInfo& info) {
     writeString(buffer, ""); // No owner.
 }
 
+void writeSetTitle(io::ByteBuffer& buffer, const TitleType type, const std::string_view text, const std::int32_t fadeIn,
+                   const std::int32_t stay, const std::int32_t fadeOut) {
+    writeVarInt(buffer, static_cast<std::int32_t>(type));
+    writeString(buffer, text);
+    writeVarInt(buffer, fadeIn);
+    writeVarInt(buffer, stay);
+    writeVarInt(buffer, fadeOut);
+    writeString(buffer, ""); // No xuid.
+    writeString(buffer, ""); // No platform id.
+    writeString(buffer, ""); // Nothing filtered.
+}
+
 void writeSetTime(io::ByteBuffer& buffer, const std::int32_t time) { writeVarInt(buffer, time); }
 
 std::optional<std::string> readCommandRequest(io::ByteBuffer& buffer) {

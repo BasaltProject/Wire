@@ -23,6 +23,11 @@ enum class TranslationError : std::uint8_t {
 /// keys itself against its own language, so the console resolves them here or prints keys.
 [[nodiscard]] std::string resolvePlainText(const Component& component, const LangTable& table);
 
+/// The same, answering a component rather than a string: every translatable becomes the sentence it
+/// stands for and every style survives. For the edge of a connection that cannot translate but does
+/// draw colour, such as Bedrock: the keys resolve here and the colours go to the legacy serializer.
+[[nodiscard]] Component resolveComponent(const Component& component, const LangTable& table);
+
 /// Resolves a translatable's own template, not its children.
 ///
 /// parity: a template that cannot be formatted renders as the raw format string, which is what

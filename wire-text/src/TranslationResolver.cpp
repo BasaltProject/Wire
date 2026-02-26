@@ -3,6 +3,8 @@
 #include <charconv>
 #include <cstdint>
 #include <optional>
+#include <utility>
+#include <vector>
 
 namespace basalt::wire::text {
 namespace {
@@ -84,6 +86,20 @@ std::string resolvePlainText(const Component& component, const LangTable& table)
         out += resolvePlainText(child, table);
     }
     return out;
+}
+
+Component resolveComponent(const Component& component, const LangTable& table) {
+    const auto* translatable = component.as<Component::Translatable>();
+    Component resolved = translatable == nullptr
+                             ? component.withChildren({})
+                             : Component::text(resolveTemplate(*translatable, table)).withStyle(component.style());
+
+    std::vector<Component> children;
+    children.reserve(component.children().size());
+    for (const Component& child : component.children()) {
+        children.push_back(resolveComponent(child, table));
+    }
+    return resolved.withChildren(std::move(children));
 }
 
 std::string resolveTemplate(const Component::Translatable& translatable, const LangTable& table) {

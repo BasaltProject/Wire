@@ -124,6 +124,23 @@ struct IncomingText {
 
 [[nodiscard]] std::optional<IncomingText> readText(io::ByteBuffer& buffer);
 
+/// What a title is for. The number is the protocol's own order.
+enum class TitleType : std::int32_t {
+    Clear = 0,
+    Reset = 1,
+    Title = 2,
+    Subtitle = 3,
+    ActionBar = 4,
+    Times = 5,
+};
+
+/// parity: how long a line over the hotbar lasts in vanilla, `Gui.OVERLAY_MESSAGE_TIME`. Bedrock
+/// draws one for as long as it is told, so it is told this.
+inline constexpr std::int32_t kActionBarTicks = 60;
+
+void writeSetTitle(io::ByteBuffer& buffer, TitleType type, std::string_view text, std::int32_t fadeIn,
+                   std::int32_t stay, std::int32_t fadeOut);
+
 /// What time it is where this player is. Bedrock runs its own clock from here, like Java does.
 void writeSetTime(io::ByteBuffer& buffer, std::int32_t time);
 

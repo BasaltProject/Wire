@@ -75,6 +75,10 @@ public:
 
     void disconnect(std::string_view reason);
 
+    /// Stops reading and writing without saying anything: for a caller that has already said its
+    /// own goodbye and only needs this to stop.
+    void close() { state_ = BedrockState::Closed; }
+
 private:
     void handlePacket(BedrockPacket packet, io::ByteBuffer& body);
     void onRequestNetworkSettings(io::ByteBuffer& body);
