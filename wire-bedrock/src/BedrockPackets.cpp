@@ -1,8 +1,13 @@
+#include <basalt/wire/bedrock/BedrockBlocks.hpp>
 #include <basalt/wire/bedrock/BedrockKeys.hpp>
 #include <basalt/wire/bedrock/BedrockPackets.hpp>
 #include <basalt/wire/bedrock/BedrockTypes.hpp>
 #include <basalt/wire/common/Base64.hpp>
 #include <basalt/wire/common/json/Json.hpp>
+
+#include <algorithm>
+#include <array>
+#include <vector>
 
 namespace basalt::wire::bedrock {
 namespace {
@@ -505,6 +510,112 @@ void writeNetworkChunkPublisherUpdate(io::ByteBuffer& buffer, std::int32_t x, st
     writeVarInt(buffer, z);
     writeVarUInt(buffer, radius);
     writeIntLE(buffer, 0); // No saved chunks.
+}
+
+namespace {
+
+/// How many bits a palette of this size needs, rounded up to one of the widths Bedrock packs with.
+/// Six and five and three leave two bits of every word unused, which is why the list is not simply
+/// the powers of two.
+[[nodiscard]] std::uint8_t bitsFor(const std::size_t entries) {
+    for (const std::uint8_t bits : std::array<std::uint8_t, 8>{1, 2, 3, 4, 5, 6, 8, 16}) {
+        if (entries <= (std::size_t{1} << bits)) {
+            return bits;
+        }
+    }
+    return 16;
+}
+
+} // namespace
+
+void writeSubChunk(io::ByteBuffer& buffer, const JavaSubChunk blocks, const std::int8_t subChunkIndex,
+                   const int protocol) {
+    // Version nine, which is the one that says which subchunk it is rather than leaving the client
+    // to count. One storage layer: the second is for water inside another block, and nothing here
+    // puts anything there yet.
+    buffer.writeByte(9);
+    buffer.writeByte(1);
+    buffer.writeByte(static_cast<std::uint8_t>(subChunkIndex));
+
+    // The palette, in the order the blocks are first met, and the blocks as indices into it.
+    std::vector<std::uint16_t> palette;
+    std::array<std::uint16_t, kSubChunkBlocks> indices{};
+    for (std::size_t over = 0; over < kSubChunkBlocks; ++over) {
+        // The two editions nest their loops the opposite way round: Bedrock counts x slowest and y
+        // fastest, Java the other way. This is the only place the two orders have to meet.
+        const std::size_t x = (over >> 8U) & 0xFU;
+        const std::size_t z = (over >> 4U) & 0xFU;
+        const std::size_t y = over & 0xFU;
+        const std::size_t here = (y << 8U) | (z << 4U) | x;
+        const std::int32_t state = here < blocks.size() ? blocks[here] : 0;
+
+        const std::uint16_t block = bedrockBlockId(state, protocol);
+        const auto found = std::ranges::find(palette, block);
+        if (found == palette.end()) {
+            indices[over] = static_cast<std::uint16_t>(palette.size());
+            palette.push_back(block);
+        } else {
+            indices[over] = static_cast<std::uint16_t>(found - palette.begin());
+        }
+    }
+
+    const std::uint8_t bits = bitsFor(palette.size());
+    // The bottom bit says the numbers are the client's own, not names it has to read.
+    buffer.writeByte(static_cast<std::uint8_t>((static_cast<unsigned>(bits) << 1U) | 1U));
+
+    const std::size_t perWord = 32U / static_cast<std::size_t>(bits);
+    for (std::size_t at = 0; at < kSubChunkBlocks; at += perWord) {
+        std::uint32_t word = 0;
+        for (std::size_t slot = 0; slot < perWord && at + slot < kSubChunkBlocks; ++slot) {
+            word |= static_cast<std::uint32_t>(indices[at + slot]) << (slot * bits);
+        }
+        writeIntLE(buffer, static_cast<std::int32_t>(word));
+    }
+
+    writeVarInt(buffer, static_cast<std::int32_t>(palette.size()));
+    for (const std::uint16_t block : palette) {
+        writeVarInt(buffer, block);
+    }
+}
+
+void writeUpdateBlock(io::ByteBuffer& buffer, const std::int32_t x, const std::int32_t y, const std::int32_t z,
+                      const std::int32_t javaState, const int protocol) {
+    writeBlockPosition(buffer, x, y, z);
+    writeVarUInt(buffer, bedrockBlockId(javaState, protocol));
+    // Tell the neighbours, and say it came over the network: the first is what makes a fence rejoin
+    // its posts, the second what stops the client believing it did this itself.
+    writeVarUInt(buffer, 0b11);
+    writeVarUInt(buffer, 0); // The layer of blocks, not the one water sits in.
+}
+
+void writeLevelChunk(io::ByteBuffer& buffer, const std::int32_t chunkX, const std::int32_t chunkZ,
+                     const std::uint32_t count, const std::span<const std::uint8_t> subChunks,
+                     const std::uint32_t biomeSections, const std::int32_t dimension, const int protocol) {
+    writeVarInt(buffer, chunkX);
+    writeVarInt(buffer, chunkZ);
+    writeVarInt(buffer, dimension);
+    writeVarUInt(buffer, count);
+    if (writesNativeShapes(protocol)) {
+        writeBool(buffer, false); // Not asking for subchunks one at a time.
+        writeBool(buffer, false); // No blob cache.
+        writeVarUInt(buffer, 0);  // No blobs.
+    } else {
+        writeBool(buffer, false); // No blob cache.
+    }
+
+    io::ByteBuffer payload{subChunks.size() + biomeSections + 8};
+    payload.writeBytes(subChunks);
+    // One biome section written out and the rest told to carry it forward, which is what an empty
+    // one costs: the blocks are the point here, not the biomes.
+    payload.writeByte(0x01);
+    writeVarInt(payload, 0);
+    for (std::uint32_t section = 1; section < biomeSections; ++section) {
+        payload.writeByte(static_cast<std::uint8_t>((127U << 1U) | 1U));
+    }
+    payload.writeByte(0); // No border blocks.
+
+    writeVarUInt(buffer, static_cast<std::uint32_t>(payload.readableBytes()));
+    buffer.writeBytes(payload.readable());
 }
 
 void writeEmptyLevelChunk(io::ByteBuffer& buffer, std::int32_t chunkX, std::int32_t chunkZ, std::uint32_t subChunkCount,

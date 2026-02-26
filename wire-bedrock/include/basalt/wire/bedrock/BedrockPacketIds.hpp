@@ -12,9 +12,9 @@
 namespace basalt::wire::bedrock {
 
 /// The protocols this build speaks, oldest first.
-inline constexpr int kBedrockProtocols[] = {924, 944, 975, 1001, 2168};
+inline constexpr int kBedrockProtocols[] = {924, 944, 975, 1001, 2168, 2169};
 
-inline constexpr int kNativeBedrockProtocol = 2168;
+inline constexpr int kNativeBedrockProtocol = 2169;
 
 enum class BedrockPacket : std::uint16_t {
     Login = 1,

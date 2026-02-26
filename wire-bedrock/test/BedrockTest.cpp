@@ -1,5 +1,6 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <basalt/wire/bedrock/BedrockBatch.hpp>
+#include <basalt/wire/bedrock/BedrockBlocks.hpp>
 #include <basalt/wire/bedrock/BedrockCipher.hpp>
 #include <basalt/wire/bedrock/BedrockConnection.hpp>
 #include <basalt/wire/bedrock/BedrockGate.hpp>
@@ -734,4 +735,106 @@ TEST_CASE("a form goes out as json and its answer comes back as a number") {
         CHECK(empty->formId == 7);
         CHECK_FALSE(empty->data.has_value());
     }
+}
+
+TEST_CASE("the generated block tables say what each client already has") {
+    // Derived by running tools/bedrock-codec/block-palette.py against each version's palette, not
+    // recalled: every number here is the position that palette gives the block, read back out of
+    // it. They are here so that regenerating against the wrong version, whose order is different,
+    // fails loudly instead of drawing the wrong blocks.
+    CHECK(bedrockBlockIds2640().size() == kJavaBlockStates);
+    CHECK(bedrockBlockId(0, kNativeBedrockProtocol) == 13629);   // minecraft:air
+    CHECK(bedrockBlockId(1, kNativeBedrockProtocol) == 2736);    // minecraft:stone
+    CHECK(bedrockBlockId(10, kNativeBedrockProtocol) == 10854);  // minecraft:dirt
+    CHECK(bedrockBlockId(85, kNativeBedrockProtocol) == 14348);  // minecraft:bedrock
+    CHECK(bedrockBlockId(86, kNativeBedrockProtocol) == 10270);  // minecraft:water, at its full depth
+    CHECK(bedrockBlockId(3918, kNativeBedrockProtocol) == 1551); // minecraft:oak_stairs, one way round
+
+    SUBCASE("each protocol reads its own table, and they do not agree") {
+        // The palettes are ordered by the hash of the name and grow between versions, so the same
+        // block sits somewhere else in each. Two tables agreeing everywhere would mean one is wrong.
+        CHECK(bedrockBlockIdsFor(kNativeBedrockProtocol).size() == kJavaBlockStates);
+        CHECK(&bedrockBlockIdsFor(kNativeBedrockProtocol) == &bedrockBlockIds2640());
+        CHECK(&bedrockBlockIdsFor(1001) == &bedrockBlockIds2630());
+        CHECK(&bedrockBlockIdsFor(975) == &bedrockBlockIds2620());
+        CHECK(&bedrockBlockIdsFor(944) == &bedrockBlockIds2610());
+        CHECK(&bedrockBlockIdsFor(924) == &bedrockBlockIds260());
+        // Anything newer than this build knows reads the newest table, which is the only answer
+        // that can be right for a client from the future.
+        CHECK(&bedrockBlockIdsFor(kNativeBedrockProtocol + 1) == &bedrockBlockIds2640());
+        CHECK(bedrockBlockIds260() != bedrockBlockIds2640());
+    }
+
+    SUBCASE("a state a version never had is a hole, not another block") {
+        // 26.0 has no sulfur at all: the blocks are newer than it. Air is honest where a guess
+        // would be a lie, and the generator counts them out loud when it writes the table.
+        CHECK(bedrockBlockId(-1, kNativeBedrockProtocol) == kBedrockAir);
+        CHECK(bedrockBlockId(static_cast<std::int32_t>(kJavaBlockStates), kNativeBedrockProtocol) == kBedrockAir);
+    }
+
+    SUBCASE("every state lands inside the palette it was generated from") {
+        constexpr std::uint16_t kNativePaletteSize = 17499;
+        for (const std::uint16_t id : bedrockBlockIds2640()) {
+            REQUIRE(id < kNativePaletteSize);
+        }
+        constexpr std::uint16_t kOldestPaletteSize = 15845;
+        for (const std::uint16_t id : bedrockBlockIds260()) {
+            REQUIRE(id < kOldestPaletteSize);
+        }
+    }
+}
+
+TEST_CASE("a subchunk goes out in the shape a client unpacks") {
+    // One block of stone at a corner that tells every axis apart, and air everywhere else. If x and
+    // z were swapped, or the nesting were Java's, this lands somewhere else and the check fails.
+    constexpr std::int32_t kAir = 0;
+    constexpr std::int32_t kStone = 1;
+    constexpr std::size_t kX = 1;
+    constexpr std::size_t kY = 2;
+    constexpr std::size_t kZ = 3;
+    std::array<std::int32_t, kSubChunkBlocks> blocks{};
+    blocks.fill(kAir);
+    blocks[(kY << 8U) | (kZ << 4U) | kX] = kStone;
+
+    io::ByteBuffer body;
+    writeSubChunk(body, blocks, 0, kNativeBedrockProtocol);
+
+    CHECK(body.readByte() == 9); // The version that names the subchunk,
+    CHECK(body.readByte() == 1); // one layer of blocks,
+    CHECK(body.readByte() == 0); // and this is the bottom one.
+
+    const std::uint8_t header = body.readByte();
+    CHECK((header & 1U) == 1U); // The numbers are the client's own,
+    const std::uint8_t bits = header >> 1U;
+    CHECK(bits == 1); // and two blocks need one bit each.
+
+    // The words, then the palette behind them.
+    const std::size_t perWord = 32U / bits;
+    const std::size_t words = kSubChunkBlocks / perWord;
+    std::vector<std::uint32_t> packed;
+    for (std::size_t at = 0; at < words; ++at) {
+        packed.push_back(static_cast<std::uint32_t>(readIntLE(body)));
+    }
+    const std::int32_t entries = readVarInt(body);
+    REQUIRE(entries == 2);
+    std::vector<std::int32_t> palette;
+    for (std::int32_t at = 0; at < entries; ++at) {
+        palette.push_back(readVarInt(body));
+    }
+    CHECK_FALSE(body.failed());
+    CHECK(body.readableBytes() == 0);
+    CHECK(palette[0] == bedrockBlockId(kAir, kNativeBedrockProtocol));
+    CHECK(palette[1] == bedrockBlockId(kStone, kNativeBedrockProtocol));
+
+    // Unpack the way a client does, and find the stone where it was put.
+    const auto blockAt = [&](const std::size_t x, const std::size_t y, const std::size_t z) {
+        const std::size_t over = (x << 8U) | (z << 4U) | y;
+        const std::uint32_t word = packed[over / perWord];
+        const std::size_t slot = over % perWord;
+        return palette[(word >> (slot * bits)) & 1U];
+    };
+    CHECK(blockAt(kX, kY, kZ) == bedrockBlockId(kStone, kNativeBedrockProtocol));
+    CHECK(blockAt(kZ, kY, kX) == bedrockBlockId(kAir, kNativeBedrockProtocol)); // Not with x and z the other way round,
+    CHECK(blockAt(kX, kZ, kY) == bedrockBlockId(kAir, kNativeBedrockProtocol)); // nor with y and z swapped.
+    CHECK(blockAt(0, 0, 0) == bedrockBlockId(kAir, kNativeBedrockProtocol));
 }
