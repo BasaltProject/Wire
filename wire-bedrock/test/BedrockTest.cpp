@@ -635,3 +635,33 @@ TEST_CASE("a bedrock client gets from its first packet to the world") {
     CHECK(readVarInt(reader) == 0);
     CHECK(readVarUInt(reader) == 0);
 }
+
+TEST_CASE("a line of chat is written the way a client reads one, both shapes") {
+    SUBCASE("with an author") {
+        io::ByteBuffer buffer;
+        writeText(buffer, TextType::Chat, "Steve", "hello");
+        const auto back = readText(buffer);
+        REQUIRE(back.has_value());
+        CHECK(back->type == TextType::Chat);
+        CHECK(back->source == "Steve");
+        CHECK(back->message == "hello");
+    }
+
+    SUBCASE("without one") {
+        io::ByteBuffer buffer;
+        writeText(buffer, TextType::Raw, "ignored", "Steve joined the game");
+        const auto back = readText(buffer);
+        REQUIRE(back.has_value());
+        CHECK(back->type == TextType::Raw);
+        CHECK(back->source.empty());
+        CHECK(back->message == "Steve joined the game");
+    }
+
+    SUBCASE("an empty line becomes a space, because a client draws nothing for an empty one") {
+        io::ByteBuffer buffer;
+        writeText(buffer, TextType::Raw, "", "");
+        const auto back = readText(buffer);
+        REQUIRE(back.has_value());
+        CHECK(back->message == " ");
+    }
+}
