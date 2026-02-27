@@ -1249,6 +1249,42 @@ void writeInventoryContent(io::ByteBuffer& buffer, const std::uint32_t container
     writeItemStack(buffer, BedrockItemStack{}, protocol); // Nothing stored beside it.
 }
 
+BedrockLevelEffect bedrockLevelEffect(const std::int32_t javaEvent, const std::int32_t data) {
+    // parity: the nine `LevelEvent`s this server raises, each one read out of Geyser's own switch
+    // and the codec's event table. The particle numbers are 2000 plus their place in that table.
+    switch (javaEvent) {
+    case 1001: // A dispenser with nothing in it: a click and no particles.
+        return {.sound = "block.dispenser.fail"};
+    case 1050: // A crafter that was asked for something that is not a recipe.
+        return {.sound = "block.crafter.fail"};
+    case 1500: // A composter: the sparkles always, and which sound depends on whether it filled.
+        return {.event = 2005, .sound = data != 0 ? "block.composter.fill_success" : "block.composter.fill"};
+    case 1502: // A redstone torch burning out, which that edition draws from the block's corner.
+        return {.event = 2016, .sound = "block.redstone_torch.burnout", .x = 0.0F, .y = 0.5F, .z = 0.0F};
+    case 1505: // Bone meal: the number is how many sparkles, and it means the same over there.
+        return {.event = 2005, .keepsData = true};
+    case 3002: // The sparks off a lightning rod. The axis Java sends means nothing over there.
+        return {.event = 2033};
+    case 3003:
+        return {.event = 2030, .sound = "item.honeycomb.wax_on"};
+    case 3004:
+        return {.event = 2031, .sound = "item.axe.wax_off"};
+    case 3005:
+        return {.event = 2032, .sound = "item.axe.scrape"};
+    default:
+        return {};
+    }
+}
+
+void writeLevelEvent(io::ByteBuffer& buffer, const std::int32_t event, const float x, const float y, const float z,
+                     const std::int32_t data) {
+    writeVarInt(buffer, event);
+    writeFloatLE(buffer, x);
+    writeFloatLE(buffer, y);
+    writeFloatLE(buffer, z);
+    writeVarInt(buffer, data);
+}
+
 void writeBlockEvent(io::ByteBuffer& buffer, const std::int32_t x, const std::int32_t y, const std::int32_t z,
                      const std::int32_t b0, const std::int32_t b1) {
     writeBlockPosition(buffer, x, y, z);
