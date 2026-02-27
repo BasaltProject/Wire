@@ -30,8 +30,16 @@ inline constexpr int kStartGameGrewProtocol = 1001;
 /// Where a played sound gained the handle of one the server holds itself, which this one never has.
 inline constexpr int kServerSoundHandleProtocol = 975;
 
+/// Where the flags of `player_auth_input` stopped being a run of bits and became a list of the
+/// ones that are on.
+inline constexpr int kInputFlagListProtocol = 2168;
+
 /// Where an entity event gained a trailing optional position, which only a fire event fills.
 inline constexpr int kEntityEventGrewProtocol = 975;
+
+/// Where an item stack in a window changed from the old shape to the descriptor: the id goes from
+/// a varint to a short and an air stack stops being a single zero byte.
+inline constexpr int kItemDescriptorProtocol = 1001;
 
 /// What a client asks for before anything else, and the only packet either side sends in the
 /// clear and uncompressed.
@@ -201,6 +209,44 @@ struct ModalFormResponse {
 
 /// Where a client says it is, which in Bedrock is the only movement packet: the client moves itself
 /// and tells the server afterwards.
+/// What a player did to a block this tick, in that edition's own numbering. Only the five that
+/// carry a position are worth naming here; the rest arrive as their number and are ignored.
+enum class BedrockBlockActionType : std::int32_t {
+    StartBreak = 0,
+    AbortBreak = 1,
+    StopBreak = 2,
+    ContinueBreak = 18,
+    PredictDestroy = 26,
+    ContinueDestroy = 27,
+};
+
+struct BedrockBlockAction {
+    std::int32_t action = 0;
+    std::int32_t x = 0;
+    std::int32_t y = 0;
+    std::int32_t z = 0;
+    /// Which side of the block was hit, in Bedrock's order: down, up, north, south, west, east.
+    std::int32_t face = 0;
+};
+
+/// A click with something in hand. Placing a block is this with `action` naming a click on a block
+/// and the hand holding one.
+struct BedrockItemUse {
+    /// 0 clicks a block, 1 clicks the air, 2 breaks one.
+    std::int32_t action = 0;
+    std::int32_t x = 0;
+    std::int32_t y = 0;
+    std::int32_t z = 0;
+    std::int32_t face = 0;
+    std::int32_t hotbarSlot = 0;
+    /// The item the client believes it is holding, by the id this server gave it.
+    std::int32_t itemRuntimeId = 0;
+    /// Where on the face it was clicked, from the block's own corner.
+    float clickX = 0.0F;
+    float clickY = 0.0F;
+    float clickZ = 0.0F;
+};
+
 struct PlayerAuthInput {
     float x = 0.0F;
     /// As the client writes it, which is its eyes and not its feet. kPlayerEyeHeight is the
@@ -210,6 +256,12 @@ struct PlayerAuthInput {
     float pitch = 0.0F;
     float yaw = 0.0F;
     float headYaw = 0.0F;
+
+    /// What they did to a block, in the order they did it.
+    std::vector<BedrockBlockAction> blockActions;
+
+    /// What they did with what they hold, when they did anything.
+    std::optional<BedrockItemUse> itemUse;
 };
 
 /// How far above its feet a Bedrock client reports a player to be. Java measures from the feet, so
@@ -218,7 +270,7 @@ inline constexpr float kPlayerEyeHeight = 1.62001F;
 
 /// Reads only as far as the position and the rotation: what follows is input state, item use and
 /// stack requests, none of which this server acts on yet.
-[[nodiscard]] std::optional<PlayerAuthInput> readPlayerAuthInput(io::ByteBuffer& buffer);
+[[nodiscard]] std::optional<PlayerAuthInput> readPlayerAuthInput(io::ByteBuffer& buffer, int protocol);
 
 /// How far the client should ask the server for, and how far it draws.
 void writeChunkRadiusUpdated(io::ByteBuffer& buffer, std::int32_t radius);
@@ -389,6 +441,32 @@ void writeEntityEvent(io::ByteBuffer& buffer, std::uint64_t runtimeEntityId, Bed
 
 /// Throws an entity, in blocks per tick. What a hit does to whoever took it.
 void writeSetEntityMotion(io::ByteBuffer& buffer, std::uint64_t runtimeEntityId, float x, float y, float z);
+
+/// One stack as a window carries it. An id of zero is air and says the rest of itself by saying
+/// nothing.
+struct BedrockItemStack {
+    std::int32_t runtimeId = 0;
+    std::int32_t count = 0;
+    std::int32_t data = 0;
+    /// Which block it places, for an item that places one. Zero for everything else.
+    std::int32_t blockRuntimeId = 0;
+};
+
+/// Which part of a window a run of slots belongs to. The numbers have not moved in this window.
+enum class BedrockContainerSlot : std::uint8_t {
+    Armour = 6,
+    HotbarAndInventory = 12,
+    Offhand = 33,
+};
+
+/// The names of every item this server knows, with the id it wants each one called by. Bedrock has
+/// let the server declare this since 776, which is why no table of per-version item ids exists.
+void writeItemComponent(io::ByteBuffer& buffer);
+
+/// Everything in one window. The slot type names which window it is, because the number alone has
+/// not been enough since containers could be dynamic.
+void writeInventoryContent(io::ByteBuffer& buffer, std::uint32_t containerId, std::span<const BedrockItemStack> items,
+                           BedrockContainerSlot slot, int protocol);
 
 /// What a mob effect packet is saying about the effect it names.
 enum class BedrockEffectEvent : std::uint8_t {

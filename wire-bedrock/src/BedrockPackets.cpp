@@ -1,5 +1,6 @@
 #include <basalt/wire/bedrock/BedrockBlocks.hpp>
 #include <basalt/wire/bedrock/BedrockEntityIdentifiers.hpp>
+#include <basalt/wire/bedrock/BedrockItems.hpp>
 #include <basalt/wire/bedrock/BedrockKeys.hpp>
 #include <basalt/wire/bedrock/BedrockPackets.hpp>
 #include <basalt/wire/bedrock/BedrockSounds.hpp>
@@ -9,6 +10,7 @@
 
 #include <algorithm>
 #include <array>
+#include <set>
 #include <vector>
 
 namespace basalt::wire::bedrock {
@@ -339,7 +341,7 @@ void writeStartGame(io::ByteBuffer& buffer, const StartGameInfo& info, const int
     // hold: saying they are hashes of the state would have the client resolve every one of them
     // against the wrong thing.
     writeBool(buffer, false);
-    writeBool(buffer, true);  // Sounds come from the server.
+    writeBool(buffer, true); // Sounds come from the server.
     if (protocol >= kStartGameGrewProtocol && !writesNativeShapes(protocol)) {
         // Whether chat is logged, which only 1001 asks: 975 and below never had it and 2168
         // stopped asking.
@@ -447,7 +449,98 @@ std::string simpleFormJson(const std::string_view title, const std::string_view 
     return common::writeJson(common::JsonValue::ofObject(std::move(form)));
 }
 
-std::optional<PlayerAuthInput> readPlayerAuthInput(io::ByteBuffer& buffer) {
+namespace {
+
+/// Which of the flags this server acts on. They are positions in an enum the reference codec keeps,
+/// and nothing has moved them inside this window.
+constexpr std::int32_t kFlagItemInteraction = 34;
+constexpr std::int32_t kFlagBlockActions = 35;
+constexpr std::int32_t kFlagItemStackRequest = 36;
+
+/// One block position as this edition writes it: the height is unsigned, which is not a mistake of
+/// ours either.
+void readBedrockBlockPosition(io::ByteBuffer& buffer, std::int32_t& x, std::int32_t& y, std::int32_t& z) {
+    x = readVarInt(buffer);
+    y = static_cast<std::int32_t>(readVarUInt(buffer));
+    z = readVarInt(buffer);
+}
+
+/// One item as the client sends it back. Only the id is wanted; the rest is walked past.
+[[nodiscard]] std::int32_t readItem(io::ByteBuffer& buffer) {
+    const std::int32_t id = readVarInt(buffer);
+    if (id == 0) {
+        return 0;
+    }
+    static_cast<void>(readShortLE(buffer)); // How many,
+    static_cast<void>(readVarUInt(buffer)); // how damaged,
+    if (buffer.readByte() != 0) {
+        static_cast<void>(readVarInt(buffer)); // and which one of its kind, when it is counted.
+    }
+    static_cast<void>(readVarInt(buffer)); // Which block it places.
+    const std::uint32_t extra = readVarUInt(buffer);
+    for (std::uint32_t at = 0; at < extra && !buffer.failed(); ++at) {
+        static_cast<void>(buffer.readByte());
+    }
+    return id;
+}
+
+/// Where a stack came from. Two of the five kinds carry a number of their own.
+void readInventorySource(io::ByteBuffer& buffer) {
+    const std::uint32_t kind = readVarUInt(buffer);
+    if (kind == 0 || kind == 99999) {
+        static_cast<void>(readVarInt(buffer)); // Which window,
+    } else if (kind == 2) {
+        static_cast<void>(readVarUInt(buffer)); // or what the world did with it.
+    }
+}
+
+/// The click itself. Everything before the block it names is walked past: this server does not let
+/// a client tell it what moved where, only what was clicked.
+[[nodiscard]] std::optional<BedrockItemUse> readItemUseTransaction(io::ByteBuffer& buffer, const int protocol) {
+    const std::int32_t legacyRequestId = readVarInt(buffer);
+    if (legacyRequestId < -1 && (legacyRequestId & 1) == 0) {
+        const std::uint32_t windows = readVarUInt(buffer);
+        for (std::uint32_t at = 0; at < windows && !buffer.failed(); ++at) {
+            static_cast<void>(buffer.readByte());
+            const std::uint32_t slots = readVarUInt(buffer);
+            for (std::uint32_t slot = 0; slot < slots && !buffer.failed(); ++slot) {
+                static_cast<void>(buffer.readByte());
+            }
+        }
+    }
+    const std::uint32_t actions = readVarUInt(buffer);
+    for (std::uint32_t at = 0; at < actions && !buffer.failed(); ++at) {
+        readInventorySource(buffer);
+        static_cast<void>(readVarUInt(buffer)); // Which slot,
+        static_cast<void>(readItem(buffer));    // what was there,
+        static_cast<void>(readItem(buffer));    // and what is now.
+    }
+
+    BedrockItemUse use;
+    use.action = static_cast<std::int32_t>(readVarUInt(buffer));
+    readBedrockBlockPosition(buffer, use.x, use.y, use.z);
+    use.face = readVarInt(buffer);
+    use.hotbarSlot = readVarInt(buffer);
+    use.itemRuntimeId = readItem(buffer);
+    static_cast<void>(readFloatLE(buffer)); // Where the player was,
+    static_cast<void>(readFloatLE(buffer));
+    static_cast<void>(readFloatLE(buffer));
+    use.clickX = readFloatLE(buffer); // and where on the face they clicked.
+    use.clickY = readFloatLE(buffer);
+    use.clickZ = readFloatLE(buffer);
+    static_cast<void>(readVarUInt(buffer)); // Which block they think they hit.
+    if (protocol >= kServerSoundHandleProtocol) {
+        static_cast<void>(buffer.readByte()); // How far into its cooldown the client thinks it is.
+    }
+    if (buffer.failed()) {
+        return std::nullopt;
+    }
+    return use;
+}
+
+} // namespace
+
+std::optional<PlayerAuthInput> readPlayerAuthInput(io::ByteBuffer& buffer, const int protocol) {
     PlayerAuthInput input;
     // The rotation is split around the position: pitch and yaw lead, the head's own yaw follows the
     // movement vector. It is not an accident of ours.
@@ -461,6 +554,91 @@ std::optional<PlayerAuthInput> readPlayerAuthInput(io::ByteBuffer& buffer) {
     input.headYaw = readFloatLE(buffer);
     if (buffer.failed()) {
         return std::nullopt;
+    }
+
+    // What the player is doing, which decides what the rest of the packet holds. 2168 turned the
+    // run of bits into a list of the ones that are on; below it they are one long varint.
+    std::set<std::int32_t> flags;
+    if (protocol >= kInputFlagListProtocol) {
+        if ((buffer.readByte() != 0)) {
+            const std::uint32_t count = readVarUInt(buffer);
+            for (std::uint32_t at = 0; at < count && !buffer.failed(); ++at) {
+                flags.insert(readVarInt(buffer));
+            }
+        }
+    } else {
+        for (std::int32_t bit = 0; !buffer.failed();) {
+            const std::uint8_t part = buffer.readByte();
+            for (std::int32_t at = 0; at < 7; ++at, ++bit) {
+                if ((part & (1U << static_cast<std::uint32_t>(at))) != 0) {
+                    flags.insert(bit);
+                }
+            }
+            if ((part & 0x80U) == 0) {
+                break;
+            }
+        }
+    }
+    static_cast<void>(readVarUInt(buffer)); // How they are playing: a keyboard, a pad, a screen,
+    static_cast<void>(readVarUInt(buffer)); // where they are playing it,
+    static_cast<void>(readVarUInt(buffer)); // and which of the two ways of touching things.
+    static_cast<void>(readFloatLE(buffer)); // Where they are looking when that is not where they face.
+    static_cast<void>(readFloatLE(buffer));
+    static_cast<void>(readVarULong(buffer)); // Which tick this is,
+    static_cast<void>(readFloatLE(buffer));  // and how far they moved in it.
+    static_cast<void>(readFloatLE(buffer));
+    static_cast<void>(readFloatLE(buffer));
+    if (buffer.failed()) {
+        return std::nullopt;
+    }
+
+    // From here the packet is a run of optional pieces, each one there because a flag says so. 2168
+    // puts a pair of booleans in front of each: the first says the field exists at all.
+    const auto present = [&buffer, protocol](const bool flagged) {
+        if (protocol < kInputFlagListProtocol) {
+            return flagged;
+        }
+        return (buffer.readByte() != 0) && (buffer.readByte() != 0);
+    };
+    if (present(flags.contains(kFlagItemInteraction))) {
+        input.itemUse = readItemUseTransaction(buffer, protocol);
+    }
+    // A request to move stacks around is a shape of its own, deep and long, and this server does
+    // not read one yet. Everything after it in the packet is out of reach for that tick, which
+    // costs nothing: a player does not usually touch a block in the tick they tidy their bag.
+    if (flags.contains(kFlagItemStackRequest)) {
+        return input;
+    }
+    if (protocol >= kInputFlagListProtocol) {
+        static_cast<void>((buffer.readByte() != 0));
+        static_cast<void>((buffer.readByte() != 0));
+    }
+    if (present(flags.contains(kFlagBlockActions))) {
+        const std::int32_t count =
+            protocol >= kInputFlagListProtocol ? static_cast<std::int32_t>(readVarUInt(buffer)) : readVarInt(buffer);
+        for (std::int32_t at = 0; at < count && !buffer.failed(); ++at) {
+            BedrockBlockAction action;
+            action.action = readVarInt(buffer);
+            // Below 2168 only the five that mean a block carry one; from 2168 every line does.
+            const bool positioned =
+                protocol >= kInputFlagListProtocol ||
+                action.action == static_cast<std::int32_t>(BedrockBlockActionType::StartBreak) ||
+                action.action == static_cast<std::int32_t>(BedrockBlockActionType::AbortBreak) ||
+                action.action == static_cast<std::int32_t>(BedrockBlockActionType::ContinueBreak) ||
+                action.action == static_cast<std::int32_t>(BedrockBlockActionType::PredictDestroy) ||
+                action.action == static_cast<std::int32_t>(BedrockBlockActionType::ContinueDestroy);
+            if (positioned) {
+                action.x = readVarInt(buffer);
+                action.y = readVarInt(buffer);
+                action.z = readVarInt(buffer);
+                action.face = readVarInt(buffer);
+            }
+            input.blockActions.push_back(action);
+        }
+    }
+    if (buffer.failed()) {
+        input.blockActions.clear();
+        input.itemUse.reset();
     }
     return input;
 }
@@ -522,6 +700,23 @@ void writeNetworkChunkPublisherUpdate(io::ByteBuffer& buffer, std::int32_t x, st
 }
 
 namespace {
+
+/// One stack where it is named rather than moved: the creative menu and an entity's hand. It is
+/// the window shape without the flag that says a server is counting stacks.
+void writeItemInstance(io::ByteBuffer& buffer, const BedrockItemStack& item) {
+    if (item.runtimeId == 0 || item.count == 0) {
+        writeVarInt(buffer, 0);
+        return;
+    }
+    writeVarInt(buffer, item.runtimeId);
+    writeShortLE(buffer, static_cast<std::uint16_t>(item.count));
+    writeVarUInt(buffer, static_cast<std::uint32_t>(item.data));
+    writeVarInt(buffer, item.blockRuntimeId);
+    writeVarUInt(buffer, 10);
+    writeShortLE(buffer, 0);
+    writeIntLE(buffer, 0);
+    writeIntLE(buffer, 0);
+}
 
 /// How many bits a palette of this size needs, rounded up to one of the widths Bedrock packs with.
 /// Six and five and three leave two bits of every word unused, which is why the list is not simply
@@ -595,8 +790,22 @@ void writeBiomeDefinitionList(io::ByteBuffer& buffer) {
 }
 
 void writeCreativeContent(io::ByteBuffer& buffer) {
-    writeVarUInt(buffer, 0); // No groups in the creative menu,
-    writeVarUInt(buffer, 0); // and nothing in them.
+    // One group with everything in it. Vanilla sorts its creative menu into four tabs and a great
+    // many groups, and that order is content rather than protocol: what the protocol needs is that
+    // every item a player may take is in a group, and that the group exists.
+    writeVarUInt(buffer, 1);
+    buffer.writeByte(0); // Everything, rather than one of the four tabs.
+    writeString(buffer, "itemGroup.name.basalt");
+    writeItemInstance(buffer, BedrockItemStack{});
+
+    const std::span<const std::string_view> palette = bedrockItemPalette();
+    writeVarUInt(buffer, static_cast<std::uint32_t>(palette.size()));
+    std::uint32_t netId = 1; // Zero is "no stack", so the menu counts from one.
+    for (std::size_t at = 0; at < palette.size(); ++at) {
+        writeVarUInt(buffer, netId++);
+        writeItemInstance(buffer, BedrockItemStack{.runtimeId = static_cast<std::int32_t>(at) + 1, .count = 1});
+        writeVarUInt(buffer, 0); // All of them in the one group.
+    }
 }
 
 void writeSetCommandsEnabled(io::ByteBuffer& buffer, const bool enabled) { writeBool(buffer, enabled); }
@@ -629,6 +838,74 @@ void writeSetEntityMotion(io::ByteBuffer& buffer, const std::uint64_t runtimeEnt
     writeFloatLE(buffer, y);
     writeFloatLE(buffer, z);
     writeVarULong(buffer, 0); // Which tick it belongs to, which only a replay cares about.
+}
+
+namespace {
+
+/// One stack, in the shape the protocol asked for. Everything this server sends is plain: no net
+/// id, no nbt, nothing it may only be placed on or broken with.
+void writeItemStack(io::ByteBuffer& buffer, const BedrockItemStack& item, const int protocol) {
+    const bool descriptor = protocol >= kItemDescriptorProtocol;
+    if (item.runtimeId == 0 || item.count == 0) {
+        if (descriptor) {
+            writeShortLE(buffer, 0);
+            writeShortLE(buffer, 0);
+            writeVarUInt(buffer, 0);
+            writeBool(buffer, false);
+            writeVarUInt(buffer, 0);
+            writeVarUInt(buffer, 0);
+            return;
+        }
+        writeVarInt(buffer, 0);
+        return;
+    }
+    if (descriptor) {
+        writeShortLE(buffer, static_cast<std::uint16_t>(item.runtimeId));
+    } else {
+        writeVarInt(buffer, item.runtimeId);
+    }
+    writeShortLE(buffer, static_cast<std::uint16_t>(item.count));
+    writeVarUInt(buffer, static_cast<std::uint32_t>(item.data));
+    writeBool(buffer, false); // The server does not count stacks, so no net id follows.
+    if (descriptor) {
+        writeVarUInt(buffer, static_cast<std::uint32_t>(item.blockRuntimeId));
+    } else {
+        writeVarInt(buffer, item.blockRuntimeId);
+    }
+    // What is written on it, and where it may be used. All three are empty, and the whole run is
+    // little-endian rather than varints because it is a stream of its own inside the packet.
+    writeVarUInt(buffer, 10);
+    writeShortLE(buffer, 0); // No nbt,
+    writeIntLE(buffer, 0);   // nothing it may be placed on,
+    writeIntLE(buffer, 0);   // nothing it may break.
+}
+
+} // namespace
+
+void writeItemComponent(io::ByteBuffer& buffer) {
+    const std::span<const std::string_view> palette = bedrockItemPalette();
+    writeVarUInt(buffer, static_cast<std::uint32_t>(palette.size()));
+    std::uint16_t id = 1; // Zero is air, which is not in the list.
+    for (const std::string_view name : palette) {
+        writeString(buffer, name);
+        writeShortLE(buffer, id++);
+        writeBool(buffer, false); // Not driven by components of its own,
+        writeVarInt(buffer, 2);   // and not a version that carries any.
+        writeEmptyCompound(buffer);
+    }
+}
+
+void writeInventoryContent(io::ByteBuffer& buffer, const std::uint32_t containerId,
+                           const std::span<const BedrockItemStack> items, const BedrockContainerSlot slot,
+                           const int protocol) {
+    writeVarUInt(buffer, containerId);
+    writeVarUInt(buffer, static_cast<std::uint32_t>(items.size()));
+    for (const BedrockItemStack& item : items) {
+        writeItemStack(buffer, item, protocol);
+    }
+    buffer.writeByte(static_cast<std::uint8_t>(slot));
+    writeBool(buffer, false);                             // No dynamic id: this window is one the client already knows.
+    writeItemStack(buffer, BedrockItemStack{}, protocol); // Nothing stored beside it.
 }
 
 void writeMobEffect(io::ByteBuffer& buffer, const std::uint64_t runtimeEntityId, const BedrockEffectEvent event,
