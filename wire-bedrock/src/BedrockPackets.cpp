@@ -1,6 +1,8 @@
 #include <basalt/wire/bedrock/BedrockBlocks.hpp>
+#include <basalt/wire/bedrock/BedrockEntityIdentifiers.hpp>
 #include <basalt/wire/bedrock/BedrockKeys.hpp>
 #include <basalt/wire/bedrock/BedrockPackets.hpp>
+#include <basalt/wire/bedrock/BedrockSounds.hpp>
 #include <basalt/wire/bedrock/BedrockTypes.hpp>
 #include <basalt/wire/common/Base64.hpp>
 #include <basalt/wire/common/json/Json.hpp>
@@ -575,6 +577,36 @@ void writeSubChunk(io::ByteBuffer& buffer, const JavaSubChunk blocks, const std:
     writeVarInt(buffer, static_cast<std::int32_t>(palette.size()));
     for (const std::uint16_t block : palette) {
         writeVarInt(buffer, block);
+    }
+}
+
+void writeAvailableEntityIdentifiers(io::ByteBuffer& buffer) { buffer.writeBytes(entityIdentifiers()); }
+
+void writeBiomeDefinitionList(io::ByteBuffer& buffer) {
+    writeVarUInt(buffer, 0); // No biome of its own,
+    writeVarUInt(buffer, 0); // so no names to go with them.
+}
+
+void writeCreativeContent(io::ByteBuffer& buffer) {
+    writeVarUInt(buffer, 0); // No groups in the creative menu,
+    writeVarUInt(buffer, 0); // and nothing in them.
+}
+
+void writeSetCommandsEnabled(io::ByteBuffer& buffer, const bool enabled) { writeBool(buffer, enabled); }
+
+void writePlaySound(io::ByteBuffer& buffer, const std::string_view sound, const double x, const double y,
+                    const double z, const float volume, const float pitch, const int protocol) {
+    writeString(buffer, sound);
+    writeBlockPosition(buffer, static_cast<std::int32_t>(x * 8.0), static_cast<std::int32_t>(y * 8.0),
+                       static_cast<std::int32_t>(z * 8.0));
+    writeFloatLE(buffer, volume);
+    writeFloatLE(buffer, pitch);
+    if (writesNativeShapes(protocol)) {
+        writeVarUInt(buffer, 0); // Played once, not looped.
+    }
+    // 26.20 and up let the server name a sound it holds itself. This one never does.
+    if (protocol >= kServerSoundHandleProtocol) {
+        writeBool(buffer, false);
     }
 }
 

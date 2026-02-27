@@ -12,6 +12,9 @@ basalt_module(wire-bedrock
         src/BedrockBlocks2630.cpp
         src/BedrockBlocks2640.cpp
         src/BedrockBlockTables.cpp
+        src/BedrockEntityIdentifiers.cpp
+        src/BedrockSoundNames.cpp
+        src/BedrockSounds.cpp
         src/BedrockPackets.cpp
         src/BedrockTypes.cpp
         src/RakFrame.cpp
