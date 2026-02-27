@@ -787,6 +787,7 @@ void readResultItem(io::ByteBuffer& buffer, const int protocol) {
         }
         BedrockStackAction action;
         action.type = publicActionOf(kind);
+        action.line = id;
         switch (kind) {
         case RequestAction::Take:
         case RequestAction::Place:
@@ -1298,6 +1299,13 @@ void writeContainerOpen(io::ByteBuffer& buffer, const std::int32_t containerId, 
     buffer.writeByte(static_cast<std::uint8_t>(type));
     writeBlockPosition(buffer, x, y, z);
     writeVarLong(buffer, -1); // No entity behind it: every window this server opens is a block's.
+}
+
+void writeContainerSetData(io::ByteBuffer& buffer, const std::int32_t containerId, const BedrockContainerData property,
+                           const std::int32_t value) {
+    buffer.writeByte(static_cast<std::uint8_t>(containerId));
+    writeVarInt(buffer, static_cast<std::int32_t>(property));
+    writeVarInt(buffer, value);
 }
 
 void writeContainerClose(io::ByteBuffer& buffer, const std::int32_t containerId, const BedrockContainerType type,
