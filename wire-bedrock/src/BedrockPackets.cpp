@@ -466,7 +466,24 @@ void readBedrockBlockPosition(io::ByteBuffer& buffer, std::int32_t& x, std::int3
 }
 
 /// One item as the client sends it back. Only the id is wanted; the rest is walked past.
-[[nodiscard]] std::int32_t readItem(io::ByteBuffer& buffer) {
+///
+/// From 2168 it is the descriptor shape, which is not the same packet field written twice: the id
+/// is a short, and a stack of nothing still writes every field rather than stopping at the zero.
+[[nodiscard]] std::int32_t readItem(io::ByteBuffer& buffer, const int protocol) {
+    if (protocol >= kHeldItemDescriptorProtocol) {
+        const std::int32_t id = static_cast<std::int16_t>(readShortLE(buffer));
+        static_cast<void>(readShortLE(buffer)); // How many,
+        static_cast<void>(readVarUInt(buffer)); // how damaged,
+        if (buffer.readByte() != 0) {
+            static_cast<void>(readVarInt(buffer)); // and which one of its kind, when it is counted.
+        }
+        static_cast<void>(readVarUInt(buffer)); // Which block it places.
+        const std::uint32_t trailing = readVarUInt(buffer);
+        for (std::uint32_t at = 0; at < trailing && !buffer.failed(); ++at) {
+            static_cast<void>(buffer.readByte());
+        }
+        return id;
+    }
     const std::int32_t id = readVarInt(buffer);
     if (id == 0) {
         return 0;
@@ -497,8 +514,12 @@ void readInventorySource(io::ByteBuffer& buffer) {
 /// The click itself. Everything before the block it names is walked past: this server does not let
 /// a client tell it what moved where, only what was clicked.
 [[nodiscard]] std::optional<BedrockItemUse> readItemUseTransaction(io::ByteBuffer& buffer, const int protocol) {
+    // 2168 put a boolean in front of each of the two lists, and turned three of the small numbers
+    // from varints into single bytes. Everything else is the same run of fields.
+    const bool native = protocol >= kHeldItemDescriptorProtocol;
     const std::int32_t legacyRequestId = readVarInt(buffer);
-    if (legacyRequestId < -1 && (legacyRequestId & 1) == 0) {
+    const bool legacySlots = native ? (buffer.readByte() != 0) : true;
+    if (legacySlots && legacyRequestId < -1 && (legacyRequestId & 1) == 0) {
         const std::uint32_t windows = readVarUInt(buffer);
         for (std::uint32_t at = 0; at < windows && !buffer.failed(); ++at) {
             static_cast<void>(buffer.readByte());
@@ -508,34 +529,354 @@ void readInventorySource(io::ByteBuffer& buffer) {
             }
         }
     }
-    const std::uint32_t actions = readVarUInt(buffer);
-    for (std::uint32_t at = 0; at < actions && !buffer.failed(); ++at) {
-        readInventorySource(buffer);
-        static_cast<void>(readVarUInt(buffer)); // Which slot,
-        static_cast<void>(readItem(buffer));    // what was there,
-        static_cast<void>(readItem(buffer));    // and what is now.
+    if (!native || ((buffer.readByte() != 0) && (buffer.readByte() != 0))) {
+        const std::uint32_t actions = readVarUInt(buffer);
+        for (std::uint32_t at = 0; at < actions && !buffer.failed(); ++at) {
+            readInventorySource(buffer);
+            static_cast<void>(readVarUInt(buffer));        // Which slot,
+            static_cast<void>(readItem(buffer, protocol)); // what was there,
+            static_cast<void>(readItem(buffer, protocol)); // and what is now.
+        }
     }
 
     BedrockItemUse use;
-    use.action = static_cast<std::int32_t>(readVarUInt(buffer));
+    use.action = native ? readVarInt(buffer) : static_cast<std::int32_t>(readVarUInt(buffer));
+    // What set the click off: a hand, a hold, or the server asking again.
+    static_cast<void>(native ? std::int32_t{buffer.readByte()} : static_cast<std::int32_t>(readVarUInt(buffer)));
     readBedrockBlockPosition(buffer, use.x, use.y, use.z);
-    use.face = readVarInt(buffer);
+    use.face = native ? std::int32_t{buffer.readByte()} : readVarInt(buffer);
     use.hotbarSlot = readVarInt(buffer);
-    use.itemRuntimeId = readItem(buffer);
+    use.itemRuntimeId = readItem(buffer, protocol);
     static_cast<void>(readFloatLE(buffer)); // Where the player was,
     static_cast<void>(readFloatLE(buffer));
     static_cast<void>(readFloatLE(buffer));
     use.clickX = readFloatLE(buffer); // and where on the face they clicked.
     use.clickY = readFloatLE(buffer);
     use.clickZ = readFloatLE(buffer);
-    static_cast<void>(readVarUInt(buffer)); // Which block they think they hit.
-    if (protocol >= kServerSoundHandleProtocol) {
+    static_cast<void>(readVarUInt(buffer)); // Which block they think they hit,
+    // and what they think the click did, which this server decides for itself.
+    static_cast<void>(native ? std::int32_t{buffer.readByte()} : static_cast<std::int32_t>(readVarUInt(buffer)));
+    if (protocol >= kItemCooldownProtocol) {
         static_cast<void>(buffer.readByte()); // How far into its cooldown the client thinks it is.
     }
     if (buffer.failed()) {
         return std::nullopt;
     }
     return use;
+}
+
+/// Every line a stack request can carry, whether or not this server acts on it: one that cannot be
+/// read leaves the rest of the tick's packet unreachable, so all of them are walked past.
+enum class RequestAction : std::int32_t {
+    Unknown,
+    Take,
+    Place,
+    Swap,
+    Drop,
+    Destroy,
+    Consume,
+    Create,
+    LabTableCombine,
+    BeaconPayment,
+    MineBlock,
+    CraftRecipe,
+    CraftRecipeAuto,
+    CraftCreative,
+    CraftRecipeOptional,
+    CraftGrindstone,
+    CraftLoom,
+    CraftNonImplemented,
+    CraftResults,
+};
+
+/// What the number on the wire means. 2168 renumbered the list from the top after two entries that
+/// had been removed left holes in the middle, so the two tables have nothing in common past six.
+[[nodiscard]] RequestAction requestActionOf(const std::int32_t id, const int protocol) {
+    if (writesNativeShapes(protocol)) {
+        switch (id) {
+        case 0:
+            return RequestAction::Take;
+        case 1:
+            return RequestAction::Place;
+        case 2:
+            return RequestAction::Swap;
+        case 3:
+            return RequestAction::Drop;
+        case 4:
+            return RequestAction::Destroy;
+        case 5:
+            return RequestAction::Consume;
+        case 6:
+            return RequestAction::Create;
+        case 7:
+            return RequestAction::LabTableCombine;
+        case 8:
+            return RequestAction::BeaconPayment;
+        case 9:
+            return RequestAction::MineBlock;
+        case 10:
+            return RequestAction::CraftRecipe;
+        case 11:
+            return RequestAction::CraftRecipeAuto;
+        case 12:
+            return RequestAction::CraftCreative;
+        case 13:
+            return RequestAction::CraftRecipeOptional;
+        case 14:
+            return RequestAction::CraftGrindstone;
+        case 15:
+            return RequestAction::CraftLoom;
+        case 16:
+            return RequestAction::CraftNonImplemented;
+        case 17:
+            return RequestAction::CraftResults;
+        default:
+            return RequestAction::Unknown;
+        }
+    }
+    switch (id) {
+    case 0:
+        return RequestAction::Take;
+    case 1:
+        return RequestAction::Place;
+    case 2:
+        return RequestAction::Swap;
+    case 3:
+        return RequestAction::Drop;
+    case 4:
+        return RequestAction::Destroy;
+    case 5:
+        return RequestAction::Consume;
+    case 6:
+        return RequestAction::Create;
+    case 9:
+        return RequestAction::LabTableCombine;
+    case 10:
+        return RequestAction::BeaconPayment;
+    case 11:
+        return RequestAction::MineBlock;
+    case 12:
+        return RequestAction::CraftRecipe;
+    case 13:
+        return RequestAction::CraftRecipeAuto;
+    case 14:
+        return RequestAction::CraftCreative;
+    case 15:
+        return RequestAction::CraftRecipeOptional;
+    case 16:
+        return RequestAction::CraftGrindstone;
+    case 17:
+        return RequestAction::CraftLoom;
+    case 18:
+        return RequestAction::CraftNonImplemented;
+    case 19:
+        return RequestAction::CraftResults;
+    default:
+        return RequestAction::Unknown;
+    }
+}
+
+[[nodiscard]] BedrockStackActionType publicActionOf(const RequestAction action) {
+    switch (action) {
+    case RequestAction::Take:
+        return BedrockStackActionType::Take;
+    case RequestAction::Place:
+        return BedrockStackActionType::Place;
+    case RequestAction::Swap:
+        return BedrockStackActionType::Swap;
+    case RequestAction::Drop:
+        return BedrockStackActionType::Drop;
+    case RequestAction::Destroy:
+        return BedrockStackActionType::Destroy;
+    case RequestAction::Consume:
+        return BedrockStackActionType::Consume;
+    case RequestAction::Create:
+        return BedrockStackActionType::Create;
+    case RequestAction::CraftResults:
+        return BedrockStackActionType::CraftResults;
+    default:
+        return BedrockStackActionType::Other;
+    }
+}
+
+/// One end of a move. The window is named by a byte and an id of its own that only a bundle uses,
+/// and the stack's number went from a varint to a fixed four bytes at 2168.
+[[nodiscard]] BedrockStackSlot readStackSlot(io::ByteBuffer& buffer, const int protocol) {
+    BedrockStackSlot slot;
+    slot.container = buffer.readByte();
+    if (buffer.readByte() != 0) {
+        static_cast<void>(readIntLE(buffer));
+    }
+    slot.slot = buffer.readByte();
+    slot.stackNetworkId = writesNativeShapes(protocol) ? readIntLE(buffer) : readVarInt(buffer);
+    return slot;
+}
+
+/// One item as a recipe names it, which is a shape of its own: a name or a tag rather than an id.
+void readIngredient(io::ByteBuffer& buffer, const int protocol) {
+    if (writesNativeShapes(protocol)) {
+        const std::uint32_t kind = readVarUInt(buffer);
+        static_cast<void>(buffer.readByte()); // The same kind again, which the client writes twice.
+        if (kind == 1) {
+            static_cast<void>(readString(buffer));
+            static_cast<void>(readVarInt(buffer));
+        } else if (kind == 2) {
+            static_cast<void>(readString(buffer));
+            static_cast<void>(readShortLE(buffer));
+        } else if (kind == 3) {
+            static_cast<void>(readString(buffer));
+        }
+        static_cast<void>(readShortLE(buffer));
+        return;
+    }
+    const std::uint8_t kind = buffer.readByte();
+    if (kind == 1) {
+        if (readShortLE(buffer) != 0) {
+            static_cast<void>(readShortLE(buffer));
+        }
+    } else if (kind == 2) {
+        static_cast<void>(readString(buffer));
+        static_cast<void>(buffer.readByte());
+    } else if (kind == 3 || kind == 5) {
+        static_cast<void>(readString(buffer));
+    } else if (kind == 4) {
+        static_cast<void>(readString(buffer));
+        static_cast<void>(readShortLE(buffer));
+    }
+    static_cast<void>(readVarInt(buffer));
+}
+
+/// One item as a finished result names it. Below 2168 it is the plain shape without the flag that
+/// says a server is counting stacks; from there it is named rather than numbered.
+void readResultItem(io::ByteBuffer& buffer, const int protocol) {
+    if (writesNativeShapes(protocol)) {
+        const std::uint32_t kind = readVarUInt(buffer);
+        static_cast<void>(buffer.readByte());
+        if (kind != 0) {
+            static_cast<void>(readString(buffer));
+            static_cast<void>(readVarInt(buffer));
+        }
+        static_cast<void>(readShortLE(buffer)); // How many,
+        static_cast<void>(readVarUInt(buffer)); // which block it places,
+    } else {
+        if (readVarInt(buffer) == 0) {
+            return;
+        }
+        static_cast<void>(readShortLE(buffer));
+        static_cast<void>(readVarUInt(buffer));
+        static_cast<void>(readVarInt(buffer));
+    }
+    const std::uint32_t trailing = readVarUInt(buffer); // and what is written on it.
+    for (std::uint32_t at = 0; at < trailing && !buffer.failed(); ++at) {
+        static_cast<void>(buffer.readByte());
+    }
+}
+
+/// A request to move stacks between windows, as the client asks for it.
+[[nodiscard]] std::optional<BedrockStackRequest> readItemStackRequest(io::ByteBuffer& buffer, const int protocol) {
+    const bool native = writesNativeShapes(protocol);
+    BedrockStackRequest request;
+    request.requestId = readVarInt(buffer);
+    const std::uint32_t lines = readVarUInt(buffer);
+    for (std::uint32_t at = 0; at < lines && !buffer.failed(); ++at) {
+        const std::int32_t id = native ? static_cast<std::int32_t>(readVarUInt(buffer)) : buffer.readByte();
+        const RequestAction kind = requestActionOf(id, protocol);
+        if (native) {
+            static_cast<void>(buffer.readByte()); // The same line again, which the client writes twice.
+        }
+        BedrockStackAction action;
+        action.type = publicActionOf(kind);
+        switch (kind) {
+        case RequestAction::Take:
+        case RequestAction::Place:
+            action.count = buffer.readByte();
+            action.source = readStackSlot(buffer, protocol);
+            action.destination = readStackSlot(buffer, protocol);
+            break;
+        case RequestAction::Swap:
+            action.source = readStackSlot(buffer, protocol);
+            action.destination = readStackSlot(buffer, protocol);
+            break;
+        case RequestAction::Drop:
+            action.count = buffer.readByte();
+            action.source = readStackSlot(buffer, protocol);
+            static_cast<void>(buffer.readByte()); // Whether it is thrown rather than dropped.
+            break;
+        case RequestAction::Destroy:
+        case RequestAction::Consume:
+            action.count = buffer.readByte();
+            action.source = readStackSlot(buffer, protocol);
+            break;
+        case RequestAction::Create:
+            action.count = buffer.readByte();
+            break;
+        case RequestAction::LabTableCombine:
+        case RequestAction::CraftNonImplemented:
+            break;
+        case RequestAction::BeaconPayment:
+            static_cast<void>(readVarInt(buffer));
+            static_cast<void>(readVarInt(buffer));
+            break;
+        case RequestAction::MineBlock:
+            static_cast<void>(readVarInt(buffer)); // Which hotbar slot,
+            static_cast<void>(readVarInt(buffer)); // how worn the client thinks the tool is,
+            static_cast<void>(native ? readIntLE(buffer) : readVarInt(buffer)); // and which stack it was.
+            break;
+        case RequestAction::CraftRecipe:
+        case RequestAction::CraftCreative:
+            static_cast<void>(readVarUInt(buffer));
+            static_cast<void>(buffer.readByte());
+            break;
+        case RequestAction::CraftRecipeAuto: {
+            static_cast<void>(readVarUInt(buffer));
+            static_cast<void>(buffer.readByte());
+            if (!native) {
+                static_cast<void>(buffer.readByte()); // How many times it was made, counted twice.
+            }
+            const std::uint32_t ingredients = native ? readVarUInt(buffer) : buffer.readByte();
+            for (std::uint32_t item = 0; item < ingredients && !buffer.failed(); ++item) {
+                readIngredient(buffer, protocol);
+            }
+            break;
+        }
+        case RequestAction::CraftRecipeOptional:
+            static_cast<void>(readVarUInt(buffer));
+            static_cast<void>(readIntLE(buffer));
+            break;
+        case RequestAction::CraftGrindstone:
+            static_cast<void>(native ? readIntLE(buffer) : static_cast<std::int32_t>(readVarUInt(buffer)));
+            static_cast<void>(buffer.readByte());
+            static_cast<void>(readVarInt(buffer));
+            break;
+        case RequestAction::CraftLoom:
+            static_cast<void>(readString(buffer));
+            static_cast<void>(buffer.readByte());
+            break;
+        case RequestAction::CraftResults: {
+            const std::uint32_t results = readVarUInt(buffer);
+            for (std::uint32_t item = 0; item < results && !buffer.failed(); ++item) {
+                readResultItem(buffer, protocol);
+            }
+            static_cast<void>(buffer.readByte());
+            break;
+        }
+        case RequestAction::Unknown:
+            // Nothing says how long an unknown line is, so the rest of the packet is given up on.
+            return std::nullopt;
+        }
+        request.actions.push_back(action);
+    }
+
+    // What the client typed where a server may filter it, and where that text came from.
+    const std::uint32_t filtered = readVarUInt(buffer);
+    for (std::uint32_t at = 0; at < filtered && !buffer.failed(); ++at) {
+        static_cast<void>(readString(buffer));
+    }
+    static_cast<void>(readIntLE(buffer));
+    if (buffer.failed()) {
+        return std::nullopt;
+    }
+    return request;
 }
 
 } // namespace
@@ -603,15 +944,13 @@ std::optional<PlayerAuthInput> readPlayerAuthInput(io::ByteBuffer& buffer, const
     if (present(flags.contains(kFlagItemInteraction))) {
         input.itemUse = readItemUseTransaction(buffer, protocol);
     }
-    // A request to move stacks around is a shape of its own, deep and long, and this server does
-    // not read one yet. Everything after it in the packet is out of reach for that tick, which
-    // costs nothing: a player does not usually touch a block in the tick they tidy their bag.
-    if (flags.contains(kFlagItemStackRequest)) {
-        return input;
-    }
-    if (protocol >= kInputFlagListProtocol) {
-        static_cast<void>((buffer.readByte() != 0));
-        static_cast<void>((buffer.readByte() != 0));
+    if (present(flags.contains(kFlagItemStackRequest))) {
+        input.stackRequest = readItemStackRequest(buffer, protocol);
+        if (!input.stackRequest.has_value()) {
+            // A line this build cannot measure leaves the rest of the tick unreadable.
+            input.itemUse.reset();
+            return input;
+        }
     }
     if (present(flags.contains(kFlagBlockActions))) {
         const std::int32_t count =
@@ -908,6 +1247,51 @@ void writeInventoryContent(io::ByteBuffer& buffer, const std::uint32_t container
     writeItemStack(buffer, BedrockItemStack{}, protocol); // Nothing stored beside it.
 }
 
+void writeItemStackResponse(io::ByteBuffer& buffer, const std::int32_t requestId, const bool accepted,
+                            const std::span<const BedrockResponseContainer> containers, const int protocol) {
+    const bool native = writesNativeShapes(protocol);
+    writeVarUInt(buffer, 1); // One answer, because one request is answered at a time.
+    buffer.writeByte(accepted ? 0 : 1);
+    writeVarInt(buffer, requestId);
+    if (native) {
+        writeBool(buffer, true);
+        if (containers.empty()) {
+            writeBool(buffer, false);
+            return;
+        }
+        writeBool(buffer, true);
+    } else if (!accepted) {
+        // Below 2168 a refused request says nothing more: the client puts everything back itself.
+        return;
+    }
+
+    writeVarUInt(buffer, static_cast<std::uint32_t>(containers.size()));
+    for (const BedrockResponseContainer& container : containers) {
+        buffer.writeByte(static_cast<std::uint8_t>(container.container));
+        writeBool(buffer, false); // No id of its own: none of these windows is a bundle.
+        writeVarUInt(buffer, static_cast<std::uint32_t>(container.slots.size()));
+        for (const BedrockResponseSlot& slot : container.slots) {
+            buffer.writeByte(static_cast<std::uint8_t>(slot.slot));
+            buffer.writeByte(static_cast<std::uint8_t>(slot.slot)); // The same slot, as the hotbar numbers it.
+            buffer.writeByte(static_cast<std::uint8_t>(slot.count));
+            if (native) {
+                writeBool(buffer, true);
+                writeBool(buffer, slot.stackNetworkId > 0);
+                if (slot.stackNetworkId > 0) {
+                    writeVarInt(buffer, slot.stackNetworkId);
+                }
+                writeString(buffer, "");
+                writeBool(buffer, false); // Nothing filtered out of the name,
+            } else {
+                writeVarInt(buffer, slot.stackNetworkId);
+                writeString(buffer, "");
+                writeString(buffer, "");
+            }
+            writeVarInt(buffer, 0); // and nothing worn off it.
+        }
+    }
+}
+
 void writeMobEffect(io::ByteBuffer& buffer, const std::uint64_t runtimeEntityId, const BedrockEffectEvent event,
                     const std::int32_t effectId, const std::int32_t amplifier, const bool particles,
                     const std::int32_t durationTicks, const bool ambient) {
@@ -1074,9 +1458,16 @@ void writeByteAngle(io::ByteBuffer& buffer, const float degrees) {
     buffer.writeByte(static_cast<std::uint8_t>(static_cast<std::int8_t>(degrees / (360.0F / 256.0F))));
 }
 
-/// Nothing in a hand. Air is the one item that is only its id: a client that reads a zero there
-/// stops, so the count, the damage and everything after it are not written at all.
-void writeAirItem(io::ByteBuffer& buffer) { writeVarInt(buffer, 0); }
+/// Nothing in a hand. Below 2168 air is the one item that is only its id, so the count, the damage
+/// and everything after it are not written at all; from there it is the descriptor shape, which
+/// writes every field even for a stack of nothing.
+void writeAirItem(io::ByteBuffer& buffer, const int protocol) {
+    if (protocol >= kHeldItemDescriptorProtocol) {
+        writeItemStack(buffer, BedrockItemStack{}, protocol);
+        return;
+    }
+    writeVarInt(buffer, 0);
+}
 
 } // namespace
 
@@ -1197,7 +1588,7 @@ void writeAddPlayer(io::ByteBuffer& buffer, const AddPlayerInfo& info, const int
     writeFloatLE(buffer, info.pitch);
     writeFloatLE(buffer, info.yaw);
     writeFloatLE(buffer, info.yaw);
-    writeAirItem(buffer);
+    writeAirItem(buffer, protocol);
     writeVarInt(buffer, info.gameType);
 
     // The metadata a player needs before a client will draw one at all: how big they are, what

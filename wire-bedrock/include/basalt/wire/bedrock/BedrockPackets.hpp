@@ -41,6 +41,15 @@ inline constexpr int kEntityEventGrewProtocol = 975;
 /// a varint to a short and an air stack stops being a single zero byte.
 inline constexpr int kItemDescriptorProtocol = 1001;
 
+/// Where a stack named outside a window (the hand of a player being drawn, the hand a click was
+/// made with) took the same descriptor shape. It is not the same protocol as the window's own: for
+/// three versions the two shapes were different, which is the whole reason both exist here.
+inline constexpr int kHeldItemDescriptorProtocol = 2168;
+
+/// Where a click gained a trailing byte saying how far into its cooldown the client thinks the
+/// item is.
+inline constexpr int kItemCooldownProtocol = 944;
+
 /// What a client asks for before anything else, and the only packet either side sends in the
 /// clear and uncompressed.
 struct RequestNetworkSettings {
@@ -247,6 +256,66 @@ struct BedrockItemUse {
     float clickZ = 0.0F;
 };
 
+/// The containers a stack request can name that this server models. The numbers are that edition's
+/// own, and they are the ones every protocol in this window uses: the table shifted last at 560.
+enum class BedrockRequestContainer : std::int32_t {
+    Armour = 6,
+    /// What a block being looked into holds: a chest's own rows, a furnace seen as one list.
+    LevelEntity = 7,
+    /// The 36 a player carries, hotbar first.
+    HotbarAndInventory = 12,
+    CraftingInput = 13,
+    CraftingOutput = 14,
+    FurnaceFuel = 24,
+    FurnaceIngredient = 25,
+    FurnaceResult = 26,
+    Hotbar = 28,
+    Inventory = 29,
+    Offhand = 34,
+    /// What is being dragged. Bedrock keeps it in a container of its own rather than outside them.
+    Cursor = 59,
+    CreatedOutput = 60,
+};
+
+/// One end of a move: which window, which slot of it, and what the client believes is there.
+struct BedrockStackSlot {
+    std::int32_t container = 0;
+    std::int32_t slot = 0;
+    /// The number the client thinks that stack has. This server counts no stacks, so it is echoed
+    /// back rather than checked.
+    std::int32_t stackNetworkId = 0;
+};
+
+/// What one line of a stack request asks for. The numbering differs between protocols, so it is
+/// resolved here and the caller never sees a raw id.
+enum class BedrockStackActionType : std::int32_t {
+    /// Read but not acted on: everything from crafting to a beacon's payment.
+    Other = 0,
+    Take,
+    Place,
+    Swap,
+    Drop,
+    Destroy,
+    Consume,
+    Create,
+    CraftResults,
+};
+
+struct BedrockStackAction {
+    BedrockStackActionType type = BedrockStackActionType::Other;
+    /// How many the line moves, for the five that move any.
+    std::int32_t count = 0;
+    BedrockStackSlot source;
+    BedrockStackSlot destination;
+};
+
+/// A client asking for stacks to be moved. It arrives inside a tick's own packet, and the answer
+/// carries its number back so the client knows which of its guesses held.
+struct BedrockStackRequest {
+    std::int32_t requestId = 0;
+    std::vector<BedrockStackAction> actions;
+};
+
 struct PlayerAuthInput {
     float x = 0.0F;
     /// As the client writes it, which is its eyes and not its feet. kPlayerEyeHeight is the
@@ -262,15 +331,38 @@ struct PlayerAuthInput {
 
     /// What they did with what they hold, when they did anything.
     std::optional<BedrockItemUse> itemUse;
+
+    /// What they asked to be moved between windows, when they asked for anything.
+    std::optional<BedrockStackRequest> stackRequest;
 };
 
 /// How far above its feet a Bedrock client reports a player to be. Java measures from the feet, so
 /// every position that crosses between them moves by this.
 inline constexpr float kPlayerEyeHeight = 1.62001F;
 
-/// Reads only as far as the position and the rotation: what follows is input state, item use and
-/// stack requests, none of which this server acts on yet.
+/// Reads the whole packet: where the client is, what it did to a block, what it did with what it
+/// holds, and what it asked to be moved between its windows. What is left is input state, which
+/// this server works out for itself.
 [[nodiscard]] std::optional<PlayerAuthInput> readPlayerAuthInput(io::ByteBuffer& buffer, int protocol);
+
+/// What one slot of a window holds after a request was answered. The client draws what this says
+/// and drops its own guess.
+struct BedrockResponseSlot {
+    std::int32_t slot = 0;
+    std::int32_t count = 0;
+    std::int32_t stackNetworkId = 0;
+};
+
+/// One window of an answer, and what changed in it.
+struct BedrockResponseContainer {
+    std::int32_t container = 0;
+    std::vector<BedrockResponseSlot> slots;
+};
+
+/// The answer to one stack request. An empty `containers` with `accepted` still tells the client
+/// its guess stood; `accepted` false makes it put everything back.
+void writeItemStackResponse(io::ByteBuffer& buffer, std::int32_t requestId, bool accepted,
+                            std::span<const BedrockResponseContainer> containers, int protocol);
 
 /// How far the client should ask the server for, and how far it draws.
 void writeChunkRadiusUpdated(io::ByteBuffer& buffer, std::int32_t radius);
