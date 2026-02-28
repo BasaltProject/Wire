@@ -4,6 +4,7 @@
 #include <basalt/wire/bedrock/BedrockCipher.hpp>
 #include <basalt/wire/bedrock/BedrockConnection.hpp>
 #include <basalt/wire/bedrock/BedrockGate.hpp>
+#include <basalt/wire/bedrock/BedrockItems.hpp>
 #include <basalt/wire/bedrock/BedrockKeys.hpp>
 #include <basalt/wire/bedrock/BedrockPackets.hpp>
 #include <basalt/wire/bedrock/BedrockTypes.hpp>
@@ -839,19 +840,23 @@ TEST_CASE("a subchunk goes out in the shape a client unpacks") {
     CHECK(blockAt(0, 0, 0) == bedrockBlockId(kAir, kNativeBedrockProtocol));
 }
 
-TEST_CASE("a creative group's category is a word for an old client and a byte for a new one") {
-    // The one field of this packet whose width moved: 2168 shrank it to a byte, and writing the
-    // wrong one leaves everything after it in the packet three bytes out of place.
+TEST_CASE("a creative group sits in a tab, and its number is a word or a byte by version") {
+    // Two mistakes this has already made. The width moved at 2168, and writing the wrong one leaves
+    // everything after it three bytes out of place. And the number itself has to name a tab: `all`
+    // is a word for the whole menu, not somewhere a group can sit, and a client handed it reads no
+    // further and hangs up.
+    constexpr std::int32_t kItemsTab = 4;
+
     io::ByteBuffer older;
     writeCreativeContent(older, kCreativeCategoryByteProtocol - 1);
     REQUIRE(readVarUInt(older) == 1);
-    CHECK(readIntLE(older) == 0);
+    CHECK(readIntLE(older) == kItemsTab);
     CHECK(readString(older) == "itemGroup.name.basalt");
 
     io::ByteBuffer newer;
     writeCreativeContent(newer, kCreativeCategoryByteProtocol);
     REQUIRE(readVarUInt(newer) == 1);
-    CHECK(newer.readByte() == 0);
+    CHECK(newer.readByte() == kItemsTab);
     CHECK(readString(newer) == "itemGroup.name.basalt");
 }
 
@@ -863,8 +868,11 @@ TEST_CASE("the biome list names the one every chunk points at") {
 
     REQUIRE(readVarUInt(body) == 1);
     CHECK(readShortLE(body) == 0); // Its name is the first string below,
-    CHECK(body.readByte() == 0);   // and its place in the list is its id.
-    for (int field = 0; field < 8; ++field) {
+    // and minus one where an id would go. 827 made this a plain number and 844 cut the climate
+    // down to five fields: written in 800's shape, with an optional id and eight floats, this is a
+    // packet a client hangs up on.
+    CHECK(readShortLE(body) == 0xffff);
+    for (int field = 0; field < 5; ++field) {
         static_cast<void>(readFloatLE(body));
     }
     static_cast<void>(readIntLE(body)); // The map water colour,
@@ -874,6 +882,40 @@ TEST_CASE("the biome list names the one every chunk points at") {
 
     REQUIRE(readVarUInt(body) == 1);
     CHECK(readString(body) == "plains");
+    CHECK_FALSE(body.failed());
+    CHECK(body.readableBytes() == 0);
+}
+
+TEST_CASE("the creative menu reads back exactly as long as it was written") {
+    // Walked the way a client walks it: the length in front of an item's trailing data is what
+    // makes a mistake anywhere inside it show up as bytes left over at the end.
+    io::ByteBuffer body;
+    writeCreativeContent(body, kNativeBedrockProtocol);
+
+    const auto readInstance = [&body] {
+        const std::int32_t id = readVarInt(body);
+        static_cast<void>(readShortLE(body));
+        static_cast<void>(readVarUInt(body));
+        static_cast<void>(readVarInt(body));
+        const std::uint32_t trailing = readVarUInt(body);
+        REQUIRE(trailing <= body.readableBytes());
+        static_cast<void>(body.readSpan(trailing));
+        return id;
+    };
+
+    REQUIRE(readVarUInt(body) == 1);
+    static_cast<void>(body.readByte());
+    CHECK(readString(body) == "itemGroup.name.basalt");
+    CHECK(readInstance() == 0); // The group's icon is nothing.
+
+    const std::uint32_t items = readVarUInt(body);
+    CHECK(items == bedrockItemPalette().size());
+    for (std::uint32_t at = 0; at < items; ++at) {
+        CHECK(readVarUInt(body) == at + 1); // Its number in the menu,
+        CHECK(readInstance() == static_cast<std::int32_t>(at) + 1);
+        CHECK(readVarUInt(body) == 0); // and the one group everything is in.
+    }
+
     CHECK_FALSE(body.failed());
     CHECK(body.readableBytes() == 0);
 }

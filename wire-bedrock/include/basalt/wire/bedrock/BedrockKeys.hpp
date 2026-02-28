@@ -24,6 +24,9 @@ struct JwtParts {
 /// Reads one string member out of a JSON object, which is all the login chain ever asks for.
 [[nodiscard]] std::optional<std::string> jsonString(std::string_view json, std::string_view key);
 
+/// The same for a number, which a skin's own size arrives as.
+[[nodiscard]] std::optional<double> jsonNumber(std::string_view json, std::string_view key);
+
 /// True when the token was signed by the key in that SubjectPublicKeyInfo. ES384 only: it is the
 /// only algorithm a Bedrock identity is ever signed with, and accepting another is how a chain gets
 /// forged.

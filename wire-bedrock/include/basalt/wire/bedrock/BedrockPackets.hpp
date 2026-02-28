@@ -50,6 +50,10 @@ inline constexpr int kHeldItemDescriptorProtocol = 2168;
 /// item is.
 inline constexpr int kItemCooldownProtocol = 944;
 
+/// Where nothing stopped being a single zero byte: an air item instance gained the empty fields
+/// every other one carries, so a menu icon that is nothing costs six bytes rather than one.
+inline constexpr int kAirItemInstanceGrewProtocol = 2168;
+
 /// Where the category of a creative group shrank from a four-byte little-endian number to the one
 /// byte it always needed. Three bytes, and everything after them in the packet reads shifted.
 inline constexpr int kCreativeCategoryByteProtocol = 2168;
@@ -74,6 +78,15 @@ struct LoginRequest {
     std::vector<std::uint8_t> identityPublicKey;
     /// True when Mojang signed the chain, rather than the client signing itself.
     bool authenticated = false;
+
+    /// What this player looks like, as their own client described it: the raw pixels and the size
+    /// they come at. Empty when the client sent none that could be read, and then everybody who
+    /// sees them gets a plain colour instead.
+    std::string skinId;
+    std::string skinGeometry;
+    std::uint32_t skinWidth = 0;
+    std::uint32_t skinHeight = 0;
+    std::vector<std::uint8_t> skinPixels;
 };
 
 [[nodiscard]] std::optional<LoginRequest> readLogin(io::ByteBuffer& buffer);
@@ -316,6 +329,14 @@ struct PlayerAuthInput {
     /// against it.
     bool sneaking = false;
 
+    /// Whether they are standing on something. The client says it ran into a wall vertically, which
+    /// is what the other edition calls being on the ground, and mining in the air is five times
+    /// slower: a player who never reports this digs at a fifth of the speed they should.
+    bool onGround = false;
+
+    /// Whether they are running.
+    bool sprinting = false;
+
     /// What they did to a block, in the order they did it.
     std::vector<BedrockBlockAction> blockActions;
 
@@ -338,6 +359,9 @@ inline constexpr float kPlayerEyeHeight = 1.62001F;
 /// The windows a block opens, by the number that edition gives them. Only the ones this server
 /// draws are named; the list has not moved in this protocol window.
 enum class BedrockContainerType : std::int8_t {
+    /// The player's own bag, which this edition opens by asking the server for it rather than by
+    /// itself: a client whose ask goes unanswered never opens its inventory at all.
+    Inventory = -1,
     /// A chest, a barrel, a shulker box: rows of slots and nothing else.
     Container = 0,
     Workbench = 1,
@@ -366,6 +390,9 @@ struct BedrockLevelEffect {
     float z = 0.5F;
     /// Whether the number the Java event carries means anything over there.
     bool keepsData = false;
+    /// Whether that number is a block state, which the two editions number differently: the caller
+    /// knows the protocol and translates it, because this does not.
+    bool translatesBlock = false;
 };
 
 /// What to draw and play for one of Java's level events, or nothing on both counts when this build
@@ -457,9 +484,29 @@ void writeAvailableEntityIdentifiers(io::ByteBuffer& buffer);
 
 void writeBiomeDefinitionList(io::ByteBuffer& buffer);
 
-void writeCreativeContent(io::ByteBuffer& buffer, int protocol);
+/// The creative menu, with at most this many items in it. Fewer than all of them is a way of
+/// asking which one a client will not take.
+void writeCreativeContent(io::ByteBuffer& buffer, int protocol, std::size_t items = SIZE_MAX);
+
+/// The recipe book, which this server has nothing to put in yet. It is sent empty rather than left
+/// out: the inventory screen is built around the book, and 2168 counts eleven kinds of recipe where
+/// older versions had one list.
+void writeCraftingData(io::ByteBuffer& buffer);
+
+/// The handful of rules a Bedrock client decides things by on its own. Every one of these exists to
+/// stop the client acting where the server already has: it heals nobody, empties nobody's bag and
+/// moves nobody's spawn, because all three are this server's to decide.
+void writeGameRulesChanged(io::ByteBuffer& buffer, int protocol);
 
 void writeSetCommandsEnabled(io::ByteBuffer& buffer, bool enabled);
+
+/// What a player may do with its hands. Without this a client has no abilities at all: it cannot
+/// mine, build, open a door or hit anything, whatever its gamemode says.
+void writeUpdateAbilities(io::ByteBuffer& buffer, std::int64_t entityId, bool isOperator, bool creative);
+
+/// The other half of the same answer, which this edition keeps in a packet of its own: whether the
+/// world may be changed at all. A gamemode that only looks is this and not an ability.
+void writeUpdateAdventureSettings(io::ByteBuffer& buffer, bool immutableWorld);
 
 /// A sound, at a place. The name is Bedrock's own, which `bedrockSoundName` translates from Java's.
 ///
@@ -480,15 +527,145 @@ void writeUpdateBlock(io::ByteBuffer& buffer, std::int32_t x, std::int32_t y, st
 /// another, and `count` how many of them: the client reads them from the bottom of the world up.
 void writeLevelChunk(io::ByteBuffer& buffer, std::int32_t chunkX, std::int32_t chunkZ, std::uint32_t count,
                      std::span<const std::uint8_t> subChunks, std::uint32_t biomeSections, std::int32_t dimension,
-                     int protocol);
+                     int protocol, std::span<const std::uint8_t> blockEntities = {});
 
 /// An empty chunk column: every subchunk absent, biomes flat, no block entities. It is what a
 /// client needs to stop waiting for a chunk it was told to expect.
 void writeEmptyLevelChunk(io::ByteBuffer& buffer, std::int32_t chunkX, std::int32_t chunkZ, std::uint32_t subChunkCount,
                           std::int32_t dimension, int protocol);
 
-/// Which bit of the flags field a flag is.
-[[nodiscard]] constexpr std::uint64_t flagBit(const EntityFlag flag) { return 1ULL << static_cast<std::uint8_t>(flag); }
+/// What an arm is doing. Only the swing matters here: the client that swung animates itself, so
+/// this is what the others are told.
+enum class BedrockAnimation : std::int32_t {
+    None = 0,
+    SwingArm = 1,
+    WakeUp = 3,
+    CriticalHit = 4,
+    MagicCriticalHit = 5,
+};
+
+void writeAnimate(io::ByteBuffer& buffer, std::uint64_t runtimeEntityId, BedrockAnimation action);
+
+/// One line of a sidebar: a name, and the number that orders it. Bedrock counts lines by a
+/// scoreboard id of the server's choosing rather than by their text, so a line that changes keeps
+/// its place as long as the id does.
+struct BedrockScoreLine {
+    std::int64_t lineId = 0;
+    std::string name;
+    std::int32_t score = 0;
+};
+
+/// Which objective a slot shows, and under what title. `slot` is "sidebar", "list" or "belowname".
+void writeSetDisplayObjective(io::ByteBuffer& buffer, std::string_view slot, std::string_view objective,
+                              std::string_view title);
+
+void writeRemoveObjective(io::ByteBuffer& buffer, std::string_view objective);
+
+/// The lines themselves, as fake players: that is how a sidebar of plain text is drawn over there.
+void writeSetScore(io::ByteBuffer& buffer, std::string_view objective, std::span<const BedrockScoreLine> lines);
+
+/// The same lines taken away again, by the ids they were given.
+void writeRemoveScores(io::ByteBuffer& buffer, std::span<const std::int64_t> lineIds);
+
+/// A boss bar, which over here belongs to an entity rather than to a uuid of its own.
+enum class BedrockBossAction : std::int32_t {
+    Create = 0,
+    RegisterPlayer = 1,
+    Remove = 2,
+    UnregisterPlayer = 3,
+    UpdatePercentage = 4,
+    UpdateName = 5,
+    UpdateProperties = 6,
+    UpdateStyle = 7,
+};
+
+void writeBossEvent(io::ByteBuffer& buffer, std::int64_t bossEntityId, BedrockBossAction action, std::string_view title,
+                    float progress);
+
+/// Sends this client to another server, which is what a proxy does with a command.
+void writeTransfer(io::ByteBuffer& buffer, std::string_view address, std::uint16_t port, int protocol);
+
+/// A sign's four lines, front and back, in the shape that edition keeps them: one string with the
+/// lines run together rather than four fields. Without this every sign a client is shown is blank.
+///
+/// The tag on its own, which is what a chunk carries: a column ends with its block entities written
+/// one after another, and the client reads them until the payload runs out.
+void writeSignTag(io::ByteBuffer& buffer, std::int32_t x, std::int32_t y, std::int32_t z, std::string_view front,
+                  std::string_view back, bool waxed);
+
+/// The same tag with its position in front, which is the packet that says one sign changed.
+void writeSignData(io::ByteBuffer& buffer, std::int32_t x, std::int32_t y, std::int32_t z, std::string_view front,
+                   std::string_view back, bool waxed);
+
+/// A bed's colour, which this edition keeps in a block entity rather than in the block: there is one
+/// bed block over there and sixteen here, so without this tag every bed a client is shown is red.
+void writeBedTag(io::ByteBuffer& buffer, std::int32_t x, std::int32_t y, std::int32_t z, std::uint8_t colour);
+
+/// The same tag with its position in front, for a bed that has just been put down or changed.
+void writeBedData(io::ByteBuffer& buffer, std::int32_t x, std::int32_t y, std::int32_t z, std::uint8_t colour);
+
+/// Opens the editor over a sign that has just been placed. Without it a Bedrock player puts a sign
+/// down and is never given anywhere to write.
+void writeOpenSign(io::ByteBuffer& buffer, std::int32_t x, std::int32_t y, std::int32_t z, bool front);
+
+/// Who is riding what. Taking somebody off a vehicle is the same packet with `Remove`.
+enum class BedrockRide : std::int32_t {
+    Remove = 0,
+    /// The one steering, which for a boat or a horse is the first passenger.
+    Rider = 1,
+    /// Anybody else along for the trip.
+    Passenger = 2,
+};
+
+void writeSetEntityLink(io::ByteBuffer& buffer, std::int64_t vehicleId, std::int64_t riderId, BedrockRide how,
+                        bool immediate);
+
+/// How hard the world is, which this edition draws in its own pause menu.
+void writeSetDifficulty(io::ByteBuffer& buffer, std::int32_t difficulty);
+
+/// A click on something alive. This edition carries it in the transaction packet rather than in the
+/// movement one, and without reading it a player can neither hit a mob nor use one.
+struct BedrockEntityUse {
+    /// Zero interacts with it, one hits it. Two is an interact that names where it was touched,
+    /// which only a few mobs read.
+    std::int32_t action = 0;
+    /// The entity as this client knows it, which is one more than the server's own number.
+    std::uint64_t runtimeEntityId = 0;
+    std::int32_t hotbarSlot = 0;
+};
+
+/// Reads the one kind of transaction that is about an entity, and nothing when it is about a block
+/// or an item: those two already arrive inside the movement packet.
+[[nodiscard]] std::optional<BedrockEntityUse> readEntityUse(io::ByteBuffer& buffer, int protocol);
+
+/// What a client did to something alive, or to its own screen. Most of these this server settles
+/// for itself; the one it must answer is the ask to open the bag.
+struct BedrockInteract {
+    /// Six is the ask to open the inventory. The rest are mouse-overs and vehicles.
+    std::int32_t action = 0;
+    std::uint64_t runtimeEntityId = 0;
+};
+
+[[nodiscard]] std::optional<BedrockInteract> readInteract(io::ByteBuffer& buffer);
+
+/// Which hotbar slot a client just switched to. Nothing else says it: the movement packet carries a
+/// slot only when something is used, so a server that never reads this places the wrong block and
+/// digs with the wrong tool for as long as the player does not click.
+[[nodiscard]] std::optional<std::int32_t> readHeldSlot(io::ByteBuffer& buffer, int protocol);
+
+/// Which bit of the first flags field a flag is, and zero for one that is not in it. Bedrock has
+/// more flags than a long holds: everything from 64 up travels in a second field and is counted
+/// from there, and shifting a long by 64 is not a shift at all, it is a value nobody can predict.
+[[nodiscard]] constexpr std::uint64_t flagBit(const EntityFlag flag) {
+    const auto at = static_cast<std::uint32_t>(flag);
+    return at < 64U ? 1ULL << at : 0ULL;
+}
+
+/// The same for the second field, which carries flags 64 to 127.
+[[nodiscard]] constexpr std::uint64_t flagBit2(const EntityFlag flag) {
+    const auto at = static_cast<std::uint32_t>(flag);
+    return at >= 64U && at < 128U ? 1ULL << (at - 64U) : 0ULL;
+}
 
 /// One field of entity metadata. Since 2168 the format goes out twice, as a varint and then as a
 /// byte, and the client refuses a packet where the two disagree.
@@ -500,10 +677,15 @@ void writeMetadataFloat(io::ByteBuffer& buffer, EntityDataId id, float value, in
 
 void writeMetadataString(io::ByteBuffer& buffer, EntityDataId id, std::string_view value, int protocol);
 
-/// How much air is left and which of the shared flags are on. The two travel together because
-/// they are the two halves of what the HUD draws while somebody is under water or on fire.
-void writeSubmersion(io::ByteBuffer& buffer, std::uint64_t runtimeEntityId, std::int16_t airSupply, std::uint64_t flags,
-                     int protocol);
+/// Everything a Bedrock client has to be told about its own body, in one packet. It goes out whole
+/// every time: a field left out is not a field left alone, it is a field the client keeps at
+/// whatever it last heard, and what it starts from is zero.
+///
+/// Zero is not a neutral starting point here. Without the gravity and collision flags a player
+/// floats and cannot jump, and without a maximum air supply the bubbles are drawn empty and the
+/// client starts drowning on dry land.
+void writeSelfMetadata(io::ByteBuffer& buffer, std::uint64_t runtimeEntityId, std::int16_t airSupply,
+                       std::int16_t maxAirSupply, std::uint64_t flags, std::uint64_t moreFlags, int protocol);
 
 /// What a player looks like. Bedrock will not draw somebody it has no skin for, and a server that
 /// redistributed Mojang's would be shipping their art, so this is a plain image made here.
@@ -634,6 +816,39 @@ void writeItemComponent(io::ByteBuffer& buffer);
 
 /// Everything in one window. The slot type names which window it is, because the number alone has
 /// not been enough since containers could be dynamic.
+/// A stack lying on the ground, as an entity of its own. Without this a Bedrock client sees the
+/// world drop nothing: it draws items from the packet, not from the block that broke.
+void writeAddItemEntity(io::ByteBuffer& buffer, std::int64_t entityId, const BedrockItemStack& item, float x, float y,
+                        float z, float motionX, float motionY, float motionZ, int protocol);
+
+/// Anything else alive, by the name its own edition knows it under (`minecraft:cow`). A name this
+/// client has no entity for is one it will not draw, which is why the caller translates first.
+void writeAddEntity(io::ByteBuffer& buffer, std::int64_t entityId, std::string_view identifier, float x, float y,
+                    float z, float yaw, float pitch, float width, float height, std::uint64_t flags, int protocol);
+
+/// What an entity is doing now, when only that changed: the same flags the spawn carried.
+void writeEntityFlags(io::ByteBuffer& buffer, std::uint64_t runtimeEntityId, std::uint64_t flags, int protocol);
+
+/// A player lying in a bed or getting out of one: the bit that draws them lying down lives past the
+/// sixty-fourth, so it travels in the second word, and the bed itself is a field of its own because
+/// the client puts the body where that says rather than where the player stands.
+void writeSleeping(io::ByteBuffer& buffer, std::uint64_t runtimeEntityId, std::uint64_t moreFlags, std::int32_t bedX,
+                   std::int32_t bedY, std::int32_t bedZ, int protocol);
+
+/// The stack flying into somebody who picked it up. The item entity is taken away by whoever is
+/// tracking it; this is only the little arc it makes on the way.
+void writeTakeItemEntity(io::ByteBuffer& buffer, std::uint64_t itemRuntimeId, std::uint64_t collectorRuntimeId);
+
+/// What somebody is holding, which is how everybody else sees a sword in their hand. Bedrock has no
+/// packet that carries a whole set: the hand is this one and the armour is its own.
+void writeMobEquipment(io::ByteBuffer& buffer, std::uint64_t runtimeEntityId, const BedrockItemStack& item,
+                       std::int32_t hotbarSlot, int protocol);
+
+/// What somebody is wearing, head to feet, plus the hand that is not holding anything in front.
+void writeMobArmorEquipment(io::ByteBuffer& buffer, std::uint64_t runtimeEntityId, const BedrockItemStack& head,
+                            const BedrockItemStack& chest, const BedrockItemStack& legs, const BedrockItemStack& feet,
+                            const BedrockItemStack& body, int protocol);
+
 void writeInventoryContent(io::ByteBuffer& buffer, std::uint32_t containerId, std::span<const BedrockItemStack> items,
                            BedrockContainerSlot slot, int protocol);
 
@@ -702,7 +917,18 @@ enum class LevelEventType : std::int32_t {
     StartThunderstorm = 3002,
     StopRaining = 3003,
     StopThunderstorm = 3004,
+    /// The cracks on a block somebody is digging, and how fast they fill in. Bedrock draws no
+    /// cracks of its own on a server that never says this, and falls back to a pace of its own.
+    /// The flash of an explosion, which over here is a numbered effect rather than a packet.
+    ParticleExplosion = 2025,
+    BlockStartBreak = 3600,
+    BlockStopBreak = 3601,
+    BlockUpdateBreak = 3602,
 };
+
+/// The data a break event carries: the whole range of an unsigned short is one block's worth of
+/// cracks, so what goes out is that times how much of the block comes off in a tick.
+inline constexpr std::int32_t kBreakProgressScale = 65535;
 
 /// How hard it is raining, as this packet counts it: the whole range of an unsigned short.
 inline constexpr std::int32_t kWeatherStrengthScale = 65535;

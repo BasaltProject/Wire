@@ -55,6 +55,27 @@ std::optional<JwtParts> decodeJwt(std::string_view token) {
     return parts;
 }
 
+std::optional<double> jsonNumber(const std::string_view json, const std::string_view key) {
+    const auto document = common::parseJson(json);
+    if (!document) {
+        return std::nullopt;
+    }
+    const auto* object = document->get<common::JsonObject>();
+    if (object == nullptr) {
+        return std::nullopt;
+    }
+    const common::JsonValue* value = object->find(key);
+    if (value == nullptr) {
+        return std::nullopt;
+    }
+    // A whole number keeps its own type in this reader, and every count a client writes is one.
+    if (const auto* whole = value->get<std::int64_t>(); whole != nullptr) {
+        return static_cast<double>(*whole);
+    }
+    const auto* number = value->get<double>();
+    return number == nullptr ? std::nullopt : std::optional{*number};
+}
+
 std::optional<std::string> jsonString(std::string_view json, std::string_view key) {
     const auto document = common::parseJson(json);
     if (!document) {
