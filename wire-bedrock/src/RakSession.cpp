@@ -36,6 +36,7 @@ void RakSession::receiveDatagram(std::span<const std::uint8_t> datagram, std::ui
         return;
     }
     lastHeardMs_ = nowMs;
+    ++stats_.datagramsReceived;
 
     inbound_.clear();
     inbound_.writeBytes(datagram);
@@ -192,6 +193,7 @@ void RakSession::handleMessage(std::vector<std::uint8_t>&& message, std::uint64_
         connected_ = true;
         return;
     case RakId::DisconnectionNotification:
+        saidGoodbye_ = true;
         closed_ = true;
         return;
     default:
@@ -276,6 +278,8 @@ void RakSession::queueFrames(std::span<const std::uint8_t> message, Reliability 
     const std::size_t partSize = maxPayload() - (prototype.encodedSize() - message.size()) - 10;
     const std::uint32_t partCount = static_cast<std::uint32_t>((message.size() + partSize - 1) / partSize);
     const std::uint16_t partId = nextSplitId_++;
+    ++stats_.splitMessages;
+    stats_.splitParts += partCount;
 
     for (std::uint32_t part = 0; part < partCount; ++part) {
         const std::size_t offset = static_cast<std::size_t>(part) * partSize;
@@ -318,6 +322,7 @@ void RakSession::removeAcknowledged(std::span<const SequenceRange> ranges) {
     for (const SequenceRange& range : ranges) {
         auto entry = unacknowledged_.lower_bound(range.start);
         while (entry != unacknowledged_.end() && entry->first <= range.end) {
+            ++stats_.datagramsAcknowledged;
             entry = unacknowledged_.erase(entry);
         }
     }
@@ -327,6 +332,7 @@ void RakSession::requeueNaked(std::span<const SequenceRange> ranges) {
     for (const SequenceRange& range : ranges) {
         auto entry = unacknowledged_.lower_bound(range.start);
         while (entry != unacknowledged_.end() && entry->first <= range.end) {
+            ++stats_.datagramsAskedAgain;
             outgoing_.insert(outgoing_.end(), std::make_move_iterator(entry->second.frames.begin()),
                              std::make_move_iterator(entry->second.frames.end()));
             entry = unacknowledged_.erase(entry);
@@ -347,6 +353,7 @@ void RakSession::flush(std::uint64_t nowMs, const DatagramSink& sink) {
             ++entry;
             continue;
         }
+        ++stats_.datagramsResent;
         outgoing_.insert(outgoing_.end(), std::make_move_iterator(entry->second.frames.begin()),
                          std::make_move_iterator(entry->second.frames.end()));
         entry = unacknowledged_.erase(entry);
@@ -382,6 +389,7 @@ void RakSession::flush(std::uint64_t nowMs, const DatagramSink& sink) {
         }
 
         sink(scratch_.readable());
+        ++stats_.datagramsSent;
         lastSentMs_ = nowMs;
         if (!record.frames.empty()) {
             record.sentAtMs = nowMs;
