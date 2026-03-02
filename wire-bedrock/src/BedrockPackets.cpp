@@ -751,6 +751,10 @@ enum class RequestAction : std::int32_t {
         return BedrockStackActionType::CraftOptional;
     case RequestAction::CraftGrindstone:
         return BedrockStackActionType::CraftGrindstone;
+    case RequestAction::BeaconPayment:
+        return BedrockStackActionType::BeaconPayment;
+    case RequestAction::CraftLoom:
+        return BedrockStackActionType::CraftLoom;
     default:
         return BedrockStackActionType::Other;
     }
@@ -872,8 +876,8 @@ void readResultItem(io::ByteBuffer& buffer, const int protocol) {
         case RequestAction::CraftNonImplemented:
             break;
         case RequestAction::BeaconPayment:
-            static_cast<void>(readVarInt(buffer));
-            static_cast<void>(readVarInt(buffer));
+            action.primaryEffect = readVarInt(buffer);
+            action.secondaryEffect = readVarInt(buffer);
             break;
         case RequestAction::MineBlock:
             static_cast<void>(readVarInt(buffer)); // Which hotbar slot,
@@ -910,7 +914,7 @@ void readResultItem(io::ByteBuffer& buffer, const int protocol) {
             static_cast<void>(readVarInt(buffer));
             break;
         case RequestAction::CraftLoom:
-            static_cast<void>(readString(buffer));
+            action.pattern = std::string{bannerPatternOf(readString(buffer))};
             static_cast<void>(buffer.readByte());
             break;
         case RequestAction::CraftResults: {
@@ -2549,6 +2553,89 @@ std::optional<BedrockBlockPick> readBlockPickRequest(io::ByteBuffer& buffer) {
     return buffer.failed() ? std::nullopt : std::optional{pick};
 }
 
+std::optional<BedrockEntityPick> readEntityPickRequest(io::ByteBuffer& buffer) {
+    BedrockEntityPick pick;
+    pick.runtimeEntityId = static_cast<std::uint64_t>(readLongLE(buffer));
+    pick.hotbarSlot = std::int32_t{buffer.readByte()};
+    return buffer.failed() ? std::nullopt : std::optional{pick};
+}
+
+std::optional<BedrockLecternPage> readLecternUpdate(io::ByteBuffer& buffer, const int protocol) {
+    /// Where the flag that said the book was being taken went away: that edition drops it on the
+    /// ground itself and tells the server through the block instead.
+    constexpr int kNoDropFlagProtocol = 662;
+
+    BedrockLecternPage update;
+    update.page = std::int32_t{buffer.readByte()};
+    static_cast<void>(buffer.readByte()); // How many pages the client thinks it has.
+    update.x = readVarInt(buffer);
+    update.y = static_cast<std::int32_t>(readVarUInt(buffer));
+    update.z = readVarInt(buffer);
+    if (protocol < kNoDropFlagProtocol) {
+        static_cast<void>(buffer.readByte());
+    }
+    return buffer.failed() ? std::nullopt : std::optional{update};
+}
+
+std::optional<BedrockCommandBlock> readCommandBlockUpdate(io::ByteBuffer& buffer) {
+    BedrockCommandBlock update;
+    if (buffer.readByte() == 0) {
+        return std::nullopt; // A minecart's, which this server has none of.
+    }
+    update.x = readVarInt(buffer);
+    update.y = static_cast<std::int32_t>(readVarUInt(buffer));
+    update.z = readVarInt(buffer);
+    update.mode = static_cast<std::int32_t>(readVarUInt(buffer));
+    update.needsRedstone = buffer.readByte() != 0;
+    update.conditional = buffer.readByte() != 0;
+    update.command = readString(buffer);
+    static_cast<void>(readString(buffer)); // What it last printed, which the client keeps its own copy of,
+    static_cast<void>(readString(buffer)); // the name over it,
+    static_cast<void>(readString(buffer)); // and that name once a filter has been over it.
+    update.trackOutput = buffer.readByte() != 0;
+    update.tickDelay = readIntLE(buffer);
+    static_cast<void>(buffer.readByte()); // Whether it runs on the first tick, which only a chain uses.
+    return buffer.failed() ? std::nullopt : std::optional{update};
+}
+
+std::optional<BedrockCrafterSlot> readCrafterSlotToggle(io::ByteBuffer& buffer) {
+    BedrockCrafterSlot toggle;
+    toggle.x = readIntLE(buffer);
+    toggle.y = readIntLE(buffer);
+    toggle.z = readIntLE(buffer);
+    toggle.slot = static_cast<std::int8_t>(buffer.readByte());
+    toggle.disabled = buffer.readByte() != 0;
+    return buffer.failed() ? std::nullopt : std::optional{toggle};
+}
+
+/// Where an emote grew the three fields that follow its name.
+constexpr int kEmoteGrewProtocol = 729;
+
+std::optional<BedrockEmote> readEmote(io::ByteBuffer& buffer, const int protocol) {
+    BedrockEmote emote;
+    emote.runtimeEntityId = readVarULong(buffer);
+    emote.emoteId = readString(buffer);
+    if (protocol >= kEmoteGrewProtocol) {
+        emote.duration = static_cast<std::int32_t>(readVarUInt(buffer));
+        static_cast<void>(readString(buffer)); // Whose account made it,
+        static_cast<void>(readString(buffer)); // and on what.
+    }
+    emote.flags = buffer.readByte();
+    return buffer.failed() ? std::nullopt : std::optional{emote};
+}
+
+void writeEmote(io::ByteBuffer& buffer, const std::uint64_t runtimeEntityId, const std::string_view emoteId,
+                const std::int32_t duration, const std::uint8_t flags, const int protocol) {
+    writeVarULong(buffer, runtimeEntityId);
+    writeString(buffer, emoteId);
+    if (protocol >= kEmoteGrewProtocol) {
+        writeVarUInt(buffer, static_cast<std::uint32_t>(std::max(duration, 0)));
+        writeString(buffer, "");
+        writeString(buffer, "");
+    }
+    buffer.writeByte(flags);
+}
+
 void writeOpenSign(io::ByteBuffer& buffer, const std::int32_t x, const std::int32_t y, const std::int32_t z,
                    const bool front) {
     writeBlockPosition(buffer, x, y, z);
@@ -2702,6 +2789,57 @@ void writeSelfMetadata(io::ByteBuffer& buffer, const std::uint64_t runtimeEntity
     writeVarUInt(buffer, 0); // No entity properties, of either kind.
     writeVarUInt(buffer, 0);
     writeVarULong(buffer, 0); // Which tick it belongs to, which only a replay cares about.
+}
+
+std::string_view bannerPatternOf(const std::string_view code) {
+    // parity: the short codes that edition names banner patterns by, against this one's own paths.
+    static constexpr std::array<std::pair<std::string_view, std::string_view>, 43> kPatterns{{
+        {"b", "base"},
+        {"bl", "square_bottom_left"},
+        {"br", "square_bottom_right"},
+        {"tl", "square_top_left"},
+        {"tr", "square_top_right"},
+        {"bs", "stripe_bottom"},
+        {"ts", "stripe_top"},
+        {"ls", "stripe_left"},
+        {"rs", "stripe_right"},
+        {"cs", "stripe_center"},
+        {"ms", "stripe_middle"},
+        {"drs", "stripe_downright"},
+        {"dls", "stripe_downleft"},
+        {"ss", "small_stripes"},
+        {"cr", "cross"},
+        {"sc", "straight_cross"},
+        {"bt", "triangle_bottom"},
+        {"tt", "triangle_top"},
+        {"bts", "triangles_bottom"},
+        {"tts", "triangles_top"},
+        {"ld", "diagonal_left"},
+        {"rd", "diagonal_up_right"},
+        {"lud", "diagonal_up_left"},
+        {"rud", "diagonal_right"},
+        {"mc", "circle"},
+        {"mr", "rhombus"},
+        {"vh", "half_vertical"},
+        {"hh", "half_horizontal"},
+        {"vhr", "half_vertical_right"},
+        {"hhb", "half_horizontal_bottom"},
+        {"bo", "border"},
+        {"cbo", "curly_border"},
+        {"gra", "gradient"},
+        {"gru", "gradient_up"},
+        {"bri", "bricks"},
+        {"glb", "globe"},
+        {"cre", "creeper"},
+        {"sku", "skull"},
+        {"flo", "flower"},
+        {"moj", "mojang"},
+        {"pig", "piglin"},
+        {"flw", "flow"},
+        {"gus", "guster"},
+    }};
+    const auto found = std::ranges::find(kPatterns, code, &std::pair<std::string_view, std::string_view>::first);
+    return found == kPatterns.end() ? std::string_view{} : found->second;
 }
 
 } // namespace basalt::wire::bedrock

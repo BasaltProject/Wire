@@ -305,6 +305,10 @@ enum class BedrockStackActionType : std::int32_t {
     CraftOptional,
     /// What a grindstone asks for, which names no recipe either.
     CraftGrindstone,
+    /// What a beacon asks for: the two effects picked, by that edition's own effect numbers.
+    BeaconPayment,
+    /// What a loom asks for, which names the pattern by that edition's short code.
+    CraftLoom,
 };
 
 struct BedrockStackAction {
@@ -323,6 +327,12 @@ struct BedrockStackAction {
     /// Which of the request's typed strings this line meant, for the one line that has a name on
     /// it. Negative where it named none.
     std::int32_t textIndex = -1;
+    /// The two effects a beacon's payment line picks, as Bedrock's own effect numbers. Zero is the
+    /// number that edition uses for "none".
+    std::int32_t primaryEffect = 0;
+    std::int32_t secondaryEffect = 0;
+    /// The banner pattern a loom's line names, already turned into this edition's own name.
+    std::string pattern;
 };
 
 /// A client asking for stacks to be moved. It arrives inside a tick's own packet, and the answer
@@ -394,6 +404,8 @@ enum class BedrockContainerType : std::int8_t {
     Dispenser = 6,
     Dropper = 7,
     Hopper = 8,
+    Beacon = 13,
+    Loom = 24,
     Grindstone = 26,
     SmithingTable = 33,
     BlastFurnace = 27,
@@ -668,6 +680,68 @@ struct BedrockBlockPick {
 };
 
 [[nodiscard]] std::optional<BedrockBlockPick> readBlockPickRequest(io::ByteBuffer& buffer);
+
+/// A mob the client asked to be handed, which is the middle click on something alive.
+struct BedrockEntityPick {
+    std::uint64_t runtimeEntityId = 0;
+    std::int32_t hotbarSlot = 0;
+};
+
+[[nodiscard]] std::optional<BedrockEntityPick> readEntityPickRequest(io::ByteBuffer& buffer);
+
+/// A page turned on a lectern. That edition sends the page it wants rather than a direction, and
+/// taking the book is a click on the block rather than a message of its own.
+struct BedrockLecternPage {
+    std::int32_t page = 0;
+    std::int32_t x = 0;
+    std::int32_t y = 0;
+    std::int32_t z = 0;
+};
+
+[[nodiscard]] std::optional<BedrockLecternPage> readLecternUpdate(io::ByteBuffer& buffer, int protocol);
+
+/// A command block being programmed. Only the block's own form is read: that edition can also
+/// program a minecart, which this server has none of.
+struct BedrockCommandBlock {
+    std::int32_t x = 0;
+    std::int32_t y = 0;
+    std::int32_t z = 0;
+    /// Nought impulse, one repeating, two chain, which is that edition's own order.
+    std::int32_t mode = 0;
+    bool needsRedstone = false;
+    bool conditional = false;
+    std::string command;
+    bool trackOutput = false;
+    std::int32_t tickDelay = 0;
+};
+
+[[nodiscard]] std::optional<BedrockCommandBlock> readCommandBlockUpdate(io::ByteBuffer& buffer);
+
+/// One of a crafter's nine being switched off, or back on.
+struct BedrockCrafterSlot {
+    std::int32_t x = 0;
+    std::int32_t y = 0;
+    std::int32_t z = 0;
+    std::int32_t slot = 0;
+    bool disabled = false;
+};
+
+[[nodiscard]] std::optional<BedrockCrafterSlot> readCrafterSlotToggle(io::ByteBuffer& buffer);
+
+/// An emote, which is that edition's own: the other one has none, so it goes back out to the
+/// clients that can draw it and nowhere else.
+struct BedrockEmote {
+    std::uint64_t runtimeEntityId = 0;
+    std::string emoteId;
+    std::int32_t duration = 0;
+    std::uint8_t flags = 0;
+};
+
+[[nodiscard]] std::optional<BedrockEmote> readEmote(io::ByteBuffer& buffer, int protocol);
+
+/// An emote on its way back out, drawn over whoever made it.
+void writeEmote(io::ByteBuffer& buffer, std::uint64_t runtimeEntityId, std::string_view emoteId, std::int32_t duration,
+                std::uint8_t flags, int protocol);
 
 void writeOpenSign(io::ByteBuffer& buffer, std::int32_t x, std::int32_t y, std::int32_t z, bool front);
 
@@ -971,6 +1045,13 @@ enum class BedrockContainerSlot : std::uint8_t {
     Armour = 6,
     /// What a block being looked into holds: a chest's own rows, a furnace seen as one list.
     LevelEntity = 7,
+    /// The one slot a beacon has, which is what is paying for the effects.
+    BeaconPayment = 8,
+    /// A loom's four: the banner, the dye, the pattern item and what it weaves.
+    LoomInput = 41,
+    LoomDye = 42,
+    LoomMaterial = 43,
+    LoomResult = 44,
     /// The 36 a player carries, hotbar first.
     HotbarAndInventory = 12,
     CraftingInput = 13,
@@ -1002,6 +1083,10 @@ enum class BedrockContainerSlot : std::uint8_t {
     /// The fourth slot a smithing table grew, numbered after everything that came before it.
     SmithingTemplate = 61,
 };
+
+/// The banner pattern this edition's short code names, as the other edition's own path, or empty
+/// for a code no version of it uses. parity: the codes are that edition's and have not moved.
+[[nodiscard]] std::string_view bannerPatternOf(std::string_view code);
 
 /// The names of every item this server knows, with the id it wants each one called by. Bedrock has
 /// let the server declare this since 776, which is why no table of per-version item ids exists.

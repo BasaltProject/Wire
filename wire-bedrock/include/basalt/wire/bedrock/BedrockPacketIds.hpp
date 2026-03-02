@@ -133,6 +133,7 @@ enum class BedrockPacket : std::uint16_t {
     BiomeDefinitionList = 122,
     LevelSoundEvent = 123,
     LevelEventGeneric = 124,
+    LecternUpdate = 125,
     ClientCacheStatus = 129,
     OnScreenTextureAnimation = 130,
     MapCreateLockedCopy = 131,
