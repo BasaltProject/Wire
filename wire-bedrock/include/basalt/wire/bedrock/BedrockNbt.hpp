@@ -3,6 +3,9 @@
 #include <basalt/wire/io/ByteBuffer.hpp>
 
 #include <cstdint>
+#include <optional>
+#include <span>
+#include <string>
 #include <string_view>
 
 /// Bedrock's own NBT, which is not Java's: every number is little-endian, an int is a zigzag varint
@@ -34,5 +37,12 @@ void writeInt(io::ByteBuffer& buffer, std::string_view name, std::int32_t value)
 void writeFloat(io::ByteBuffer& buffer, std::string_view name, float value);
 
 void writeString(io::ByteBuffer& buffer, std::string_view name, std::string_view value);
+
+/// One string out of a compound this server did not write, by the path it sits at: `{"FrontText",
+/// "Text"}` reaches into the compound named `FrontText` and takes the string called `Text`.
+///
+/// A reader rather than a tree for the same reason as the writer: this build reads one shape out of
+/// one packet, and everything else in it is walked past rather than kept.
+[[nodiscard]] std::optional<std::string> readStringAt(io::ByteBuffer& buffer, std::span<const std::string_view> path);
 
 } // namespace basalt::wire::bedrock::nbt

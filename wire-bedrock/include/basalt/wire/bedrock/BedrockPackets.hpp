@@ -27,6 +27,9 @@ inline constexpr int kShapesChangedProtocol = 2168;
 /// kept the first two and dropped the third. The three protocols below 1001 have none of them.
 inline constexpr int kStartGameGrewProtocol = 1001;
 
+/// Where an enchanting row's cost went from a varint to one byte.
+inline constexpr int kEnchantCostByteProtocol = 975;
+
 /// Where a played sound gained the handle of one the server holds itself, which this one never has.
 inline constexpr int kServerSoundHandleProtocol = 975;
 
@@ -383,6 +386,7 @@ enum class BedrockContainerType : std::int8_t {
     Container = 0,
     Workbench = 1,
     Furnace = 2,
+    Enchantment = 3,
     Anvil = 5,
     BrewingStand = 4,
     /// The three that are boxes over here and screens of their own over there: a dispenser and a
@@ -391,6 +395,7 @@ enum class BedrockContainerType : std::int8_t {
     Dropper = 7,
     Hopper = 8,
     Grindstone = 26,
+    SmithingTable = 33,
     BlastFurnace = 27,
     Smoker = 28,
     Stonecutter = 29,
@@ -632,6 +637,38 @@ void writeBedData(io::ByteBuffer& buffer, std::int32_t x, std::int32_t y, std::i
 
 /// Opens the editor over a sign that has just been placed. Without it a Bedrock player puts a sign
 /// down and is never given anywhere to write.
+/// What a client typed into a sign's editor and sent back. This build only ever opens the front,
+/// so the back is not read: a sign whose back is being written arrives as the front's own tag.
+struct BedrockSignEdit {
+    std::int32_t x = 0;
+    std::int32_t y = 0;
+    std::int32_t z = 0;
+    /// One string with newlines in it, which is how that edition holds a sign. Java's four lines
+    /// are the caller's business.
+    std::string text;
+};
+
+[[nodiscard]] std::optional<BedrockSignEdit> readSignEdit(io::ByteBuffer& buffer);
+
+/// What a client says its own arm did. Only the swing is acted on; the rest is the client telling
+/// itself what it is already drawing.
+struct BedrockAnimation2 {
+    std::int32_t action = 0;
+    std::uint64_t runtimeEntityId = 0;
+};
+
+[[nodiscard]] std::optional<BedrockAnimation2> readAnimate(io::ByteBuffer& buffer);
+
+/// A block the client asked to be handed, which is the middle click.
+struct BedrockBlockPick {
+    std::int32_t x = 0;
+    std::int32_t y = 0;
+    std::int32_t z = 0;
+    std::int32_t hotbarSlot = 0;
+};
+
+[[nodiscard]] std::optional<BedrockBlockPick> readBlockPickRequest(io::ByteBuffer& buffer);
+
 void writeOpenSign(io::ByteBuffer& buffer, std::int32_t x, std::int32_t y, std::int32_t z, bool front);
 
 /// Who is riding what. Taking somebody off a vehicle is the same packet with `Remove`.
@@ -885,6 +922,35 @@ struct BedrockTrade {
 void writeUpdateTrade(io::ByteBuffer& buffer, std::int32_t containerId, std::int32_t tier, std::int64_t traderId,
                       std::int64_t playerId, std::string_view displayName, std::span<const BedrockTrade> trades);
 
+/// One enchantment on one of a table's rows, by the number that edition knows it under.
+struct BedrockEnchant {
+    std::int32_t type = 0;
+    std::int32_t level = 1;
+};
+
+/// One of the three rows an enchanting table offers.
+///
+/// The three lists are the client's own split: the first is what a book would get, the second what
+/// the item gets, the third what it would get from a curse. This server fills only the second,
+/// which is where the client draws the row from.
+struct BedrockEnchantOption {
+    std::int32_t cost = 0;
+    /// Which of the player's own slots the row applies to. Nought is the enchanting table's own.
+    std::int32_t primarySlot = 0;
+    std::vector<BedrockEnchant> enchants;
+    /// The made-up name the client draws in the fake galactic alphabet.
+    std::string name;
+    /// What the client names this row by when it asks for it.
+    std::int32_t netId = 0;
+};
+
+/// What an enchanting table is offering. Without it that edition's screen has three empty rows: it
+/// draws them from this packet and from nothing else.
+void writePlayerEnchantOptions(io::ByteBuffer& buffer, std::span<const BedrockEnchantOption> options, int protocol);
+
+/// Which number that edition knows an enchantment by, or nothing for one it has never had.
+[[nodiscard]] std::optional<std::int32_t> bedrockEnchantment(std::string_view name);
+
 /// Every recipe a client is told about at login. Without this a Bedrock client crafts nothing at
 /// all: the grid's result comes from the list the server sent, not from the client's own data.
 void writeCraftingData(io::ByteBuffer& buffer, std::span<const BedrockRecipe> recipes, int protocol);
@@ -898,6 +964,10 @@ enum class BedrockContainerSlot : std::uint8_t {
     AnvilInput = 0,
     AnvilMaterial = 1,
     AnvilResult = 2,
+    /// A smithing table's, minus the template, which arrived later and sits at the far end.
+    SmithingInput = 3,
+    SmithingMaterial = 4,
+    SmithingResult = 5,
     Armour = 6,
     /// What a block being looked into holds: a chest's own rows, a furnace seen as one list.
     LevelEntity = 7,
@@ -908,6 +978,9 @@ enum class BedrockContainerSlot : std::uint8_t {
     FurnaceFuel = 24,
     FurnaceIngredient = 25,
     FurnaceResult = 26,
+    /// An enchanting table's two: what is being enchanted, and the lapis paying for it.
+    EnchantingInput = 22,
+    EnchantingMaterial = 23,
     Hotbar = 28,
     Inventory = 29,
     Offhand = 34,
@@ -926,6 +999,8 @@ enum class BedrockContainerSlot : std::uint8_t {
     /// What is being dragged. Bedrock keeps it in a window of its own rather than outside them.
     Cursor = 59,
     CreatedOutput = 60,
+    /// The fourth slot a smithing table grew, numbered after everything that came before it.
+    SmithingTemplate = 61,
 };
 
 /// The names of every item this server knows, with the id it wants each one called by. Bedrock has
