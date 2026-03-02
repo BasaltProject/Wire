@@ -18,10 +18,16 @@ void beginCompound(io::ByteBuffer& buffer, std::string_view name = "");
 /// Opens a compound inside another one.
 void beginNamed(io::ByteBuffer& buffer, std::string_view name);
 
+/// Opens a list of compounds. Each entry is a compound's own fields followed by `end`, and the
+/// list itself needs no closing: its length was said in front.
+void beginCompoundList(io::ByteBuffer& buffer, std::string_view name, std::int32_t count);
+
 /// Closes whichever compound is open.
 void end(io::ByteBuffer& buffer);
 
 void writeByte(io::ByteBuffer& buffer, std::string_view name, std::int8_t value);
+
+void writeShort(io::ByteBuffer& buffer, std::string_view name, std::int16_t value);
 
 void writeInt(io::ByteBuffer& buffer, std::string_view name, std::int32_t value);
 

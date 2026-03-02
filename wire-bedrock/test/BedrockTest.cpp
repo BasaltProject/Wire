@@ -19,6 +19,7 @@
 
 #include <array>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <numeric>
 #include <optional>
@@ -1011,6 +1012,94 @@ TEST_CASE("a recipe list reads back the way a client walks it") {
         CHECK(readVarUInt(body) == 0);
     }
     CHECK(body.readByte() == 1);
+    CHECK_FALSE(body.failed());
+    CHECK(body.readableBytes() == 0);
+}
+
+TEST_CASE("a villager's book is one tag a client can walk to the end of") {
+    // Nothing here reads this back in the server, so the test is the only thing that walks it: a
+    // compound left open or a list counted wrong shows up as bytes left over.
+    BedrockTrade wheat;
+    wheat.costA = BedrockTradeItem{.name = "minecraft:wheat", .count = 20};
+    wheat.sell = BedrockTradeItem{.name = "minecraft:emerald", .count = 1};
+    wheat.maxUses = 16;
+    wheat.experience = 2;
+
+    BedrockTrade bread;
+    bread.costA = BedrockTradeItem{.name = "minecraft:emerald", .count = 1};
+    bread.costB = BedrockTradeItem{.name = "minecraft:wheat", .count = 3};
+    bread.sell = BedrockTradeItem{.name = "minecraft:bread", .count = 6};
+    bread.tier = 1;
+
+    const std::array<BedrockTrade, 2> trades{wheat, bread};
+    io::ByteBuffer body;
+    writeUpdateTrade(body, 5, 1, 42, 1, "Villager", trades);
+
+    CHECK(body.readByte() == 5);
+    CHECK(body.readByte() == 15); // The window kind a villager opens,
+    CHECK(readVarInt(body) == 0); // with no slots of its own,
+    CHECK(readVarInt(body) == 1); // at its second rank,
+    CHECK(readVarLong(body) == 42);
+    CHECK(readVarLong(body) == 1);
+    CHECK(readString(body) == "Villager");
+    CHECK(body.readByte() == 1);
+    CHECK(body.readByte() == 1);
+
+    // The tag itself, walked the way a client walks one: a name, then whatever that kind holds.
+    std::int32_t names = 0;
+    std::int32_t compounds = 0;
+    const std::function<void()> walk = [&] {
+        while (!body.failed()) {
+            const std::uint8_t kind = body.readByte();
+            if (kind == 0) {
+                return;
+            }
+            static_cast<void>(readString(body));
+            ++names;
+            switch (kind) {
+            case 0x01:
+                static_cast<void>(body.readByte());
+                break;
+            case 0x02:
+                static_cast<void>(readShortLE(body));
+                break;
+            case 0x03:
+                static_cast<void>(readVarInt(body));
+                break;
+            case 0x05:
+                static_cast<void>(readFloatLE(body));
+                break;
+            case 0x08:
+                static_cast<void>(readString(body));
+                break;
+            case 0x09: {
+                REQUIRE(body.readByte() == 0x0a); // Lists of compounds are the only kind here.
+                const std::int32_t entries = readVarInt(body);
+                for (std::int32_t at = 0; at < entries; ++at) {
+                    ++compounds;
+                    walk();
+                }
+                break;
+            }
+            case 0x0a:
+                ++compounds;
+                walk();
+                break;
+            default:
+                FAIL("a tag kind this book should not carry: " << static_cast<std::int32_t>(kind));
+            }
+        }
+    };
+    REQUIRE(body.readByte() == 0x0a); // The root,
+    CHECK(readString(body).empty());  // which has no name.
+    walk();
+
+    // Two trades and five ranks in the two lists, plus the item tags: three in the second trade and
+    // two in the first, whose second cost is the one tag that carries nothing.
+    CHECK(compounds == 2 + 5 + 3 + 3);
+    // The two lists, fourteen fields a trade, one number a rank, and three names an item that has
+    // something in it.
+    CHECK(names == 2 + (2 * 14) + 5 + (5 * 3));
     CHECK_FALSE(body.failed());
     CHECK(body.readableBytes() == 0);
 }
