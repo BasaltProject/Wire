@@ -370,6 +370,35 @@ std::optional<ServerboundRenameItemPacket> ServerboundRenameItemPacket::read(io:
     return buffer.failed() ? std::nullopt : std::optional{std::move(packet)};
 }
 
+void ServerboundEditBookPacket::write(io::ByteBuffer& buffer) const {
+    varInt::write(buffer, slot);
+    varInt::write(buffer, static_cast<std::int32_t>(pages.size()));
+    for (const std::string& page : pages) {
+        writeString(buffer, page);
+    }
+    buffer.writeByte(title.has_value() ? 1 : 0);
+    if (title.has_value()) {
+        writeString(buffer, *title);
+    }
+}
+
+std::optional<ServerboundEditBookPacket> ServerboundEditBookPacket::read(io::ByteBuffer& buffer) {
+    ServerboundEditBookPacket packet;
+    packet.slot = varInt::read(buffer);
+    const std::int32_t count = varInt::read(buffer);
+    if (count < 0 || static_cast<std::size_t>(count) > kMaxPages) {
+        return std::nullopt;
+    }
+    packet.pages.reserve(static_cast<std::size_t>(count));
+    for (std::int32_t page = 0; page < count && !buffer.failed(); ++page) {
+        packet.pages.push_back(readString(buffer, kMaxPageLength));
+    }
+    if (buffer.readByte() != 0) {
+        packet.title = readString(buffer, kMaxTitleLength);
+    }
+    return buffer.failed() ? std::nullopt : std::optional{std::move(packet)};
+}
+
 void ServerboundSetBeaconPacket::write(io::ByteBuffer& buffer) const {
     const auto put = [&buffer](const std::optional<std::int32_t>& effect) {
         buffer.writeByte(effect.has_value() ? 1 : 0);

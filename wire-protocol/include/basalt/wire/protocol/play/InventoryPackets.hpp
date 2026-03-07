@@ -334,6 +334,29 @@ struct ServerboundRenameItemPacket {
     friend bool operator==(const ServerboundRenameItemPacket&, const ServerboundRenameItemPacket&) = default;
 };
 
+/// Serverbound, id 0x18: the pages a player typed into a book, and the title when they signed it.
+///
+/// parity: `ServerboundEditBookPacket`, whose slot is the player's own inventory numbering: the
+/// hotbar is nought to eight and forty is the off hand.
+struct ServerboundEditBookPacket {
+    static constexpr std::int32_t kId = 0x18;
+
+    /// parity: the codec's own limits, which a packet past them is refused for.
+    static constexpr std::size_t kMaxPages = 100;
+    static constexpr std::int32_t kMaxPageLength = 1024;
+    static constexpr std::int32_t kMaxTitleLength = 32;
+
+    std::int32_t slot = 0;
+    std::vector<std::string> pages;
+    /// Set only when they signed it, which is what turns the book into a written one.
+    std::optional<std::string> title;
+
+    void write(io::ByteBuffer& buffer) const;
+    [[nodiscard]] static std::optional<ServerboundEditBookPacket> read(io::ByteBuffer& buffer);
+
+    friend bool operator==(const ServerboundEditBookPacket&, const ServerboundEditBookPacket&) = default;
+};
+
 /// Serverbound, id 0x34: the two effects picked in a beacon's window, each of them a mob effect's
 /// registry id. parity: `ServerboundSetBeaconPacket`, whose two fields are both optional because
 /// "none" is a choice the window can make.

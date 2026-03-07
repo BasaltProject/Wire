@@ -700,6 +700,55 @@ struct BedrockLecternPage {
 
 [[nodiscard]] std::optional<BedrockLecternPage> readLecternUpdate(io::ByteBuffer& buffer, int protocol);
 
+/// Silences a sound by its own name, or every sound at once. parity: that edition cannot pick a
+/// mixer, so a stop that only names one goes out as all of them.
+void writeStopSound(io::ByteBuffer& buffer, std::string_view sound, bool stopAll);
+
+/// Greys an item out for a while. The category is the cooldown group's name, which for the two
+/// items that edition drives itself is the bare word rather than the full one.
+void writePlayerStartItemCooldown(io::ByteBuffer& buffer, std::string_view category, std::int32_t durationTicks);
+
+/// Whether the client is starting the poem at the end of the world or has finished reading it.
+/// parity: `ShowCreditsPacket.Status`.
+enum class BedrockCredits : std::uint8_t { Starting = 0, Finished = 1 };
+
+/// Answers nothing for a status this build does not know.
+[[nodiscard]] std::optional<BedrockCredits> readShowCredits(io::ByteBuffer& buffer);
+
+/// One of these on the way in. parity: `EntityEventPacket` travels both ways, and what a client
+/// sends is the handful it decides on its own.
+struct BedrockEntityEventIn {
+    std::uint64_t runtimeEntityId = 0;
+    std::uint8_t event = 0;
+    std::int32_t data = 0;
+};
+
+[[nodiscard]] std::optional<BedrockEntityEventIn> readEntityEvent(io::ByteBuffer& buffer);
+
+/// What a player did to the book in their hand. parity: `BookEditPacket`, whose five actions are
+/// each a page at a time rather than the whole book at once.
+struct BedrockBookEdit {
+    enum class Action : std::uint8_t { ReplacePage = 0, AddPage, DeletePage, SwapPages, Sign };
+
+    Action action = Action::ReplacePage;
+    /// Which hotbar slot the book is in.
+    std::int32_t slot = 0;
+    std::int32_t page = 0;
+    /// The other page, for the one action that moves two.
+    std::int32_t otherPage = 0;
+    std::string text;
+    std::string title;
+    std::string author;
+};
+
+[[nodiscard]] std::optional<BedrockBookEdit> readBookEdit(io::ByteBuffer& buffer);
+
+/// Text a client wants looked over before it shows it: a sign, a book or an anvil's name box on a
+/// client whose chat filter is on. What comes back is the text the server allows.
+[[nodiscard]] std::optional<std::string> readFilterText(io::ByteBuffer& buffer);
+
+void writeFilterText(io::ByteBuffer& buffer, std::string_view text);
+
 /// A command block being programmed. Only the block's own form is read: that edition can also
 /// program a minecart, which this server has none of.
 struct BedrockCommandBlock {
@@ -889,6 +938,11 @@ struct AddPlayerInfo {
 
 void writeAddPlayer(io::ByteBuffer& buffer, const AddPlayerInfo& info, int protocol);
 
+/// The name drawn over an entity's head, and that it is drawn at all. parity: that edition keeps
+/// both on the entity itself, where the other one has the client work them out from a team.
+void writeNameTag(io::ByteBuffer& buffer, std::uint64_t runtimeEntityId, std::string_view nameTag, bool always,
+                  int protocol);
+
 /// Where somebody else is now. The rotation goes as a byte a turn, which is all this packet has
 /// room for and is what the client draws from.
 void writeMoveEntity(io::ByteBuffer& buffer, std::uint64_t runtimeEntityId, float x, float y, float z, float yaw,
@@ -908,6 +962,11 @@ enum class BedrockDimension : std::int32_t {
 /// The client answers when it has finished, and the chunks go out after that.
 void writeChangeDimension(io::ByteBuffer& buffer, BedrockDimension dimension, float x, float y, float z, bool respawn);
 
+/// Where a compass points. parity: `SetSpawnPositionPacket`, whose first position is the block a
+/// respawn anchor or bed is at and whose second is the spawn itself; a world spawn sets both.
+void writeSetSpawnPosition(io::ByteBuffer& buffer, BedrockDimension dimension, std::int32_t x, std::int32_t y,
+                           std::int32_t z);
+
 /// A particle, at a place, under the name that edition knows it by. The dimension goes first
 /// because this packet can be sent to a world the receiver is not in.
 void writeSpawnParticle(io::ByteBuffer& buffer, BedrockDimension dimension, std::string_view particle, float x, float y,
@@ -918,6 +977,9 @@ void writeSpawnParticle(io::ByteBuffer& buffer, BedrockDimension dimension, std:
 enum class BedrockEntityEvent : std::uint8_t {
     Hurt = 2,
     Death = 3,
+    /// The one a client sends rather than is told: it waits to hear its own eating back before it
+    /// makes the noise.
+    EatingItem = 57,
 };
 
 /// One thing happening to one entity that the client draws itself: the flash of a hit, the fall of
