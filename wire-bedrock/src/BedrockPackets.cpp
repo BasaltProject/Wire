@@ -11,6 +11,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <set>
 #include <vector>
 
@@ -506,6 +507,8 @@ constexpr std::int32_t kFlagVerticalCollision = 50;
 constexpr std::int32_t kFlagItemInteraction = 34;
 constexpr std::int32_t kFlagBlockActions = 35;
 constexpr std::int32_t kFlagItemStackRequest = 36;
+constexpr std::int32_t kFlagStartFlying = 42;
+constexpr std::int32_t kFlagStopFlying = 43;
 
 /// One block position as this edition writes it: the height is unsigned, which is not a mistake of
 /// ours either.
@@ -988,6 +991,11 @@ std::optional<PlayerAuthInput> readPlayerAuthInput(io::ByteBuffer& buffer, const
     input.sneaking = flags.contains(kFlagSneaking);
     input.sprinting = flags.contains(kFlagSprinting);
     input.onGround = flags.contains(kFlagVerticalCollision);
+    if (flags.contains(kFlagStartFlying)) {
+        input.flying = true;
+    } else if (flags.contains(kFlagStopFlying)) {
+        input.flying = false;
+    }
     static_cast<void>(readVarUInt(buffer)); // How they are playing: a keyboard, a pad, a screen,
     static_cast<void>(readVarUInt(buffer)); // where they are playing it,
     static_cast<void>(readVarUInt(buffer)); // and which of the two ways of touching things.
@@ -1293,7 +1301,7 @@ void writeGameRulesChanged(io::ByteBuffer& buffer, const int protocol) {
         }
     };
 
-    writeVarUInt(buffer, 4);
+    writeVarUInt(buffer, 5);
     // Off, so the client never heals anybody by itself: hearts come from this server or not at all.
     flag("naturalregeneration", false);
     // On, so the client never empties a bag on death. What is kept is decided here.
@@ -1302,6 +1310,9 @@ void writeGameRulesChanged(io::ByteBuffer& buffer, const int protocol) {
     flag("recipesunlock", true);
     // And nobody is moved around their spawn by the client's own idea of where that is.
     number("spawnradius", 0);
+    // From 944 the bar is drawn only when something is on it, so it can be left on; below that it
+    // is drawn whenever it is on, and is turned on and off as waypoints come and go.
+    flag("locatorBar", protocol >= kLocatorBarProtocol);
 }
 
 namespace {
@@ -2360,6 +2371,45 @@ void writeAddEntity(io::ByteBuffer& buffer, const std::int64_t entityId, const s
     writeVarUInt(buffer, 0); // Riding nothing and ridden by nobody.
 }
 
+void writeAddBorderCollider(io::ByteBuffer& buffer, const std::int64_t entityId, const float x, const float y,
+                            const float z, const int protocol) {
+    /// Ten across and twenty-five tall, which is what Geyser settled on: wide enough that a player
+    /// running along the border keeps meeting it, tall enough that jumping does not clear it.
+    constexpr float kWidth = 10.0F;
+    constexpr float kHeight = 25.0F;
+
+    writeVarLong(buffer, entityId);
+    writeVarULong(buffer, static_cast<std::uint64_t>(entityId));
+    // An armour stand because it has to be something; nothing of it is ever drawn.
+    writeString(buffer, "minecraft:armor_stand");
+    writeFloatLE(buffer, x);
+    writeFloatLE(buffer, y);
+    writeFloatLE(buffer, z);
+    writeFloatLE(buffer, 0.0F);
+    writeFloatLE(buffer, 0.0F);
+    writeFloatLE(buffer, 0.0F);
+    writeFloatLE(buffer, 0.0F);
+    writeFloatLE(buffer, 0.0F);
+    writeFloatLE(buffer, 0.0F);
+    writeFloatLE(buffer, 0.0F);
+    writeVarUInt(buffer, 0); // No attributes.
+    writeVarUInt(buffer, 6);
+    writeMetadataLong(buffer, EntityDataId::Flags,
+                      static_cast<std::int64_t>(flagBit(EntityFlag::Invisible) | flagBit(EntityFlag::Silent) |
+                                                flagBit(EntityFlag::NoAi)),
+                      protocol);
+    // Being walked into lives past the sixty-fourth flag, so it travels in the second word.
+    writeMetadataLong(buffer, EntityDataId::Flags2, static_cast<std::int64_t>(flagBit2(EntityFlag::Collidable)),
+                      protocol);
+    writeMetadataShort(buffer, EntityDataId::AirSupplyMax, 300, protocol);
+    writeMetadataFloat(buffer, EntityDataId::Width, kWidth, protocol);
+    writeMetadataFloat(buffer, EntityDataId::Height, kHeight, protocol);
+    writeMetadataFloat(buffer, EntityDataId::Scale, 1.0F, protocol);
+    writeVarUInt(buffer, 0); // No entity properties, of either kind.
+    writeVarUInt(buffer, 0);
+    writeVarUInt(buffer, 0); // Riding nothing and ridden by nobody.
+}
+
 void writeTakeItemEntity(io::ByteBuffer& buffer, const std::uint64_t itemRuntimeId,
                          const std::uint64_t collectorRuntimeId) {
     writeVarULong(buffer, itemRuntimeId);
@@ -2938,6 +2988,250 @@ std::string_view bannerPatternOf(const std::string_view code) {
     }};
     const auto found = std::ranges::find(kPatterns, code, &std::pair<std::string_view, std::string_view>::first);
     return found == kPatterns.end() ? std::string_view{} : found->second;
+}
+
+namespace {
+
+/// parity: `WaypointStyle`'s own two distances, which the other edition's default style keeps.
+constexpr float kWaypointNear = 128.0F;
+constexpr float kWaypointFar = 332.0F;
+
+/// The four dots Bedrock's own pack draws a waypoint with, nearest first.
+constexpr std::array<std::string_view, 4> kWaypointDots{
+    "textures/ui/locator_bar_dot_0",
+    "textures/ui/locator_bar_dot_1",
+    "textures/ui/locator_bar_dot_2",
+    "textures/ui/locator_bar_dot_3",
+};
+
+/// Which of the four a dot that far away is drawn with.
+[[nodiscard]] std::size_t waypointDot(const float distance) {
+    if (distance < kWaypointNear) {
+        return 0;
+    }
+    if (distance >= kWaypointFar) {
+        return kWaypointDots.size() - 1;
+    }
+    const float along = (distance - kWaypointNear) / (kWaypointFar - kWaypointNear);
+    return 1 + static_cast<std::size_t>(std::floor(along * 2.0F));
+}
+
+/// And how big it is drawn: full size for the first two, a little over half for the rest, a fifth
+/// once it is as far away as the bar goes.
+[[nodiscard]] float waypointIconSize(const float distance) {
+    if (distance >= kWaypointFar) {
+        return 0.2F;
+    }
+    return waypointDot(distance) <= 1 ? 1.0F : 0.6F;
+}
+
+/// The same choice on 944, which numbers its dots instead and interpolates by the square of the
+/// distance rather than the distance.
+[[nodiscard]] std::int32_t waypointDotId(const float distance) {
+    constexpr float kNearSquared = kWaypointNear * kWaypointNear;
+    constexpr float kFarSquared = kWaypointFar * kWaypointFar;
+    const float squared = distance * distance;
+    if (squared < kNearSquared) {
+        return 2;
+    }
+    if (squared >= kFarSquared) {
+        return 5;
+    }
+    return 3 + static_cast<std::int32_t>(std::floor((squared - kNearSquared) / (kFarSquared - kNearSquared) * 2.0F));
+}
+
+/// Which of the waypoint's fields the line carries. parity: the client reads a field only when
+/// its bit is set, so a line that sets none moves nothing.
+constexpr std::int32_t kWaypointWorldPos = 1;
+constexpr std::int32_t kWaypointVisible = 1 << 1;
+constexpr std::int32_t kWaypointTexture = 1 << 2;
+constexpr std::int32_t kWaypointIconSize = 1 << 3;
+constexpr std::int32_t kWaypointColour = 1 << 4;
+constexpr std::int32_t kWaypointAuthority = 1 << 5;
+
+} // namespace
+
+void writeLocatorBar(io::ByteBuffer& buffer, const BedrockWaypoint& waypoint, const BedrockWaypointAction action,
+                     const int protocol) {
+    const bool byPath = protocol >= kWaypointTextureProtocol;
+    writeVarUInt(buffer, 1); // One line, which is all this server ever has to say at once.
+    writeUuid(buffer, waypoint.groupHigh, waypoint.groupLow);
+
+    // Taking a line off the bar names it and nothing else: the client already has the rest.
+    const std::int32_t fields = action == BedrockWaypointAction::Remove
+                                    ? 0
+                                    : kWaypointWorldPos | kWaypointVisible | kWaypointTexture | kWaypointIconSize |
+                                          kWaypointColour | kWaypointAuthority;
+    writeIntLE(buffer, fields);
+
+    writeBool(buffer, true);
+    writeBool(buffer, true); // Drawn, since a line that is not is a line not sent.
+
+    writeBool(buffer, true);
+    writeFloatLE(buffer, waypoint.x);
+    writeFloatLE(buffer, waypoint.y);
+    writeFloatLE(buffer, waypoint.z);
+    writeVarInt(buffer, static_cast<std::int32_t>(waypoint.dimension));
+
+    if (byPath) {
+        writeBool(buffer, true);
+        writeString(buffer, kWaypointDots[waypointDot(waypoint.distance)]);
+        writeBool(buffer, true);
+        const float size = waypointIconSize(waypoint.distance);
+        writeFloatLE(buffer, size);
+        writeFloatLE(buffer, size);
+    } else {
+        // 944 has no textures of its own: the dot is a number, and its four run from 2 to 5.
+        writeBool(buffer, true);
+        writeIntLE(buffer, waypointDotId(waypoint.distance));
+    }
+
+    writeBool(buffer, true);
+    writeIntLE(buffer, static_cast<std::int32_t>(static_cast<std::uint32_t>(waypoint.colour) | 0xFF000000U));
+
+    // A dot with an entity behind it is the client's to move between updates; one without is not.
+    writeBool(buffer, true);
+    writeBool(buffer, waypoint.entityId.has_value());
+    writeBool(buffer, waypoint.entityId.has_value());
+    if (waypoint.entityId.has_value()) {
+        writeVarLong(buffer, *waypoint.entityId);
+    }
+
+    buffer.writeByte(static_cast<std::uint8_t>(action));
+}
+
+void writePlayerLocation(io::ByteBuffer& buffer, const std::int64_t entityId,
+                         const std::optional<std::array<float, 3>> position, const int protocol) {
+    // Pointed at, or taken off the bar again.
+    const std::int32_t type = position.has_value() ? 0 : 1;
+    if (writesNativeShapes(protocol)) {
+        writeVarLong(buffer, entityId);
+        writeVarUInt(buffer, static_cast<std::uint32_t>(type));
+        writeVarInt(buffer, type);
+    } else {
+        writeIntLE(buffer, type);
+        writeVarLong(buffer, entityId);
+    }
+    if (position.has_value()) {
+        writeFloatLE(buffer, (*position)[0]);
+        writeFloatLE(buffer, (*position)[1]);
+        writeFloatLE(buffer, (*position)[2]);
+    }
+}
+
+void writeGameRuleFlag(io::ByteBuffer& buffer, const std::string_view name, const bool value, const int protocol) {
+    writeVarUInt(buffer, 1);
+    writeString(buffer, name);
+    if (writesNativeShapes(protocol)) {
+        writeBool(buffer, false); // Not the player's to change.
+    }
+    writeVarUInt(buffer, 1); // A flag, rather than a whole number or a fraction.
+    writeBool(buffer, value);
+}
+
+std::optional<BedrockPacketViolation> readPacketViolationWarning(io::ByteBuffer& buffer) {
+    BedrockPacketViolation violation;
+    violation.type = readVarInt(buffer);
+    violation.severity = readVarInt(buffer);
+    violation.packetId = readVarInt(buffer);
+    violation.context = readString(buffer);
+    if (buffer.failed()) {
+        return std::nullopt;
+    }
+    return violation;
+}
+
+namespace {
+
+/// Every field of a camera preset past its two names is optional, and this server sets none of
+/// them: the four it sends are the client's own, and their behaviour comes with them.
+constexpr int kCameraPresetOptionals = 20;
+
+/// The four, in the order their numbers are read back.
+constexpr std::array<std::string_view, 4> kCameraPresets{
+    "minecraft:first_person",
+    "minecraft:free",
+    "minecraft:third_person",
+    "minecraft:third_person_front",
+};
+
+/// A field that is not there, which is a flag of its own and nothing after it.
+void writeAbsent(io::ByteBuffer& buffer) { writeBool(buffer, false); }
+
+} // namespace
+
+void writeCameraPresets(io::ByteBuffer& buffer) {
+    writeVarUInt(buffer, static_cast<std::uint32_t>(kCameraPresets.size()));
+    for (const std::string_view named : kCameraPresets) {
+        writeString(buffer, named);
+        writeString(buffer, ""); // Inherits from nothing: these are the client's own.
+        for (int at = 0; at < kCameraPresetOptionals; ++at) {
+            writeAbsent(buffer);
+        }
+    }
+}
+
+namespace {
+
+/// Everything after the set instruction, which this server never sends: a fade, a target, a field
+/// of view, a spline, and an entity to hang the camera on.
+void writeCameraRest(io::ByteBuffer& buffer) {
+    writeAbsent(buffer); // No fade,
+    writeAbsent(buffer); // nothing to keep in frame,
+    writeAbsent(buffer); // and nothing to stop keeping in frame.
+    writeAbsent(buffer); // No field of view of its own,
+    writeAbsent(buffer); // no path to follow,
+    writeAbsent(buffer); // nothing to hang it on,
+    writeAbsent(buffer); // and nothing to take it off.
+}
+
+} // namespace
+
+void writeCameraSet(io::ByteBuffer& buffer, const BedrockCamera& camera) {
+    writeBool(buffer, true); // There is an instruction,
+    writeIntLE(buffer, static_cast<std::int32_t>(camera.preset));
+    writeBool(buffer, true); // it slides rather than jumps,
+    buffer.writeByte(0);     // at an even pace,
+    writeFloatLE(buffer, camera.easeSeconds);
+    writeBool(buffer, true); // to here,
+    writeFloatLE(buffer, camera.x);
+    writeFloatLE(buffer, camera.y);
+    writeFloatLE(buffer, camera.z);
+    writeBool(buffer, true); // looking this way.
+    writeFloatLE(buffer, camera.pitch);
+    writeFloatLE(buffer, camera.yaw);
+    writeAbsent(buffer);      // Nothing to face,
+    writeAbsent(buffer);      // no offset on the screen,
+    writeAbsent(buffer);      // none on the entity either,
+    writeAbsent(buffer);      // and it is not the default camera.
+    writeBool(buffer, false); // Where it starts from is its own business.
+    writeAbsent(buffer);      // Not a clear.
+    writeCameraRest(buffer);
+}
+
+void writeCameraClear(io::ByteBuffer& buffer, const bool asDefault) {
+    if (asDefault) {
+        // Handing the first person preset back as the default is what gives the client its own
+        // camera key again; a clear on its own is ignored while a set is still on its way.
+        writeBool(buffer, true);
+        writeIntLE(buffer, static_cast<std::int32_t>(BedrockCameraPreset::FirstPerson));
+        writeAbsent(buffer); // No slide,
+        writeAbsent(buffer); // no place,
+        writeAbsent(buffer); // no direction,
+        writeAbsent(buffer); // nothing to face,
+        writeAbsent(buffer); // no offset on the screen,
+        writeAbsent(buffer); // none on the entity,
+        writeBool(buffer, true);
+        writeBool(buffer, true); // This one is the default.
+        writeBool(buffer, false);
+        writeAbsent(buffer); // Not a clear: that is the packet after this one.
+        writeCameraRest(buffer);
+        return;
+    }
+    writeAbsent(buffer); // No instruction,
+    writeBool(buffer, true);
+    writeBool(buffer, true); // only take the camera away.
+    writeCameraRest(buffer);
 }
 
 } // namespace basalt::wire::bedrock

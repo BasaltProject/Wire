@@ -4,6 +4,7 @@
 #include <basalt/wire/bedrock/BedrockPacketIds.hpp>
 #include <basalt/wire/io/ByteBuffer.hpp>
 
+#include <array>
 #include <cstdint>
 #include <optional>
 #include <span>
@@ -366,6 +367,11 @@ struct PlayerAuthInput {
 
     /// Whether they are running.
     bool sprinting = false;
+
+    /// Whether they just started or stopped flying, and nothing when neither happened. parity: the
+    /// other edition sends a packet of abilities for this and this one an edge on one turn's input,
+    /// so it is a change rather than a state.
+    std::optional<bool> flying;
 
     /// What they did to a block, in the order they did it.
     std::vector<BedrockBlockAction> blockActions;
@@ -1166,6 +1172,12 @@ void writeAddItemEntity(io::ByteBuffer& buffer, std::int64_t entityId, const Bed
 void writeAddEntity(io::ByteBuffer& buffer, std::int64_t entityId, std::string_view identifier, float x, float y,
                     float z, float yaw, float pitch, float width, float height, std::uint64_t flags, int protocol);
 
+/// An entity that is there only to be walked into: invisible, collidable and the size of a wall.
+///
+/// parity: nothing in the jar. A world border is a surface the other edition's client collides with
+/// and this one has none, so the only way to stop somebody at it is to put something in the way.
+void writeAddBorderCollider(io::ByteBuffer& buffer, std::int64_t entityId, float x, float y, float z, int protocol);
+
 /// What an entity is doing now, when only that changed: the same flags the spawn carried.
 void writeEntityFlags(io::ByteBuffer& buffer, std::uint64_t runtimeEntityId, std::uint64_t flags, int protocol);
 
@@ -1261,6 +1273,9 @@ enum class LevelEventType : std::int32_t {
     /// cracks of its own on a server that never says this, and falls back to a pace of its own.
     /// The flash of an explosion, which over here is a numbered effect rather than a packet.
     ParticleExplosion = 2025,
+    /// parity: `PARTICLE_DENY_BLOCK`, the red puff that edition draws where something is refused.
+    /// It is what a world border's wall is made of over there, which has no wall of its own.
+    ParticleDenyBlock = 2008,
     BlockStartBreak = 3600,
     BlockStopBreak = 3601,
     BlockUpdateBreak = 3602,
@@ -1274,5 +1289,102 @@ inline constexpr std::int32_t kBreakProgressScale = 65535;
 inline constexpr std::int32_t kWeatherStrengthScale = 65535;
 
 void writeLevelEvent(io::ByteBuffer& buffer, LevelEventType type, float x, float y, float z, std::int32_t data);
+
+/// The locator bar arrived at 944. A client below that draws its bar out of the player list
+/// instead, and is pointed at somebody with `writePlayerLocation`.
+inline constexpr int kLocatorBarProtocol = 944;
+
+/// 975 swapped the numbered dot for the path of a texture and the size to draw it at.
+inline constexpr int kWaypointTextureProtocol = 975;
+
+/// What is being done to one line of the locator bar. parity: `LocatorBarPacket.Action`.
+enum class BedrockWaypointAction : std::uint8_t {
+    None,
+    Add,
+    Remove,
+    Update,
+};
+
+/// One line of the locator bar: a dot somewhere, in a colour, that may follow an entity.
+struct BedrockWaypoint {
+    /// Which waypoint this is, written as two little-endian longs like every other uuid here.
+    std::uint64_t groupHigh = 0;
+    std::uint64_t groupLow = 0;
+    float x = 0.0F;
+    float y = 0.0F;
+    float z = 0.0F;
+    BedrockDimension dimension = BedrockDimension::Overworld;
+    /// The dot's colour as a plain rgb; the alpha is filled in by the writer.
+    std::int32_t colour = 0;
+    /// How far the viewer is from it, which is what picks the dot and how big it is drawn.
+    float distance = 0.0F;
+    /// The entity the dot follows, when the client has one: it then moves the dot itself between
+    /// updates. Nothing to follow leaves the dot where it was last put.
+    std::optional<std::int64_t> entityId;
+};
+
+void writeLocatorBar(io::ByteBuffer& buffer, const BedrockWaypoint& waypoint, BedrockWaypointAction action,
+                     int protocol);
+
+/// Where one entity is drawn on the bar of a client too old for the packet above. That bar is
+/// built out of the player list, so only somebody already listed can be pointed at. An empty
+/// position hides them again.
+void writePlayerLocation(io::ByteBuffer& buffer, std::int64_t entityId, std::optional<std::array<float, 3>> position,
+                         int protocol);
+
+/// One rule on its own, for the few a server turns on and off while somebody is playing.
+void writeGameRuleFlag(io::ByteBuffer& buffer, std::string_view name, bool value, int protocol);
+
+/// A client saying it could not read something this server sent it. parity: the numbers go on the
+/// wire one below their place in the list, so nought is a malformed packet and minus one nothing
+/// the client can name.
+struct BedrockPacketViolation {
+    std::int32_t type = 0;
+    /// How bad the client thinks it is: 0 a warning, 1 the last one, 2 it is leaving over this.
+    std::int32_t severity = 0;
+
+    /// Which packet it choked on, by the id it arrived under.
+    std::int32_t packetId = 0;
+    /// The client's own words, which name the field it stopped at.
+    std::string context;
+};
+
+[[nodiscard]] std::optional<BedrockPacketViolation> readPacketViolationWarning(io::ByteBuffer& buffer);
+
+/// The cameras a client may be put behind, in the order this server names them: a camera
+/// instruction points at one by its place in this list. parity: Geyser sends the same four, which
+/// are the client's own, because a preset it was not told about is refused.
+enum class BedrockCameraPreset : std::int32_t {
+    FirstPerson = 0,
+    /// The one that goes where it is told rather than following the player's head.
+    Free = 1,
+    ThirdPerson = 2,
+    ThirdPersonFront = 3,
+};
+
+/// Names those four for the client. Sent once, on the way in: an instruction that names a preset
+/// the client was never sent is dropped.
+void writeCameraPresets(io::ByteBuffer& buffer);
+
+/// Where the camera is and what it looks at. parity: `CameraInstructionPacket`, of which this
+/// writes the two pieces a server needs: putting the camera somewhere and handing it back.
+struct BedrockCamera {
+    BedrockCameraPreset preset = BedrockCameraPreset::Free;
+    float x = 0.0F;
+    float y = 0.0F;
+    float z = 0.0F;
+    /// Degrees, as everywhere else here.
+    float pitch = 0.0F;
+    float yaw = 0.0F;
+    /// How long the camera takes to slide to the new place. Zero puts it there at once.
+    float easeSeconds = 0.0F;
+};
+
+void writeCameraSet(io::ByteBuffer& buffer, const BedrockCamera& camera);
+
+/// Puts the player back behind their own eyes. `asDefault` hands the first person preset back as
+/// the default one, which is what re-enables the client's own camera key; `clear` takes the
+/// instruction away entirely and is sent a moment later.
+void writeCameraClear(io::ByteBuffer& buffer, bool asDefault);
 
 } // namespace basalt::wire::bedrock
