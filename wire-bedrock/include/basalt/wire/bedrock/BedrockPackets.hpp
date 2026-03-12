@@ -1181,6 +1181,62 @@ void writeAddBorderCollider(io::ByteBuffer& buffer, std::int64_t entityId, float
 /// What an entity is doing now, when only that changed: the same flags the spawn carried.
 void writeEntityFlags(io::ByteBuffer& buffer, std::uint64_t runtimeEntityId, std::uint64_t flags, int protocol);
 
+/// How an entity is drawn beyond its kind: a villager's trade, a rabbit's coat, a sheep's wool, a
+/// slime's size. parity: the other edition keeps these in a field per mob and this one in four
+/// shared ones, so the numbers are not the same on both and the caller brings the translated ones.
+struct BedrockLook {
+    /// Which of a kind it is. Nought is the first of them, which is also what nothing means.
+    std::int32_t variant = 0;
+    /// A second kind alongside the first, for the mobs that have two.
+    std::int32_t markVariant = 0;
+    std::optional<std::int8_t> colour;
+    /// A second colour, which only a tropical fish's pattern uses.
+    std::optional<std::int8_t> colour2;
+    /// How big it is drawn, for the mobs whose size is not their kind.
+    std::optional<float> scale;
+    /// How many horns a goat still has, which that edition counts rather than naming each one.
+    std::optional<std::int32_t> horns;
+    /// How much a llama carries, which is its own field over there.
+    std::optional<std::int32_t> strength;
+    /// Which climate it came from, for the three farm animals 26.2 gave one to. A property rather
+    /// than a field of metadata, and the number is its place in the list declared at the join.
+    std::optional<std::int32_t> climate;
+
+    friend bool operator==(const BedrockLook&, const BedrockLook&) = default;
+};
+
+/// The block an item frame is over there, where it is an entity here: a client is told to put one
+/// down at the block the frame hangs in, and told what is in it separately.
+void writeItemFrameBlock(io::ByteBuffer& buffer, std::int32_t x, std::int32_t y, std::int32_t z, bool glowing, int face,
+                         int protocol);
+
+/// What is in that frame, as the block's own data. An empty item is an empty frame.
+void writeItemFrameData(io::ByteBuffer& buffer, std::int32_t x, std::int32_t y, std::int32_t z, bool glowing,
+                        std::string_view item, std::int32_t count, std::int32_t rotation);
+
+/// A painting, which this edition spawns with a packet of its own rather than as an entity: it
+/// carries the picture by name instead of by a field of metadata. `direction` is its own numbering,
+/// where south is nought and it turns clockwise.
+void writeAddPainting(io::ByteBuffer& buffer, std::int64_t entityId, std::uint64_t runtimeEntityId, float x, float y,
+                      float z, std::int32_t direction, std::string_view motive);
+
+/// The properties one kind of entity has, which the client has to be told about before any entity
+/// of that kind carries a value for one. parity: 26.2 moved several looks out of metadata and into
+/// these, and the client draws nothing for a property it was never declared.
+///
+/// One kind per call, with its choices named in the order their numbers run.
+void writeSyncEntityProperty(io::ByteBuffer& buffer, std::string_view entityType, std::string_view property,
+                             std::span<const std::string_view> choices);
+
+/// One of those properties on one entity, by the place it was declared in.
+void writeEntityIntProperty(io::ByteBuffer& buffer, std::uint64_t runtimeEntityId, std::uint32_t index,
+                            std::int32_t value);
+
+/// Nothing at all when the look has nothing to say, so a mob drawn as it comes costs no packet.
+[[nodiscard]] bool hasAnything(const BedrockLook& look);
+
+void writeEntityLook(io::ByteBuffer& buffer, std::uint64_t runtimeEntityId, const BedrockLook& look, int protocol);
+
 /// A player lying in a bed or getting out of one: the bit that draws them lying down lives past the
 /// sixty-fourth, so it travels in the second word, and the bed itself is a field of its own because
 /// the client puts the body where that says rather than where the player stands.

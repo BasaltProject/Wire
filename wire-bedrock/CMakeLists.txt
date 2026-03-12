@@ -8,6 +8,7 @@ basalt_module(wire-bedrock
         src/BedrockNbt.cpp
         src/BedrockPacketNames.cpp
         src/BedrockBlocks260.cpp
+        src/BedrockItemFrames.cpp
         src/BedrockBlocks2610.cpp
         src/BedrockBlocks2620.cpp
         src/BedrockBlocks2630.cpp

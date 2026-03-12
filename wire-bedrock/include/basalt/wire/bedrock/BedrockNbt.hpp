@@ -25,6 +25,9 @@ void beginNamed(io::ByteBuffer& buffer, std::string_view name);
 /// list itself needs no closing: its length was said in front.
 void beginCompoundList(io::ByteBuffer& buffer, std::string_view name, std::int32_t count);
 
+/// A list of strings, whole: unlike a list of compounds it has nothing inside to open.
+void writeStringList(io::ByteBuffer& buffer, std::string_view name, std::span<const std::string_view> values);
+
 /// Closes whichever compound is open.
 void end(io::ByteBuffer& buffer);
 
