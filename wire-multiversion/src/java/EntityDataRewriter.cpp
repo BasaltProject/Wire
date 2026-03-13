@@ -38,6 +38,7 @@ constexpr std::int32_t kItem = 7;
 constexpr std::int32_t kBoolean = 8;
 constexpr std::int32_t kRotations = 9;
 constexpr std::int32_t kOptionalBlockPosition = 11;
+constexpr std::int32_t kParticle = 16;
 constexpr std::int32_t kVillagerData = 18;
 constexpr std::int32_t kPose = 20;
 
@@ -109,6 +110,8 @@ constexpr std::int32_t kNitwit = 5;
                 return kVillagerData;
             } else if constexpr (std::is_same_v<T, SetEntityDataPacket::PoseValue>) {
                 return kPose;
+            } else if constexpr (std::is_same_v<T, SetEntityDataPacket::ParticleValue>) {
+                return kParticle;
             } else {
                 return static_cast<std::int32_t>(held.registry);
             }
@@ -273,6 +276,28 @@ void EntityDataRewriter::writeEntry(io::ByteBuffer& output, const SetEntityDataP
                 protocol::varInt::write(payload, held.level);
             } else if constexpr (std::is_same_v<T, SetEntityDataPacket::RegistryIdValue>) {
                 protocol::varInt::write(payload, held.value);
+            } else if constexpr (std::is_same_v<T, SetEntityDataPacket::ParticleValue>) {
+                // Particle ids and their options are renumbered in almost every version; an older
+                // client keeps the default particle rather than drawing the wrong one.
+                if (farEnd_ != protocolVersions::kNative) {
+                    written = false;
+                    return;
+                }
+                protocol::varInt::write(payload, held.particleId);
+                if (held.options) {
+                    held.options->write(payload);
+                }
+            } else if constexpr (std::is_same_v<T, SetEntityDataPacket::ParticleValue>) {
+                // Particle ids and their options are renumbered in almost every version; an older
+                // client keeps the default particle rather than drawing the wrong one.
+                if (farEnd_ != protocolVersions::kNative) {
+                    written = false;
+                    return;
+                }
+                protocol::varInt::write(payload, held.particleId);
+                if (held.options) {
+                    held.options->write(payload);
+                }
             } else if constexpr (std::is_same_v<T, SetEntityDataPacket::ItemValue>) {
                 // A stack is written the way its own version writes one, which is three shapes over
                 // the years and the same work wherever a stack travels.

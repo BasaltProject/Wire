@@ -1,5 +1,6 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <basalt/wire/common/Identifier.hpp>
+#include <basalt/wire/common/JavaNumbers.hpp>
 #include <basalt/wire/common/Mth.hpp>
 #include <basalt/wire/common/Uuid.hpp>
 #include <basalt/wire/common/collections/PrimitiveMap.hpp>
@@ -267,4 +268,26 @@ TEST_CASE("a disabled timing measures nothing and still runs the work") {
     CHECK(snapshot.calls == 2);
     CHECK(snapshot.maxNanos >= snapshot.averageNanos());
     CHECK(timings.snapshot().size() == 1);
+}
+
+TEST_CASE("numbers print the way Java's toString prints them") {
+    using basalt::wire::common::javaToString;
+    // Vectors from a JDK 25 run of Double.toString and Float.toString.
+    CHECK(javaToString(70.0) == "70.0");
+    CHECK(javaToString(0.001) == "0.001");
+    CHECK(javaToString(1.0E7) == "1.0E7");
+    CHECK(javaToString(9999999.0) == "9999999.0");
+    CHECK(javaToString(1.0E-4) == "1.0E-4");
+    CHECK(javaToString(123456.789) == "123456.789");
+    CHECK(javaToString(-0.5) == "-0.5");
+    CHECK(javaToString(1.2345E-5) == "1.2345E-5");
+    CHECK(javaToString(0.1 + 0.2) == "0.30000000000000004");
+    CHECK(javaToString(1e21) == "1.0E21");
+    CHECK(javaToString(100.0) == "100.0");
+    CHECK(javaToString(17.12F) == "17.12");
+    CHECK(javaToString(0.1F) == "0.1");
+    CHECK(javaToString(1e10F) == "1.0E10");
+    CHECK(javaToString(19.0F) == "19.0");
+    CHECK(javaToString(0.00099F) == "9.9E-4");
+    CHECK(javaToString(16777216.0F) == "1.6777216E7");
 }

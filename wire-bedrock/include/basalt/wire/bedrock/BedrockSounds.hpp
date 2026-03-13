@@ -19,4 +19,9 @@ struct SoundName {
 /// namespace is optional: nothing in the table carries one.
 [[nodiscard]] std::string_view bedrockSoundName(std::string_view javaSound);
 
+/// The numbered event a Java sound reaches that edition as when it has no name of its own, or
+/// minus one when it has neither. parity: Geyser reads the same two fields of the same mapping,
+/// a name first and a number after it.
+[[nodiscard]] std::int32_t bedrockSoundEvent(std::string_view javaSound, int protocol);
+
 } // namespace basalt::wire::bedrock

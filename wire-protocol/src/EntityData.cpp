@@ -22,6 +22,7 @@ constexpr std::int32_t kItemStackSerializer = 7;
 constexpr std::int32_t kBooleanSerializer = 8;
 constexpr std::int32_t kRotationsSerializer = 9;
 constexpr std::int32_t kOptionalBlockPosSerializer = 11;
+constexpr std::int32_t kParticleSerializer = 16;
 constexpr std::int32_t kVillagerDataSerializer = 18;
 constexpr std::int32_t kPoseSerializer = 20;
 constexpr std::uint8_t kEndOfMetadata = 0xFF;
@@ -146,6 +147,12 @@ void SetEntityDataPacket::write(io::ByteBuffer& buffer) const {
         } else if (const auto* poseValue = std::get_if<PoseValue>(&entry.value)) {
             varInt::write(buffer, kPoseSerializer);
             varInt::write(buffer, static_cast<std::int32_t>(poseValue->pose));
+        } else if (const auto* particle = std::get_if<ParticleValue>(&entry.value)) {
+            varInt::write(buffer, kParticleSerializer);
+            varInt::write(buffer, particle->particleId);
+            if (particle->options) {
+                particle->options->write(buffer);
+            }
         } else if (const auto* registryValue = std::get_if<RegistryIdValue>(&entry.value)) {
             varInt::write(buffer, static_cast<std::int32_t>(registryValue->registry));
             varInt::write(buffer, registryValue->value);
@@ -155,7 +162,7 @@ void SetEntityDataPacket::write(io::ByteBuffer& buffer) const {
     buffer.writeByte(kEndOfMetadata);
 }
 
-std::optional<SetEntityDataPacket> SetEntityDataPacket::read(io::ByteBuffer& buffer) {
+std::optional<SetEntityDataPacket> SetEntityDataPacket::read(io::ByteBuffer& buffer, const ParticleShapeOf& shapeOf) {
     SetEntityDataPacket packet;
     packet.entityId = varInt::read(buffer);
 
@@ -229,6 +236,24 @@ std::optional<SetEntityDataPacket> SetEntityDataPacket::read(io::ByteBuffer& buf
                 return std::nullopt;
             }
             entry.value = PoseValue{static_cast<Pose>(pose)};
+            break;
+        }
+        case kParticleSerializer: {
+            if (!shapeOf) {
+                buffer.markFailed();
+                return std::nullopt;
+            }
+            ParticleValue value;
+            value.particleId = varInt::read(buffer);
+            if (const std::optional<ParticleOptionShape> shape = shapeOf(value.particleId);
+                shape.has_value() && *shape != ParticleOptionShape::None) {
+                value.options = ParticleOptions::read(buffer, *shape);
+                if (!value.options) {
+                    buffer.markFailed();
+                    return std::nullopt;
+                }
+            }
+            entry.value = std::move(value);
             break;
         }
         default: {

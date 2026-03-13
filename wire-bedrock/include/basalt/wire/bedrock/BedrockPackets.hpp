@@ -883,13 +883,8 @@ void writeMetadataFloat(io::ByteBuffer& buffer, EntityDataId id, float value, in
 
 void writeMetadataString(io::ByteBuffer& buffer, EntityDataId id, std::string_view value, int protocol);
 
-/// Everything a Bedrock client has to be told about its own body, in one packet. It goes out whole
-/// every time: a field left out is not a field left alone, it is a field the client keeps at
-/// whatever it last heard, and what it starts from is zero.
-///
-/// Zero is not a neutral starting point here. Without the gravity and collision flags a player
-/// floats and cannot jump, and without a maximum air supply the bubbles are drawn empty and the
-/// client starts drowning on dry land.
+/// Everything a Bedrock client is told about its own body, sent whole every time: an omitted field
+/// stays at zero, which leaves a player floating and drowning on dry land.
 void writeSelfMetadata(io::ByteBuffer& buffer, std::uint64_t runtimeEntityId, std::int16_t airSupply,
                        std::int16_t maxAirSupply, std::uint64_t flags, std::uint64_t moreFlags, int protocol);
 
@@ -983,6 +978,8 @@ void writeSpawnParticle(io::ByteBuffer& buffer, BedrockDimension dimension, std:
 enum class BedrockEntityEvent : std::uint8_t {
     Hurt = 2,
     Death = 3,
+    /// What a client waits to hear back before it takes the death screen down.
+    Respawn = 18,
     /// The one a client sends rather than is told: it waits to hear its own eating back before it
     /// makes the noise.
     EatingItem = 57,
@@ -1205,6 +1202,14 @@ struct BedrockLook {
     friend bool operator==(const BedrockLook&, const BedrockLook&) = default;
 };
 
+/// Moves the hand of a player who did not move it themselves, which over there is a packet of its
+/// own rather than the one the client sends back.
+void writePlayerHotbar(io::ByteBuffer& buffer, std::int32_t slot);
+
+/// A sound that edition knows by number rather than by name. The numbers come from
+/// `bedrockSoundEvent`, which is where the two editions' sound lists are reconciled.
+void writeLevelSoundEvent(io::ByteBuffer& buffer, std::int32_t event, float x, float y, float z, int protocol);
+
 /// The block an item frame is over there, where it is an entity here: a client is told to put one
 /// down at the block the frame hangs in, and told what is in it separately.
 void writeItemFrameBlock(io::ByteBuffer& buffer, std::int32_t x, std::int32_t y, std::int32_t z, bool glowing, int face,
@@ -1287,6 +1292,19 @@ enum class RespawnState : std::uint8_t {
 };
 
 void writeRespawn(io::ByteBuffer& buffer, float x, float y, float z, RespawnState state, std::uint64_t runtimeEntityId);
+
+/// The few things a client still says through the old action packet, now that its movement carries
+/// the rest. The numbers are that enumeration's own order, and nothing here renumbered them.
+enum class BedrockPlayerAction : std::uint8_t {
+    StopSleep = 6,
+    Respawn = 7,
+    DimensionChanged = 14,
+};
+
+/// What action a client is reporting, or nothing when it is one this server does not act on. The
+/// two positions and the face the packet also carries belong to breaking a block, which arrives
+/// inside the movement packet instead.
+[[nodiscard]] std::optional<BedrockPlayerAction> readPlayerAction(io::ByteBuffer& buffer);
 
 /// What a client answers with when somebody presses the button. Only the state is read: the
 /// position it sends is where it thinks it was, and the server decides where it goes.

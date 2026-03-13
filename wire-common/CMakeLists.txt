@@ -2,6 +2,7 @@ basalt_module(wire-common
     SOURCES
         src/Base64.cpp
         src/Identifier.cpp
+        src/JavaNumbers.cpp
         src/Json.cpp
         src/Logger.cpp
         src/LogOutput.cpp
