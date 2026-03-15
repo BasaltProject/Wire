@@ -1199,6 +1199,21 @@ TEST_CASE("entity metadata round trips every serializer this build writes") {
     io::ByteBuffer blind;
     breath.write(blind);
     CHECK_FALSE(Data::read(blind).has_value());
+
+    // parity: a living entity's effect swirl, one coloured `entity_effect` per visible effect.
+    Data swirl;
+    swirl.entityId = 8;
+    swirl.entries.push_back(
+        {.index = 10,
+         .value = Data::ParticlesValue{
+             {Data::ParticleValue{.particleId = 20, .options = ParticleOptions{ParticleOptions::Color{-16776961}}},
+              Data::ParticleValue{.particleId = 21}}}});
+    io::ByteBuffer swirlBuffer;
+    swirl.write(swirlBuffer);
+    const Data::ParticleShapeOf colours = [](std::int32_t id) {
+        return id == 20 ? ParticleOptionShape::Color : ParticleOptionShape::None;
+    };
+    CHECK(Data::read(swirlBuffer, colours) == swirl);
 }
 
 TEST_CASE("the entity metadata helpers write the indices vanilla expects") {

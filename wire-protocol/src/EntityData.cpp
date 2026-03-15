@@ -23,6 +23,9 @@ constexpr std::int32_t kBooleanSerializer = 8;
 constexpr std::int32_t kRotationsSerializer = 9;
 constexpr std::int32_t kOptionalBlockPosSerializer = 11;
 constexpr std::int32_t kParticleSerializer = 16;
+constexpr std::int32_t kParticlesSerializer = 17;
+/// A guard against a hostile count, far above the few dozen effects that exist.
+constexpr std::int32_t kMaxParticles = 1024;
 constexpr std::int32_t kVillagerDataSerializer = 18;
 constexpr std::int32_t kPoseSerializer = 20;
 constexpr std::uint8_t kEndOfMetadata = 0xFF;
@@ -42,6 +45,10 @@ std::optional<RegistryHolder> registryHolderFromSerializer(std::int32_t id) noex
     case 31:
     case 32:
     case 34:
+    case 35:
+    case 36:
+    case 37:
+    case 38:
         return static_cast<RegistryHolder>(id);
     default:
         return std::nullopt;
@@ -153,6 +160,15 @@ void SetEntityDataPacket::write(io::ByteBuffer& buffer) const {
             if (particle->options) {
                 particle->options->write(buffer);
             }
+        } else if (const auto* list = std::get_if<ParticlesValue>(&entry.value)) {
+            varInt::write(buffer, kParticlesSerializer);
+            varInt::write(buffer, static_cast<std::int32_t>(list->particles.size()));
+            for (const ParticleValue& each : list->particles) {
+                varInt::write(buffer, each.particleId);
+                if (each.options) {
+                    each.options->write(buffer);
+                }
+            }
         } else if (const auto* registryValue = std::get_if<RegistryIdValue>(&entry.value)) {
             varInt::write(buffer, static_cast<std::int32_t>(registryValue->registry));
             varInt::write(buffer, registryValue->value);
@@ -254,6 +270,33 @@ std::optional<SetEntityDataPacket> SetEntityDataPacket::read(io::ByteBuffer& buf
                 }
             }
             entry.value = std::move(value);
+            break;
+        }
+        case kParticlesSerializer: {
+            if (!shapeOf) {
+                buffer.markFailed();
+                return std::nullopt;
+            }
+            const std::int32_t count = varInt::read(buffer);
+            if (count < 0 || count > kMaxParticles) {
+                buffer.markFailed();
+                return std::nullopt;
+            }
+            ParticlesValue list;
+            for (std::int32_t read = 0; read < count && !buffer.failed(); ++read) {
+                ParticleValue value;
+                value.particleId = varInt::read(buffer);
+                if (const std::optional<ParticleOptionShape> shape = shapeOf(value.particleId);
+                    shape.has_value() && *shape != ParticleOptionShape::None) {
+                    value.options = ParticleOptions::read(buffer, *shape);
+                    if (!value.options) {
+                        buffer.markFailed();
+                        return std::nullopt;
+                    }
+                }
+                list.particles.push_back(std::move(value));
+            }
+            entry.value = std::move(list);
             break;
         }
         default: {
