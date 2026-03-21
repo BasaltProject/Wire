@@ -36,6 +36,33 @@ std::vector<std::uint8_t> readByteArray(io::ByteBuffer& buffer, std::int32_t max
     return buffer.readBytes(static_cast<std::size_t>(length));
 }
 
+void writeBitSet(io::ByteBuffer& buffer, std::span<const std::int64_t> words) {
+    std::vector<std::uint8_t> bytes;
+    bytes.reserve(words.size() * 8);
+    for (const std::int64_t word : words) {
+        for (int shift = 0; shift < 64; shift += 8) {
+            bytes.push_back(static_cast<std::uint8_t>(static_cast<std::uint64_t>(word) >> shift));
+        }
+    }
+    while (!bytes.empty() && bytes.back() == 0) {
+        bytes.pop_back();
+    }
+    writeByteArray(buffer, bytes);
+}
+
+std::vector<std::int64_t> readBitSet(io::ByteBuffer& buffer) {
+    const std::vector<std::uint8_t> bytes = readByteArray(buffer);
+    std::vector<std::int64_t> words((bytes.size() + 7) / 8, 0);
+    for (std::size_t i = 0; i < bytes.size(); ++i) {
+        words[i / 8] = static_cast<std::int64_t>(static_cast<std::uint64_t>(words[i / 8]) |
+                                                 (static_cast<std::uint64_t>(bytes[i]) << ((i % 8) * 8)));
+    }
+    while (!words.empty() && words.back() == 0) {
+        words.pop_back();
+    }
+    return words;
+}
+
 void writeAnonymousNbt(io::ByteBuffer& buffer, const nbt::NbtTag& tag) {
     buffer.writeBytes(nbt::nbtIO::writeAnonymous(tag));
 }

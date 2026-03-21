@@ -127,12 +127,9 @@ struct ExplosionParticle {
     friend bool operator==(const ExplosionParticle&, const ExplosionParticle&) = default;
 };
 
-/// Clientbound, id 0x24: an explosion happened here.
-///
-/// The blocks it broke are not in this packet: those go out as ordinary block updates. What this
-/// carries is everything the client cannot work out for itself, which is the whole reason an
-/// explosion looks and sounds like one: the flash, the smoke, the bang, and how hard whoever was
-/// standing nearby got pushed.
+/// Clientbound, id 0x24: an explosion happened here. The broken blocks go out as ordinary block
+/// updates; this carries what the client cannot work out itself: the flash, the smoke, the bang and
+/// the knockback of whoever stood nearby.
 struct ExplodePacket {
     static constexpr std::int32_t kId = 0x24;
     /// parity: Level.DEFAULT_EXPLOSION_BLOCK_PARTICLES, a poof and some smoke, evenly weighted.
@@ -151,6 +148,7 @@ struct ExplodePacket {
     std::int32_t particleId = 0;
     std::string sound;
     std::vector<ExplosionParticle> blockParticles;
+    bool playSound = true;
 
     void write(io::ByteBuffer& buffer) const;
     /// Only the sound holder write emits is understood: a direct name, never a registry id.

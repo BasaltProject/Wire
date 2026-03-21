@@ -47,10 +47,10 @@ struct BlockEventPacket {
     friend bool operator==(const BlockEventPacket&, const BlockEventPacket&) = default;
 };
 
-/// Clientbound, id 0x3c: open the sign editor. The client refuses to edit a sign it was not asked
+/// Clientbound, id 0x3d: open the sign editor. The client refuses to edit a sign it was not asked
 /// to edit, so placing one without this leaves a blank sign and no way to write on it.
 struct OpenSignEditorPacket {
-    static constexpr std::int32_t kId = 0x3c;
+    static constexpr std::int32_t kId = 0x3d;
 
     BlockPos pos;
     bool isFrontText = true;
@@ -61,12 +61,12 @@ struct OpenSignEditorPacket {
     friend bool operator==(const OpenSignEditorPacket&, const OpenSignEditorPacket&) = default;
 };
 
-/// Serverbound, id 0x3d: the four lines someone typed.
+/// Serverbound, id 0x3e: the four lines someone typed.
 ///
 /// They arrive as plain text, not as components: what the client sends is exactly what was typed,
 /// and the server is what turns it into the text a sign shows.
 struct SignUpdatePacket {
-    static constexpr std::int32_t kId = 0x3d;
+    static constexpr std::int32_t kId = 0x3e;
     static constexpr std::size_t kLines = 4;
     /// parity: ServerboundSignUpdatePacket.MAX_STRING_LENGTH, which is not the sign's own limit.
     static constexpr std::int32_t kMaxLineLength = 384;
@@ -81,13 +81,13 @@ struct SignUpdatePacket {
     friend bool operator==(const SignUpdatePacket&, const SignUpdatePacket&) = default;
 };
 
-/// Serverbound, id 0x36: what somebody typed into a command block's screen.
+/// Serverbound, id 0x37: what somebody typed into a command block's screen.
 ///
 /// parity: `ServerboundSetCommandBlockPacket`. The three modes are the block itself (an impulse, a
 /// repeating or a chain block), so accepting one means putting a different block down; the flags are
 /// a single byte and vanilla names them one, two and four.
 struct SetCommandBlockPacket {
-    static constexpr std::int32_t kId = 0x36;
+    static constexpr std::int32_t kId = 0x37;
 
     /// parity: `CommandBlockEntity.Mode`, in the enum's own order, which is what the byte carries.
     enum class Mode : std::int32_t { Sequence, Auto, Redstone };

@@ -5,11 +5,8 @@
 
 namespace basalt::wire::multiversion::java {
 
-/// 1.21.2 to 1.21, the deepest step of the modern range.
-///
-/// 1.21.2 rewrote how a position reaches a client, gave the world a sea level and the login a
-/// strictness flag, and made the container id a varint where 1.21 reads one byte.
-///
+/// 1.21.2 to 1.21, the deepest step of the modern range. 1.21.2 rewrote position sync, added sea
+/// level and a login strictness flag, and made the container id a varint (1.21 reads a byte).
 /// Dropped rather than sent wrong: the recipe book, explosions and item cooldowns.
 class Link767 final : public RenumberingLink {
 public:
@@ -28,9 +25,6 @@ private:
 
     /// The same the other way, for what the client sends back about a container.
     static void widenContainer(MutablePacket& packet);
-
-    /// Everything a spawn tells the client, minus the sea level 1.21.2 added at the end.
-    static void writeSpawnInfoWithoutSeaLevel(io::ByteBuffer& output, const protocol::play::SpawnInfo& spawn);
 };
 
 } // namespace basalt::wire::multiversion::java

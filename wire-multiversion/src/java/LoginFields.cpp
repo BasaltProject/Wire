@@ -25,13 +25,20 @@ void LoginFields::SpawnFields::write(io::ByteBuffer& output, bool withSeaLevel) 
     }
 }
 
-LoginFields::SpawnFields LoginFields::SpawnFields::read(io::ByteBuffer& input, bool withSeaLevel) {
+LoginFields::SpawnFields LoginFields::SpawnFields::read(io::ByteBuffer& input, bool withSeaLevel,
+                                                        bool varIntGamemodes) {
     SpawnFields fields;
     fields.dimension = protocol::varInt::read(input);
     fields.dimensionName = protocol::readString(input);
     fields.hashedSeed = input.readLong();
-    fields.gamemode = input.readByte();
-    fields.previousGamemode = input.readByte();
+    if (varIntGamemodes) {
+        fields.gamemode = protocol::varInt::read(input);
+        // parity: GameType.OPTIONAL_STREAM_CODEC, zero for none; -1 is how the byte said it.
+        fields.previousGamemode = protocol::varInt::read(input) - 1;
+    } else {
+        fields.gamemode = input.readByte();
+        fields.previousGamemode = input.readByte();
+    }
     fields.debug = input.readByte() != 0;
     fields.flat = input.readByte() != 0;
     if (input.readByte() != 0) {
@@ -65,7 +72,7 @@ void LoginFields::write(io::ByteBuffer& output, bool withOnlineMode, bool withSe
     protocol::writeBoolean(output, enforcesSecureChat);
 }
 
-LoginFields LoginFields::read(io::ByteBuffer& input, bool withOnlineMode, bool withSeaLevel) {
+LoginFields LoginFields::read(io::ByteBuffer& input, bool withOnlineMode, bool withSeaLevel, bool varIntGamemodes) {
     LoginFields fields;
     fields.entityId = input.readInt();
     fields.hardcore = input.readByte() != 0;
@@ -79,7 +86,7 @@ LoginFields LoginFields::read(io::ByteBuffer& input, bool withOnlineMode, bool w
     fields.reducedDebugInfo = input.readByte() != 0;
     fields.respawnScreen = input.readByte() != 0;
     fields.limitedCrafting = input.readByte() != 0;
-    fields.spawn = SpawnFields::read(input, withSeaLevel);
+    fields.spawn = SpawnFields::read(input, withSeaLevel, varIntGamemodes);
     if (withOnlineMode) {
         fields.onlineMode = input.readByte() != 0;
     }

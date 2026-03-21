@@ -75,7 +75,7 @@ enum class RegistryHolder : std::int32_t {
     WeatheringCopperState = 38,
 };
 
-/// Clientbound, id 0x63: entity metadata. A stream of entries, each an index byte, a serializer id
+/// Clientbound, id 0x65: entity metadata. A stream of entries, each an index byte, a serializer id
 /// and the value, terminated by 0xFF.
 ///
 /// Indices are positions in the entity's own defineId order, counted down the real class hierarchy,
@@ -83,7 +83,7 @@ enum class RegistryHolder : std::int32_t {
 /// new Avatar class between LivingEntity and Player, so the player indices are not where an older
 /// version would put them.
 struct SetEntityDataPacket {
-    static constexpr std::int32_t kId = 0x63;
+    static constexpr std::int32_t kId = 0x65;
 
     /// ItemEntity.DATA_ITEM: Entity claims 0 to 7, so the item's own entry lands here.
     static constexpr std::uint8_t kItemStackIndex = 8;

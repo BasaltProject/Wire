@@ -10,12 +10,12 @@
 
 namespace basalt::wire::protocol::play {
 
-/// Clientbound, id 0x68: the health, food and saturation bars.
+/// Clientbound, id 0x6a: the health, food and saturation bars.
 ///
 /// Saturation is invisible in the HUD but not unobservable: the client uses it to decide whether the
 /// food bar shakes, so a wrong value is a visible divergence.
 struct SetHealthPacket {
-    static constexpr std::int32_t kId = 0x68;
+    static constexpr std::int32_t kId = 0x6a;
 
     float health = 20.0F;
     std::int32_t food = 20;
@@ -27,12 +27,12 @@ struct SetHealthPacket {
     friend bool operator==(const SetHealthPacket&, const SetHealthPacket&) = default;
 };
 
-/// Clientbound, id 0x67: the experience bar.
+/// Clientbound, id 0x69: the experience bar.
 ///
 /// The wire order is progress, level, total, which is not the order vanilla's own constructor takes
 /// its arguments in: declared to match the packet, not the constructor.
 struct SetExperiencePacket {
-    static constexpr std::int32_t kId = 0x67;
+    static constexpr std::int32_t kId = 0x69;
 
     float progress = 0.0F;
     std::int32_t level = 0;
@@ -44,10 +44,10 @@ struct SetExperiencePacket {
     friend bool operator==(const SetExperiencePacket&, const SetExperiencePacket&) = default;
 };
 
-/// Clientbound, id 0x40: what the player may do and how fast they move. The defaults are vanilla's
+/// Clientbound, id 0x41: what the player may do and how fast they move. The defaults are vanilla's
 /// own Abilities.
 struct ClientboundPlayerAbilitiesPacket {
-    static constexpr std::int32_t kId = 0x40;
+    static constexpr std::int32_t kId = 0x41;
     static constexpr float kDefaultFlyingSpeed = 0.05F;
     static constexpr float kDefaultWalkingSpeed = 0.1F;
 
@@ -77,10 +77,10 @@ struct ServerboundPlayerAbilitiesPacket {
     friend bool operator==(const ServerboundPlayerAbilitiesPacket&, const ServerboundPlayerAbilitiesPacket&) = default;
 };
 
-/// Clientbound, id 0x52: re-enters the same or another dimension without a full reconnect, which is
+/// Clientbound, id 0x54: re-enters the same or another dimension without a full reconnect, which is
 /// what a respawn is. The keep mask is vanilla's own.
 struct RespawnPacket {
-    static constexpr std::int32_t kId = 0x52;
+    static constexpr std::int32_t kId = 0x54;
     static constexpr std::uint8_t kKeepAttributeModifiers = 1;
     static constexpr std::uint8_t kKeepEntityData = 2;
     static constexpr std::uint8_t kKeepAllData = 3;
@@ -141,10 +141,10 @@ struct PlayerCommandPacket {
     friend bool operator==(const PlayerCommandPacket&, const PlayerCommandPacket&) = default;
 };
 
-/// Clientbound, id 0x44: the death screen, carrying the message shown on it. Without this the client
+/// Clientbound, id 0x45: the death screen, carrying the message shown on it. Without this the client
 /// never learns it died, so it keeps playing while the server considers it dead.
 struct PlayerCombatKillPacket {
-    static constexpr std::int32_t kId = 0x44;
+    static constexpr std::int32_t kId = 0x45;
 
     std::int32_t playerId = 0;
     text::Component message;
@@ -155,13 +155,13 @@ struct PlayerCombatKillPacket {
     friend bool operator==(const PlayerCombatKillPacket&, const PlayerCombatKillPacket&) = default;
 };
 
-/// Clientbound, id 0x4d: stop tracking these entities.
+/// Clientbound, id 0x4e: stop tracking these entities.
 ///
 /// Needed the moment a server has more than one world: a player who leaves for another world is
 /// still an entity everyone in the old one is tracking, and without this they stay frozen in place
 /// there for ever.
 struct RemoveEntitiesPacket {
-    static constexpr std::int32_t kId = 0x4d;
+    static constexpr std::int32_t kId = 0x4e;
 
     std::vector<std::int32_t> entityIds;
 

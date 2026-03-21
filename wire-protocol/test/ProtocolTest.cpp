@@ -106,6 +106,19 @@ TEST_CASE("protocol fields round trip") {
     CHECK_FALSE(buffer.failed());
 }
 
+TEST_CASE("a bit set travels as java.util.BitSet.toByteArray") {
+    // Bits 1 and 8: little-endian bytes, with the trailing zero bytes of the word left out.
+    io::ByteBuffer buffer;
+    const std::vector<std::int64_t> words = {0x102, 0};
+    writeBitSet(buffer, words);
+    CHECK(buffer.readable().size() == 3);
+    CHECK(buffer.readable()[0] == 2);
+    CHECK(buffer.readable()[1] == 0x02);
+    CHECK(buffer.readable()[2] == 0x01);
+    CHECK(readBitSet(buffer) == std::vector<std::int64_t>{0x102});
+    CHECK_FALSE(buffer.failed());
+}
+
 TEST_CASE("a string longer than its declared maximum is refused") {
     io::ByteBuffer buffer;
     writeString(buffer, std::string(64, 'x'));
@@ -369,7 +382,12 @@ TEST_CASE("the configuration packets round trip") {
     information.write(informationBuffer);
     CHECK(*ClientInformationPacket::read(informationBuffer) == information);
 
-    const SelectKnownPacksPacket packs{{{"minecraft", "core", "26.2"}}};
+    const PostEffectsPacket effects{{"minecraft:spider", "minecraft:creeper"}};
+    io::ByteBuffer effectsBuffer;
+    effects.write(effectsBuffer);
+    CHECK(*PostEffectsPacket::read(effectsBuffer) == effects);
+
+    const SelectKnownPacksPacket packs{{{"minecraft", "core", "26.3"}}};
     io::ByteBuffer packsBuffer;
     packs.write(packsBuffer);
     CHECK(*SelectKnownPacksPacket::read(packsBuffer) == packs);
@@ -592,7 +610,7 @@ TEST_CASE("the player state packets round trip") {
     info.dimensionName = "minecraft:overworld";
     info.hashedSeed = 1234567890123LL;
     info.gamemode = Gamemode::Creative;
-    info.previousGamemode = 255;
+    info.previousGamemode = -1;
     info.death = GlobalPos{"minecraft:the_nether", BlockPos{10, 64, -20}};
     info.seaLevel = 63;
     const RespawnPacket respawn{info, RespawnPacket::kKeepAllData};
@@ -1302,10 +1320,15 @@ TEST_CASE("the entity packets round trip") {
     effect.write(effectBuffer);
     CHECK(*UpdateMobEffectPacket::read(effectBuffer) == effect);
 
-    const EntityPositionSyncPacket sync{7, 1.5, 64.0, -2.5, 0.1, 0.2, 0.3, 90.0F, 0.0F, true};
+    const EntityPositionSyncPacket sync{7, 1.5, 64.0, -2.5, 90.0F, 0.0F, true};
     io::ByteBuffer syncBuffer;
     sync.write(syncBuffer);
     CHECK(*EntityPositionSyncPacket::read(syncBuffer) == sync);
+
+    const SwingAnimationPacket swing{7, 1, SwingAnimation{SwingAnimationType::Stab, 19}};
+    io::ByteBuffer swingBuffer;
+    swing.write(swingBuffer);
+    CHECK(*SwingAnimationPacket::read(swingBuffer) == swing);
 
     const SetPassengersPacket passengers{7, {8, 9}};
     io::ByteBuffer passengersBuffer;
@@ -1399,6 +1422,13 @@ TEST_CASE("particles carry their options only when the type has them") {
     plain.write(plainBuffer);
     CHECK(*LevelParticlesPacket::read(plainBuffer, ParticleOptionShape::None) == plain);
 
+    LevelParticlesPacket spread = plain;
+    spread.maxSpeedY = 0.5F;
+    spread.randomization = LevelParticlesPacket::Randomization::AlternativeWithSpeed;
+    io::ByteBuffer spreadBuffer;
+    spread.write(spreadBuffer);
+    CHECK(*LevelParticlesPacket::read(spreadBuffer, ParticleOptionShape::None) == spread);
+
     LevelParticlesPacket dust = plain;
     dust.options = ParticleOptions{ParticleOptions::Dust{0xFF0000, 1.0F}};
     io::ByteBuffer dustBuffer;
@@ -1412,8 +1442,9 @@ TEST_CASE("the world packets round trip") {
     LightData light;
     light.skyLightMask = {0x3};
     light.blockLightMask = {0x1};
-    light.emptySkyLightMask = {0};
-    light.emptyBlockLightMask = {0};
+    // An empty mask is no words at all, the only shape java.util.BitSet reads back.
+    light.emptySkyLightMask = {};
+    light.emptyBlockLightMask = {0x4};
     light.skyLight = {std::vector<std::uint8_t>(2048, 0xFF), std::vector<std::uint8_t>(2048, 0x11)};
     light.blockLight = {std::vector<std::uint8_t>(2048, 0x00)};
 
@@ -1455,6 +1486,11 @@ TEST_CASE("the world packets round trip") {
     io::ByteBuffer blockBuffer;
     block.write(blockBuffer);
     CHECK(*ClientboundBlockUpdatePacket::read(blockBuffer) == block);
+
+    const AddTransientBlockPacket transient{BlockPos{5, -3, 9}, 4321};
+    io::ByteBuffer transientBuffer;
+    transient.write(transientBuffer);
+    CHECK(*AddTransientBlockPacket::read(transientBuffer) == transient);
 }
 
 TEST_CASE("a section update packs its coordinates and its changes") {
@@ -1567,6 +1603,11 @@ TEST_CASE("the block interaction packets round trip") {
     io::ByteBuffer bucketBuffer;
     bucket.write(bucketBuffer);
     CHECK(*ServerboundUseItemPacket::read(bucketBuffer) == bucket);
+
+    const AcceptTeleportationPacket accepted{3, 1.5, 70.0, -2.5, 180.0F, 10.0F};
+    io::ByteBuffer acceptedBuffer;
+    accepted.write(acceptedBuffer);
+    CHECK(*AcceptTeleportationPacket::read(acceptedBuffer) == accepted);
 
     const PickItemFromBlockPacket pick{BlockPos{1, 2, 3}, true};
     io::ByteBuffer pickBuffer;

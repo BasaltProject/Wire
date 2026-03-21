@@ -60,6 +60,7 @@ basalt_module(wire-multiversion
         src/java/Tables773.cpp
         src/java/Tables774.cpp
         src/java/Tables775.cpp
+        src/java/Tables776.cpp
         src/java/Link107.cpp
         src/java/Link47.cpp
         src/java/Link109.cpp
@@ -90,6 +91,8 @@ basalt_module(wire-multiversion
         src/java/Link773.cpp
         src/java/Link774.cpp
         src/java/Link775.cpp
+        src/java/Link776.cpp
+        src/java/LongMaskLight.cpp
         src/java/LoginFields.cpp
         src/java/EntityDataIndexes.cpp
         src/java/EntityDataRewriter.cpp

@@ -8,6 +8,8 @@
 #include <basalt/wire/multiversion/ProtocolVersions.hpp>
 #include <basalt/wire/multiversion/java/EntityDataRewriter.hpp>
 #include <basalt/wire/multiversion/java/JavaTranslators.hpp>
+#include <basalt/wire/multiversion/java/LoginFields.hpp>
+#include <basalt/wire/multiversion/java/LongMaskLight.hpp>
 #include <basalt/wire/multiversion/java/Tables775.hpp>
 #include <basalt/wire/nbt/NbtTag.hpp>
 #include <basalt/wire/protocol/ProtocolBuffer.hpp>
@@ -15,6 +17,7 @@
 #include <basalt/wire/protocol/play/EntityPackets.hpp>
 #include <basalt/wire/protocol/play/InventoryPackets.hpp>
 #include <basalt/wire/protocol/play/PalettedContainer.hpp>
+#include <basalt/wire/protocol/play/PlayerStatePackets.hpp>
 #include <basalt/wire/protocol/play/WorldPackets.hpp>
 
 #include <doctest.h>
@@ -412,15 +415,15 @@ TEST_CASE("a boolean is written as the byte it always was where there is no kind
 
 namespace {
 
-/// The numbers are read out of the two versions' own reports (26.1.2 and 26.2), so a failure here
+/// The numbers are read out of the versions' own reports (26.1.2 and 26.3), so a failure here
 /// means the table is wrong rather than the expectation being stale.
-constexpr std::int32_t kStone776 = 1;
+constexpr std::int32_t kStone777 = 1;
 constexpr std::int32_t kStone775 = 1;
-constexpr std::int32_t kOakPlanks776 = 63;
+constexpr std::int32_t kOakPlanks777 = 63;
 constexpr std::int32_t kOakPlanks775 = 36;
-constexpr std::int32_t kMaxHealth776 = 23;
+constexpr std::int32_t kMaxHealth777 = 23;
 constexpr std::int32_t kMaxHealth775 = 19;
-constexpr std::int32_t kBounciness776 = 9;
+constexpr std::int32_t kBounciness777 = 9;
 
 /// Runs one packet down a chain and hands back what came out the far end.
 std::vector<std::uint8_t> clientbound(const ProtocolChain& chain, std::int32_t id,
@@ -444,7 +447,7 @@ TEST_CASE("a chain for 26.1 renumbers what a packet carries") {
     SUBCASE("a block state keeps its number where nothing moved") {
         play::ClientboundBlockUpdatePacket update;
         update.pos = {8, 64, 8};
-        update.blockStateId = kStone776;
+        update.blockStateId = kStone777;
         basalt::wire::io::ByteBuffer body;
         update.write(body);
 
@@ -459,7 +462,7 @@ TEST_CASE("a chain for 26.1 renumbers what a packet carries") {
         play::ContainerSetSlotPacket slot;
         slot.stateId = 1;
         slot.slot = 5;
-        slot.item = play::WireItemStack{.itemId = kOakPlanks776, .count = 3};
+        slot.item = play::WireItemStack{.itemId = kOakPlanks777, .count = 3};
         basalt::wire::io::ByteBuffer body;
         slot.write(body);
 
@@ -475,8 +478,8 @@ TEST_CASE("a chain for 26.1 renumbers what a packet carries") {
     SUBCASE("an attribute 26.1 does not have is left out instead of sent wrong") {
         play::UpdateAttributesPacket attributes;
         attributes.entityId = 7;
-        attributes.attributes.push_back({.attribute = kMaxHealth776, .base = 20.0});
-        attributes.attributes.push_back({.attribute = kBounciness776, .base = 1.0});
+        attributes.attributes.push_back({.attribute = kMaxHealth777, .base = 20.0});
+        attributes.attributes.push_back({.attribute = kBounciness777, .base = 1.0});
         basalt::wire::io::ByteBuffer body;
         attributes.write(body);
 
@@ -486,6 +489,60 @@ TEST_CASE("a chain for 26.1 renumbers what a packet carries") {
         REQUIRE(sent.has_value());
         REQUIRE(sent->attributes.size() == 1);
         CHECK(sent->attributes.front().attribute == kMaxHealth775);
+    }
+}
+
+TEST_CASE("a chain for 26.2 gives back the shapes 26.3 changed") {
+    namespace play = basalt::wire::protocol::play;
+
+    const std::unique_ptr<java::JavaChain> built = java::javaTranslators::chainFor(protocolVersions::kV26_2);
+    REQUIRE(built != nullptr);
+    const ProtocolChain& chain = built->chain();
+
+    SUBCASE("a swing goes back into the animate packet") {
+        basalt::wire::io::ByteBuffer body;
+        play::SwingAnimationPacket{7, 1, {}}.write(body);
+        std::int32_t sentId = -1;
+        std::vector<std::uint8_t> sent;
+        chain.clientbound(basalt::wire::protocol::ProtocolState::Play, play::SwingAnimationPacket::kId, body.toVector(),
+                          [&](std::int32_t id, std::span<const std::uint8_t> bytes) {
+                              sentId = id;
+                              sent.assign(bytes.begin(), bytes.end());
+                          });
+        CHECK(sentId == play::AnimatePacket::kId);
+        CHECK(sent == std::vector<std::uint8_t>{7, 3});
+    }
+
+    SUBCASE("a respawn writes its game modes as the two bytes 26.2 reads") {
+        play::SpawnInfo spawn;
+        spawn.dimensionName = "minecraft:overworld";
+        spawn.gamemode = play::Gamemode::Creative;
+        basalt::wire::io::ByteBuffer body;
+        play::RespawnPacket{spawn, 0}.write(body);
+        basalt::wire::io::ByteBuffer out =
+            basalt::wire::io::ByteBuffer::wrap(clientbound(chain, play::RespawnPacket::kId, body.toVector()));
+        const java::LoginFields::SpawnFields read = java::LoginFields::SpawnFields::read(out, true);
+        CHECK(read.gamemode == 1);
+        CHECK(read.previousGamemode == 0xFF);
+        CHECK(out.readByte() == 0);
+        CHECK_FALSE(out.failed());
+        CHECK(out.readableBytes() == 0);
+    }
+
+    SUBCASE("the light masks go back to longs") {
+        play::UpdateLightPacket light;
+        light.chunkX = 1;
+        light.chunkZ = 2;
+        light.light.skyLightMask = {0x102};
+        basalt::wire::io::ByteBuffer body;
+        light.write(body);
+        basalt::wire::io::ByteBuffer out =
+            basalt::wire::io::ByteBuffer::wrap(clientbound(chain, play::UpdateLightPacket::kId, body.toVector()));
+        CHECK(basalt::wire::protocol::varInt::read(out) == 1);
+        CHECK(basalt::wire::protocol::varInt::read(out) == 2);
+        const auto read = java::readLongMaskLight(out);
+        REQUIRE(read.has_value());
+        CHECK(read->skyLightMask == std::vector<std::int64_t>{0x102});
     }
 }
 

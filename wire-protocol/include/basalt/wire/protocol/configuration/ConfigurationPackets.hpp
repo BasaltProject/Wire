@@ -42,13 +42,13 @@ struct KnownPack {
     friend bool operator==(const KnownPack&, const KnownPack&) = default;
 };
 
-/// Clientbound id 0x0e and serverbound id 0x07: negotiates which data packs both ends already know,
+/// Clientbound id 0x0f and serverbound id 0x07: negotiates which data packs both ends already know,
 /// so the registry data can leave out what the client has bundled.
 ///
 /// Basalt sends an empty list: it has no data packs of its own, so every registry entry it sends
 /// has to carry its full value.
 struct SelectKnownPacksPacket {
-    static constexpr std::int32_t kClientboundId = 0x0e;
+    static constexpr std::int32_t kClientboundId = 0x0f;
     static constexpr std::int32_t kServerboundId = 0x07;
 
     std::vector<KnownPack> packs;
@@ -105,9 +105,9 @@ struct TagGroup {
     friend bool operator==(const TagGroup&, const TagGroup&) = default;
 };
 
-/// Clientbound, id 0x0d: every tag the server defines, grouped by registry.
+/// Clientbound, id 0x0e: every tag the server defines, grouped by registry.
 struct TagsPacket {
-    static constexpr std::int32_t kId = 0x0d;
+    static constexpr std::int32_t kId = 0x0e;
 
     std::vector<TagGroup> groups;
 
@@ -150,6 +150,21 @@ struct BrandPacket {
     [[nodiscard]] static std::optional<BrandPacket> read(io::ByteBuffer& buffer);
 
     friend bool operator==(const BrandPacket&, const BrandPacket&) = default;
+};
+
+/// Clientbound in configuration and in play: the post-processing shaders the client should run.
+///
+/// parity: `ClientboundPostEffectsPacket`, a list of identifiers, empty to clear them.
+struct PostEffectsPacket {
+    static constexpr std::int32_t kConfigurationId = 0x0a;
+    static constexpr std::int32_t kPlayId = 0x53;
+
+    std::vector<std::string> effects;
+
+    void write(io::ByteBuffer& buffer) const;
+    [[nodiscard]] static std::optional<PostEffectsPacket> read(io::ByteBuffer& buffer);
+
+    friend bool operator==(const PostEffectsPacket&, const PostEffectsPacket&) = default;
 };
 
 } // namespace basalt::wire::protocol::configuration

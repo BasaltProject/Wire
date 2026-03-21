@@ -159,4 +159,20 @@ std::optional<BrandPacket> BrandPacket::read(io::ByteBuffer& buffer) {
     return buffer.failed() ? std::nullopt : std::optional{std::move(packet)};
 }
 
+void PostEffectsPacket::write(io::ByteBuffer& buffer) const {
+    varInt::write(buffer, static_cast<std::int32_t>(effects.size()));
+    for (const std::string& effect : effects) {
+        writeString(buffer, effect);
+    }
+}
+
+std::optional<PostEffectsPacket> PostEffectsPacket::read(io::ByteBuffer& buffer) {
+    PostEffectsPacket packet;
+    const std::int32_t count = readCollectionSize(buffer);
+    for (std::int32_t i = 0; i < count && !buffer.failed(); ++i) {
+        packet.effects.push_back(readString(buffer));
+    }
+    return buffer.failed() ? std::nullopt : std::optional{std::move(packet)};
+}
+
 } // namespace basalt::wire::protocol::configuration

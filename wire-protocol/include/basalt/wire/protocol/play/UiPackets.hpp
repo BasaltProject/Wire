@@ -16,7 +16,7 @@ namespace basalt::wire::protocol::play {
 
 /// The header and footer of the player list.
 struct TabListPacket {
-    static constexpr std::int32_t kId = 0x7a;
+    static constexpr std::int32_t kId = 0x7d;
 
     text::Component header;
     text::Component footer;
@@ -29,9 +29,7 @@ struct TabListPacket {
 
 /// How a score's number is drawn, vanilla's NumberFormat registry.
 ///
-/// Blank is the one that matters for a sidebar: it removes the red number on the right, which is
-/// what turns a scoreboard objective into the panel every server actually wants. The type ids come
-/// from NumberFormatTypes.bootstrap, in its registration order.
+/// Blank hides a sidebar's red numbers. Type ids follow NumberFormatTypes.bootstrap order.
 class NumberFormat {
 public:
     struct Blank {
@@ -92,7 +90,7 @@ enum class ObjectiveRenderType : std::uint8_t {
 /// The display name and render type are only on the wire for add and change, which is why they are
 /// optional here: a remove that wrote them would be a different length than the client expects.
 struct SetObjectivePacket {
-    static constexpr std::int32_t kId = 0x6a;
+    static constexpr std::int32_t kId = 0x6c;
     static constexpr std::uint8_t kMethodAdd = 0;
     static constexpr std::uint8_t kMethodRemove = 1;
     static constexpr std::uint8_t kMethodChange = 2;
@@ -111,7 +109,7 @@ struct SetObjectivePacket {
 
 /// Puts an objective in a slot, or clears the slot with an empty name.
 struct SetDisplayObjectivePacket {
-    static constexpr std::int32_t kId = 0x62;
+    static constexpr std::int32_t kId = 0x64;
 
     DisplaySlot slot = DisplaySlot::List;
     std::string objectiveName;
@@ -124,11 +122,10 @@ struct SetDisplayObjectivePacket {
 
 /// One line of a scoreboard.
 ///
-/// The display is what makes a modern sidebar bearable: the line's text is carried by the score
-/// itself instead of being smuggled in through a team's prefix and suffix around a fake player name,
-/// which is what every server had to do before this field existed.
+/// The display carries the line's text on the score itself, with no team prefix and suffix around
+/// a fake player name.
 struct SetScorePacket {
-    static constexpr std::int32_t kId = 0x6e;
+    static constexpr std::int32_t kId = 0x70;
 
     std::string owner;
     std::string objectiveName;
@@ -144,7 +141,7 @@ struct SetScorePacket {
 
 /// Removes one line. An absent objective removes that owner from every objective at once.
 struct ResetScorePacket {
-    static constexpr std::int32_t kId = 0x4f;
+    static constexpr std::int32_t kId = 0x50;
 
     std::string owner;
     std::optional<std::string> objectiveName;
@@ -180,9 +177,8 @@ enum class BossBarOverlay : std::uint8_t {
 
 /// The bar across the top of the screen.
 ///
-/// One packet with an operation inside it rather than six packets, matching the wire exactly: a bar
-/// is added once and then nudged, and re-adding it on every change restarts the client's own fade
-/// animation, which reads as a flicker.
+/// One packet carrying an operation, as on the wire. A bar is added once and then updated:
+/// re-adding it restarts the client's fade animation, which flickers.
 struct BossEventPacket {
     static constexpr std::int32_t kId = 0x09;
 
@@ -295,7 +291,7 @@ enum class TeamColor : std::uint8_t {
 /// The method decides what follows the name: parameters for add and change, a member list for add,
 /// join and leave, and nothing at all for remove.
 struct SetPlayerTeamPacket {
-    static constexpr std::int32_t kId = 0x6d;
+    static constexpr std::int32_t kId = 0x6f;
     static constexpr std::uint8_t kMethodAdd = 0;
     static constexpr std::uint8_t kMethodRemove = 1;
     static constexpr std::uint8_t kMethodChange = 2;
@@ -332,12 +328,12 @@ struct SetPlayerTeamPacket {
     friend bool operator==(const SetPlayerTeamPacket&, const SetPlayerTeamPacket&) = default;
 };
 
-/// Clientbound, id 0x8c: opens a dialog screen.
+/// Clientbound, id 0x8f: opens a dialog screen.
 ///
 /// parity: Dialog.STREAM_CODEC is ByteBufCodecs.holder, not holderRegistry, so the id really does
 /// carry a plus one on the wire: zero is reserved for an inline dialog.
 struct ShowDialogPacket {
-    static constexpr std::int32_t kId = 0x8c;
+    static constexpr std::int32_t kId = 0x8f;
 
     std::int32_t dialogId = 0;
 
@@ -347,7 +343,7 @@ struct ShowDialogPacket {
     friend bool operator==(const ShowDialogPacket&, const ShowDialogPacket&) = default;
 };
 
-/// Clientbound, id 0x8b: closes whatever dialog is open. Nothing follows the id.
-inline constexpr std::int32_t kClearDialogId = 0x8b;
+/// Clientbound, id 0x8e: closes whatever dialog is open. Nothing follows the id.
+inline constexpr std::int32_t kClearDialogId = 0x8e;
 
 } // namespace basalt::wire::protocol::play

@@ -32,7 +32,9 @@ struct LoginFields {
 
         void write(io::ByteBuffer& output, bool withSeaLevel) const;
 
-        [[nodiscard]] static SpawnFields read(io::ByteBuffer& input, bool withSeaLevel);
+        /// `varIntGamemodes` reads 26.3's shape: the mode as a varint and the previous one as an
+        /// optional varint, where every version below writes two bytes.
+        [[nodiscard]] static SpawnFields read(io::ByteBuffer& input, bool withSeaLevel, bool varIntGamemodes = false);
     };
 
     std::int32_t entityId = 0;
@@ -50,7 +52,8 @@ struct LoginFields {
 
     void write(io::ByteBuffer& output, bool withOnlineMode, bool withSeaLevel) const;
 
-    [[nodiscard]] static LoginFields read(io::ByteBuffer& input, bool withOnlineMode, bool withSeaLevel);
+    [[nodiscard]] static LoginFields read(io::ByteBuffer& input, bool withOnlineMode, bool withSeaLevel,
+                                          bool varIntGamemodes = false);
 
     /// Where the player died, as a block position, for the versions that want it unpacked.
     [[nodiscard]] std::optional<protocol::play::BlockPos> deathBlock() const;
