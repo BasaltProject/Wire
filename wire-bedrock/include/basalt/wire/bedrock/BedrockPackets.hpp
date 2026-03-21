@@ -650,6 +650,19 @@ void writeSignData(io::ByteBuffer& buffer, std::int32_t x, std::int32_t y, std::
 /// bed block over there and sixteen here, so without this tag every bed a client is shown is red.
 void writeBedTag(io::ByteBuffer& buffer, std::int32_t x, std::int32_t y, std::int32_t z, std::uint8_t colour);
 
+/// One layer of a banner, as the other edition names it: the short pattern code and the dye, both
+/// already turned round for it.
+struct BedrockBannerLayer {
+    std::string_view pattern;
+    std::int32_t colour = 0;
+};
+
+/// A banner's own data, which over there is a block entity and here is half block and half tag.
+/// An ominous banner goes as a type of its own rather than as its eight layers: that edition draws
+/// the layers wrong and has a drawing of its own for it.
+void writeBannerTag(io::ByteBuffer& buffer, std::int32_t x, std::int32_t y, std::int32_t z, std::int32_t base,
+                    std::span<const BedrockBannerLayer> layers, bool ominous, std::string_view customName);
+
 /// The same tag with its position in front, for a bed that has just been put down or changed.
 void writeBedData(io::ByteBuffer& buffer, std::int32_t x, std::int32_t y, std::int32_t z, std::uint8_t colour);
 
