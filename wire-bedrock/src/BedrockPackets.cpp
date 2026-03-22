@@ -1142,9 +1142,20 @@ void writeNetworkChunkPublisherUpdate(io::ByteBuffer& buffer, std::int32_t x, st
 
 namespace {
 
+/// The stack as a client of this protocol can draw it: an item it has no name for yet becomes its
+/// look-alike.
+[[nodiscard]] BedrockItemStack shownTo(BedrockItemStack item, const int protocol) {
+    if (const ItemStandIn* standIn = bedrockItemStandIn(item.runtimeId - 1, protocol)) {
+        item.runtimeId = standIn->standInPlace + 1;
+        item.data = standIn->standInData;
+    }
+    return item;
+}
+
 /// One stack where it is named rather than moved: the creative menu and an entity's hand. It is
 /// the window shape without the flag that says a server is counting stacks.
-void writeItemInstance(io::ByteBuffer& buffer, const BedrockItemStack& item, const int protocol) {
+void writeItemInstance(io::ByteBuffer& buffer, const BedrockItemStack& named, const int protocol) {
+    const BedrockItemStack item = shownTo(named, protocol);
     const bool air = item.runtimeId == 0 || item.count == 0;
     // Nothing at all used to be a single zero and nothing after it. 2168 gave air the same fields as
     // anything else, all of them empty, and a creative menu whose group icon is nothing was writing
@@ -1289,9 +1300,19 @@ void writeCreativeContent(io::ByteBuffer& buffer, const int protocol, const std:
 
     const std::span<const std::string_view> palette = bedrockItemPalette();
     const std::size_t offered = std::min(items, palette.size());
-    writeVarUInt(buffer, static_cast<std::uint32_t>(offered));
+    const auto known = [protocol](const std::size_t at) {
+        return bedrockItemStandIn(static_cast<std::int32_t>(at), protocol) == nullptr;
+    };
+    std::uint32_t shown = 0;
+    for (std::size_t at = 0; at < offered; ++at) {
+        shown += known(at) ? 1 : 0;
+    }
+    writeVarUInt(buffer, shown);
     std::uint32_t netId = 1; // Zero is "no stack", so the menu counts from one.
     for (std::size_t at = 0; at < offered; ++at) {
+        if (!known(at)) {
+            continue;
+        }
         writeVarUInt(buffer, netId++);
         writeItemInstance(buffer, BedrockItemStack{.runtimeId = static_cast<std::int32_t>(at) + 1, .count = 1},
                           protocol);
@@ -1562,6 +1583,20 @@ void writeUpdateTrade(io::ByteBuffer& buffer, const std::int32_t containerId, co
     nbt::end(buffer);
 }
 
+namespace {
+
+/// Whether a client of this protocol knows every item a recipe names.
+[[nodiscard]] bool knownTo(const BedrockRecipe& recipe, const int protocol) {
+    if (bedrockItemStandIn(recipe.result.runtimeId - 1, protocol) != nullptr) {
+        return false;
+    }
+    return std::ranges::all_of(recipe.ingredients, [protocol](const BedrockIngredient& ingredient) {
+        return ingredient.tag || bedrockItemNameKnown(ingredient.name, protocol);
+    });
+}
+
+} // namespace
+
 void writeCraftingData(io::ByteBuffer& buffer, const std::span<const BedrockRecipe> recipes, const int protocol) {
     // Below 2168 the whole lot is one list with a kind in front of every entry. From there the
     // packet is eleven lists, one per kind, and this server fills two of them.
@@ -1577,18 +1612,20 @@ void writeCraftingData(io::ByteBuffer& buffer, const std::span<const BedrockReci
     std::uint32_t shaped = 0;
     std::uint32_t shapeless = 0;
     for (const BedrockRecipe& recipe : recipes) {
-        (recipe.shaped ? shaped : shapeless)++;
+        if (knownTo(recipe, protocol)) {
+            (recipe.shaped ? shaped : shapeless)++;
+        }
     }
     writeVarUInt(buffer, shaped);
     std::uint32_t at = 0;
     for (const BedrockRecipe& recipe : recipes) {
-        if (recipe.shaped) {
+        if (recipe.shaped && knownTo(recipe, protocol)) {
             writeRecipe(buffer, recipe, at++);
         }
     }
     writeVarUInt(buffer, shapeless);
     for (const BedrockRecipe& recipe : recipes) {
-        if (!recipe.shaped) {
+        if (!recipe.shaped && knownTo(recipe, protocol)) {
             writeRecipe(buffer, recipe, at++);
         }
     }
@@ -1637,7 +1674,8 @@ namespace {
 
 /// One stack, in the shape the protocol asked for. Everything this server sends is plain: no net
 /// id, no nbt, nothing it may only be placed on or broken with.
-void writeItemStack(io::ByteBuffer& buffer, const BedrockItemStack& item, const int protocol) {
+void writeItemStack(io::ByteBuffer& buffer, const BedrockItemStack& named, const int protocol) {
+    const BedrockItemStack item = shownTo(named, protocol);
     const bool descriptor = protocol >= kItemDescriptorProtocol;
     if (item.runtimeId == 0 || item.count == 0) {
         if (descriptor) {
@@ -1675,14 +1713,23 @@ void writeItemStack(io::ByteBuffer& buffer, const BedrockItemStack& item, const 
 
 } // namespace
 
-void writeItemComponent(io::ByteBuffer& buffer) {
+void writeItemComponent(io::ByteBuffer& buffer, const int protocol) {
     const std::span<const std::string_view> palette = bedrockItemPalette();
-    writeVarUInt(buffer, static_cast<std::uint32_t>(palette.size()));
-    std::uint16_t id = 1; // Zero is air, which is not in the list.
-    for (const std::string_view name : palette) {
-        writeString(buffer, name);
-        writeShortLE(buffer, id++);
-        writeBool(buffer, false); // Not driven by components of its own,
+    const auto known = [protocol](const std::size_t at) {
+        return bedrockItemStandIn(static_cast<std::int32_t>(at), protocol) == nullptr;
+    };
+    std::uint32_t declared = 0;
+    for (std::size_t at = 0; at < palette.size(); ++at) {
+        declared += known(at) ? 1 : 0;
+    }
+    writeVarUInt(buffer, declared);
+    for (std::size_t at = 0; at < palette.size(); ++at) {
+        if (!known(at)) {
+            continue; // A name this client lacks is never declared to it: its look-alike goes instead.
+        }
+        writeString(buffer, palette[at]);
+        writeShortLE(buffer, static_cast<std::uint16_t>(at + 1)); // Zero is air, which is not in the list.
+        writeBool(buffer, false);                                 // Not driven by components of its own,
         // and the version a plain item the client already knows carries. Saying "none" here is what
         // a server says about an item it deliberately leaves undefined: the client then has no
         // number for it, and the creative menu naming that number is the packet it hangs up on.

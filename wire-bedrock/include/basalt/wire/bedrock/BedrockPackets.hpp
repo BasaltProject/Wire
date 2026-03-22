@@ -1190,7 +1190,8 @@ enum class BedrockContainerSlot : std::uint8_t {
 
 /// The names of every item this server knows, with the id it wants each one called by. Bedrock has
 /// let the server declare this since 776, which is why no table of per-version item ids exists.
-void writeItemComponent(io::ByteBuffer& buffer);
+/// Names a client of this protocol lacks are left out.
+void writeItemComponent(io::ByteBuffer& buffer, int protocol);
 
 /// Everything in one window. The slot type names which window it is, because the number alone has
 /// not been enough since containers could be dynamic.
