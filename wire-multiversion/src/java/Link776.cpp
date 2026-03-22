@@ -5,6 +5,7 @@
 #include <basalt/wire/protocol/VarInt.hpp>
 #include <basalt/wire/protocol/configuration/ConfigurationPackets.hpp>
 #include <basalt/wire/protocol/play/BlockEntityPackets.hpp>
+#include <basalt/wire/protocol/play/CommandPackets.hpp>
 #include <basalt/wire/protocol/play/EntityPackets.hpp>
 #include <basalt/wire/protocol/play/InventoryPackets.hpp>
 #include <basalt/wire/protocol/play/ParticleOptions.hpp>
@@ -61,6 +62,27 @@ constexpr std::array<std::string_view, 2> kNewPropertySets = {"minecraft:brewing
 constexpr std::array<std::string_view, 5> kDarkerOnOwnArmour = {"copper", "diamond", "gold", "iron", "netherite"};
 
 constexpr std::string_view kTrimPalettePrefix = "trim/";
+
+/// 26.2's numbering of an argument parser. What 26.2 has no parser for is read as a quotable string,
+/// which is what those arguments are typed as anyway.
+play::ArgumentParser olderArgument(const play::ArgumentParser& parser) {
+    namespace type = play::argumentType;
+    switch (parser.registryId()) {
+    case type::kDialog:
+        return play::ArgumentParser{55, parser.properties()};
+    case type::kUuid:
+        return play::ArgumentParser{56, parser.properties()};
+    case type::kContextFloatProvider:
+    case type::kContextIntProvider:
+    case type::kSlotSource:
+    case type::kFeature:
+    case type::kSwingAnimation:
+        return play::ArgumentParser{type::kBrigadierString, play::ArgumentParser::StringProperties{
+                                                                play::ArgumentParser::StringKind::QuotablePhrase}};
+    default:
+        return parser;
+    }
+}
 
 Shape shapeOf(std::int32_t nativeType) {
     const auto found = std::ranges::find(kParticleShapes, nativeType, &std::pair<std::int32_t, Shape>::first);
@@ -235,6 +257,19 @@ bool Link776::clientbound(ProtocolState state, MutablePacket& packet) {
         if (brewingStands_.contains(containerId) && input.readShort() >= kFirstNewBrewingSlot) {
             return false;
         }
+        break;
+    }
+    case play::CommandsPacket::kId: {
+        auto commands = decode(packet, [](io::ByteBuffer& in) { return play::CommandsPacket::read(in); });
+        if (!commands.has_value()) {
+            return true;
+        }
+        for (play::CommandNodeData& node : commands->nodes) {
+            if (node.parser.has_value()) {
+                node.parser = olderArgument(*node.parser);
+            }
+        }
+        encode(packet, [&](io::ByteBuffer& out) { commands->write(out); });
         break;
     }
     case play::UpdateRecipesPacket::kId:

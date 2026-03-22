@@ -9,8 +9,8 @@
 </p>
 
 <p align="center">
-  <img alt="Minecraft" src="https://img.shields.io/badge/Minecraft-26.2-62B47A?logo=minecraft&logoColor=white">
-  <img alt="Protocol" src="https://img.shields.io/badge/protocol-776-62B47A">
+  <img alt="Minecraft" src="https://img.shields.io/badge/Minecraft-26.3-62B47A?logo=minecraft&logoColor=white">
+  <img alt="Protocol" src="https://img.shields.io/badge/protocol-777-62B47A">
   <img alt="C++" src="https://img.shields.io/badge/C%2B%2B-23-00599C?logo=cplusplus&logoColor=white">
   <img alt="Platforms" src="https://img.shields.io/badge/platforms-macOS_%7C_Linux_%7C_Windows-00599C">
   <img alt="Build" src="https://img.shields.io/badge/build-CMake-064F8C?logo=cmake&logoColor=white">
@@ -43,7 +43,7 @@ runtime and no Java library in the build: no Netty, no Adventure, no Gson.
 | | |
 |---|---|
 | Language | C++23, 100 %. No Java, no JVM at runtime |
-| Target version | Minecraft 26.2 (protocol 776) |
+| Target version | Minecraft 26.3 (protocol 777) |
 | Message model | Adventure-style immutable components; no legacy `§` formatting |
 | Consumed as | A git submodule, added to the consumer's CMake build |
 | License | GPL-3.0 |
@@ -137,7 +137,7 @@ Minecraft file is committed here, extracted here, or distributed here.
 | `wire-multiversion` | Not started |
 | `wire-bedrock` | Not started |
 
-Codecs are written against protocol 776 and are not yet parameterised by
+Codecs are written against protocol 777 and are not yet parameterised by
 version. Making them so is the work `wire-multiversion` depends on.
 
 ## Related repositories
