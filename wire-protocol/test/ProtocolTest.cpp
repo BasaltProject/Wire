@@ -790,10 +790,12 @@ TEST_CASE("the recipe book packets round trip") {
     CHECK(*RecipeBookRemovePacket::read(removeBuffer) == remove);
 }
 
-TEST_CASE("the stonecutter list round trips") {
+TEST_CASE("the property sets and the stonecutter list round trip") {
     using namespace basalt::wire::protocol::play;
 
-    const UpdateRecipesPacket recipes{{{{1, 2, 3}, 40, 1}, {{4}, 41, 4}}};
+    const UpdateRecipesPacket recipes{
+        .propertySets = {{"minecraft:brewing_reagent", {7, 8}}, {"minecraft:smithing_base", {}}},
+        .stonecutter = {{{1, 2, 3}, 40, 1}, {{4}, 41, 4}}};
     io::ByteBuffer buffer;
     recipes.write(buffer);
     const auto read = UpdateRecipesPacket::read(buffer);

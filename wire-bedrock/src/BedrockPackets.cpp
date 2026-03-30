@@ -1894,7 +1894,8 @@ void writeMobEffect(io::ByteBuffer& buffer, const std::uint64_t runtimeEntityId,
 }
 
 void writePlaySound(io::ByteBuffer& buffer, const std::string_view sound, const double x, const double y,
-                    const double z, const float volume, const float pitch, const int protocol) {
+                    const double z, const float volume, const float pitch, const int protocol,
+                    const std::optional<std::int64_t> soundHandle) {
     writeString(buffer, sound);
     writeBlockPosition(buffer, static_cast<std::int32_t>(x * 8.0), static_cast<std::int32_t>(y * 8.0),
                        static_cast<std::int32_t>(z * 8.0));
@@ -1906,12 +1907,33 @@ void writePlaySound(io::ByteBuffer& buffer, const std::string_view sound, const 
     if (protocol >= kSoundPlaybackProtocol) {
         writeBool(buffer, false); // Heard only by those in range.
     }
-    // 26.20 and up let the server name a sound it holds itself. This one never does.
     if (protocol >= kServerSoundHandleProtocol) {
-        writeBool(buffer, false);
+        writeBool(buffer, soundHandle.has_value());
+        if (soundHandle.has_value()) {
+            writeLongLE(buffer, *soundHandle);
+        }
     }
     if (protocol >= kSoundPlaybackProtocol) {
         writeBool(buffer, false); // Played from the start.
+    }
+}
+
+void writeRecordStarted(io::ByteBuffer& buffer, const std::int32_t x, const std::int32_t y, const std::int32_t z,
+                        const std::int64_t soundHandle) {
+    writeVarInt(buffer, x);
+    writeVarInt(buffer, y);
+    writeVarInt(buffer, z);
+    writeLongLE(buffer, soundHandle);
+}
+
+void writeStopSoundHandle(io::ByteBuffer& buffer, const std::int64_t soundHandle) {
+    /// Stop, volume, pitch, fade, seek, pause and resume, each naming its kind; a kind of zero in
+    /// any slot but the first is that slot left unset.
+    constexpr int kSlots = 7;
+
+    writeLongLE(buffer, soundHandle);
+    for (int slot = 0; slot < kSlots; ++slot) {
+        writeVarUInt(buffer, 0);
     }
 }
 
@@ -2555,33 +2577,58 @@ void writeSetDisplayObjective(io::ByteBuffer& buffer, const std::string_view slo
 void writeRemoveObjective(io::ByteBuffer& buffer, const std::string_view objective) { writeString(buffer, objective); }
 
 void writeSetScore(io::ByteBuffer& buffer, const std::string_view objective,
-                   const std::span<const BedrockScoreLine> lines) {
+                   const std::span<const BedrockScoreLine> lines, const int protocol) {
     /// A line of plain text is a player who does not exist, which is what this edition calls one.
-    constexpr std::int32_t kFakePlayer = 3;
+    constexpr std::uint8_t kFakePlayer = 3;
+    constexpr std::uint8_t kSet = 0;
 
+    const std::string_view named = objective.empty() ? std::string_view{" "} : objective;
+    if (protocol < kScoreKindProtocol) {
+        buffer.writeByte(kSet);
+    }
     writeVarUInt(buffer, static_cast<std::uint32_t>(lines.size()));
     for (const BedrockScoreLine& line : lines) {
+        const std::string_view name = line.name.empty() ? std::string_view{" "} : std::string_view{line.name};
+        if (protocol < kScoreKindProtocol) {
+            writeVarLong(buffer, line.lineId);
+            writeString(buffer, named);
+            writeIntLE(buffer, line.score);
+            buffer.writeByte(kFakePlayer);
+            writeString(buffer, name);
+            continue;
+        }
         writeVarUInt(buffer, kFakePlayer);
-        // The same thing twice, as a number and as a word: 2168 writes both and the client reads
-        // both.
-        writeString(buffer, "changefakeplayer");
+        writeString(buffer, "changefakeplayer"); // The kind again, as a word, which the client also reads.
         writeVarLong(buffer, line.lineId);
-        writeString(buffer, objective.empty() ? std::string_view{" "} : objective);
+        writeString(buffer, named);
         writeIntLE(buffer, line.score);
-        writeString(buffer, line.name.empty() ? std::string_view{" "} : std::string_view{line.name});
+        writeString(buffer, name);
     }
 }
 
-void writeRemoveScores(io::ByteBuffer& buffer, const std::span<const std::int64_t> lineIds) {
-    /// A line being taken away names neither an objective nor a player, only its own id.
+void writeRemoveScores(io::ByteBuffer& buffer, const std::string_view objective,
+                       const std::span<const std::int64_t> lineIds, const int protocol) {
+    constexpr std::uint8_t kRemove = 1;
+    /// A line being taken away is of no kind at all.
     constexpr std::int32_t kGone = 0;
 
+    if (protocol < kScoreKindProtocol) {
+        buffer.writeByte(kRemove);
+    }
     writeVarUInt(buffer, static_cast<std::uint32_t>(lineIds.size()));
     for (const std::int64_t id : lineIds) {
+        if (protocol < kScoreKindProtocol) {
+            writeVarLong(buffer, id);
+            writeString(buffer, objective);
+            writeIntLE(buffer, 0);
+            continue;
+        }
         writeVarUInt(buffer, kGone);
         writeString(buffer, "remove");
         writeVarLong(buffer, id);
-        writeBool(buffer, false); // No objective named with it.
+        // No objective: 26.44 wraps a present one in a second flag that 26.40 does not, and an
+        // absent one is the same single byte to both.
+        writeBool(buffer, false);
     }
 }
 
@@ -2822,6 +2869,7 @@ void writeSetSpawnPosition(io::ByteBuffer& buffer, const BedrockDimension dimens
 void writeStopSound(io::ByteBuffer& buffer, const std::string_view sound, const bool stopAll) {
     writeString(buffer, sound);
     writeBool(buffer, stopAll);
+    writeBool(buffer, false); // Not the legacy music channel.
 }
 
 void writePlayerStartItemCooldown(io::ByteBuffer& buffer, const std::string_view category,

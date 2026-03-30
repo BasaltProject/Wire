@@ -266,3 +266,84 @@ TEST_CASE("a camera preset grew a starting rotation in 26.50") {
         CHECK_FALSE(body.failed());
     }
 }
+
+TEST_CASE("a score line names its kind itself from 26.40 on") {
+    const std::vector<BedrockScoreLine> lines{{.lineId = 7, .name = "Line", .score = 3}};
+    const std::vector<std::int64_t> gone{7};
+    for (const int protocol : {1001, 2168, kNative}) {
+        CAPTURE(protocol);
+        const bool named = protocol >= kScoreKindProtocol;
+        io::ByteBuffer set;
+        writeSetScore(set, "board", lines, protocol);
+        if (!named) {
+            CHECK(set.readByte() == 0);
+        }
+        CHECK(readVarUInt(set) == 1);
+        if (named) {
+            CHECK(readVarUInt(set) == 3);
+            CHECK(readString(set) == "changefakeplayer");
+        }
+        CHECK(readVarLong(set) == 7);
+        CHECK(readString(set) == "board");
+        CHECK(readIntLE(set) == 3);
+        if (!named) {
+            CHECK(set.readByte() == 3);
+        }
+        CHECK(readString(set) == "Line");
+        CHECK(set.readableBytes() == 0);
+
+        io::ByteBuffer removed;
+        writeRemoveScores(removed, "board", gone, protocol);
+        if (!named) {
+            CHECK(removed.readByte() == 1);
+        }
+        CHECK(readVarUInt(removed) == 1);
+        if (named) {
+            CHECK(readVarUInt(removed) == 0);
+            CHECK(readString(removed) == "remove");
+        }
+        CHECK(readVarLong(removed) == 7);
+        if (named) {
+            CHECK(removed.readByte() == 0);
+        } else {
+            CHECK(readString(removed) == "board");
+            CHECK(readIntLE(removed) == 0);
+        }
+        CHECK(removed.readableBytes() == 0);
+        CHECK_FALSE(removed.failed());
+    }
+}
+
+TEST_CASE("a 26.50 jukebox plays its record under a handle") {
+    io::ByteBuffer sound;
+    writePlaySound(sound, "record.cat", 1.5, 2.5, 3.5, 4.0F, 1.0F, kNative, 9);
+    CHECK(readString(sound) == "record.cat");
+    CHECK(readVarInt(sound) == 12);
+    CHECK(readVarUInt(sound) == 20);
+    CHECK(readVarInt(sound) == 28);
+    CHECK(readFloatLE(sound) == 4.0F);
+    CHECK(readFloatLE(sound) == 1.0F);
+    CHECK(readVarUInt(sound) == 0);
+    CHECK(sound.readByte() == 0);
+    CHECK(sound.readByte() == 1);
+    CHECK(readLongLE(sound) == 9);
+    CHECK(sound.readByte() == 0);
+    CHECK(sound.readableBytes() == 0);
+
+    io::ByteBuffer started;
+    writeRecordStarted(started, -4, -60, 5, 9);
+    CHECK(readVarInt(started) == -4);
+    CHECK(readVarInt(started) == -60);
+    CHECK(readVarInt(started) == 5);
+    CHECK(readLongLE(started) == 9);
+    CHECK(started.readableBytes() == 0);
+
+    io::ByteBuffer stopped;
+    writeStopSoundHandle(stopped, 9);
+    CHECK(readLongLE(stopped) == 9);
+    for (int slot = 0; slot < 7; ++slot) {
+        CHECK(readVarUInt(stopped) == 0);
+    }
+    CHECK(stopped.readableBytes() == 0);
+    CHECK_FALSE(stopped.failed());
+}
