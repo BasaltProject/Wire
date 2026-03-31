@@ -17,6 +17,7 @@
 #include <basalt/wire/protocol/play/InventoryPackets.hpp>
 #include <basalt/wire/protocol/play/ItemComponent.hpp>
 #include <basalt/wire/protocol/play/LowPrecisionVec3.hpp>
+#include <basalt/wire/protocol/play/MapPackets.hpp>
 #include <basalt/wire/protocol/play/NibbleArray.hpp>
 #include <basalt/wire/protocol/play/PalettedContainer.hpp>
 #include <basalt/wire/protocol/play/ParticleOptions.hpp>
@@ -1646,4 +1647,24 @@ TEST_CASE("the chat packets round trip") {
     io::ByteBuffer signedBuffer;
     chat.write(signedBuffer);
     CHECK(*ChatMessagePacket::read(signedBuffer) == chat);
+}
+
+TEST_CASE("the map item data packet round trips with and without its optional parts") {
+    using namespace basalt::wire::protocol::play;
+
+    MapItemDataPacket bare{.mapId = 7, .scale = 2, .locked = true};
+    io::ByteBuffer bareBuffer;
+    bare.write(bareBuffer);
+    // parity: id, scale, locked, no decorations, zero width.
+    CHECK(bareBuffer.toVector() == std::vector<std::uint8_t>{7, 2, 1, 0, 0});
+    CHECK(*MapItemDataPacket::read(bareBuffer) == bare);
+
+    MapItemDataPacket full{.mapId = 300, .scale = 0, .locked = false};
+    full.decorations = std::vector<MapDecorationEntry>{
+        {.type = 0, .x = -128, .y = 127, .rotation = 15},
+        {.type = 10, .x = 3, .y = -4, .rotation = 8, .name = text::Component::text("Base")}};
+    full.patch = MapColorPatch{.startX = 1, .startY = 2, .width = 2, .height = 1, .colors = {0x7C, 0x2A}};
+    io::ByteBuffer fullBuffer;
+    full.write(fullBuffer);
+    CHECK(*MapItemDataPacket::read(fullBuffer) == full);
 }
