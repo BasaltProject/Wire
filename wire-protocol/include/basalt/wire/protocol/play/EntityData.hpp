@@ -56,6 +56,7 @@ struct SpawnEntityPacket {
 /// The registry-specific holder serializers, in 26.3's registration order, and the id-mapped enums
 /// after them that travel the same way, as one VarInt.
 enum class RegistryHolder : std::int32_t {
+    Direction = 12,
     CatVariant = 21,
     CatSoundVariant = 22,
     CowVariant = 23,
