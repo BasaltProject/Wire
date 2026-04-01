@@ -216,12 +216,7 @@ std::optional<CommandsPacket> CommandsPacket::read(io::ByteBuffer& buffer) {
 void ChatCommandPacket::write(io::ByteBuffer& buffer) const { writeString(buffer, command); }
 
 std::optional<ChatCommandPacket> ChatCommandPacket::read(io::ByteBuffer& buffer) {
-    ChatCommandPacket packet{readString(buffer, kMaxLength)};
-    return buffer.failed() ? std::nullopt : std::optional{std::move(packet)};
-}
-
-std::optional<SignedChatCommandPacket> SignedChatCommandPacket::read(io::ByteBuffer& buffer) {
-    SignedChatCommandPacket packet{readString(buffer, ChatCommandPacket::kMaxLength)};
+    ChatCommandPacket packet{readString(buffer)};
     return buffer.failed() ? std::nullopt : std::optional{std::move(packet)};
 }
 

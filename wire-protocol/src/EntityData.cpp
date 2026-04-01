@@ -15,6 +15,7 @@ namespace {
 // width is unknown cannot be stepped over without losing the rest of the stream.
 constexpr std::int32_t kByteSerializer = 0;
 constexpr std::int32_t kIntSerializer = 1;
+constexpr std::int32_t kLongSerializer = 2;
 constexpr std::int32_t kFloatSerializer = 3;
 constexpr std::int32_t kComponentSerializer = 5;
 constexpr std::int32_t kOptionalComponentSerializer = 6;
@@ -27,6 +28,7 @@ constexpr std::int32_t kParticlesSerializer = 17;
 /// A guard against a hostile count, far above the few dozen effects that exist.
 constexpr std::int32_t kMaxParticles = 1024;
 constexpr std::int32_t kVillagerDataSerializer = 18;
+constexpr std::int32_t kOptionalUnsignedIntSerializer = 19;
 constexpr std::int32_t kPoseSerializer = 20;
 constexpr std::uint8_t kEndOfMetadata = 0xFF;
 
@@ -170,6 +172,12 @@ void SetEntityDataPacket::write(io::ByteBuffer& buffer) const {
                     each.options->write(buffer);
                 }
             }
+        } else if (const auto* longValue = std::get_if<LongValue>(&entry.value)) {
+            varInt::write(buffer, kLongSerializer);
+            varLong::write(buffer, longValue->value);
+        } else if (const auto* optionalInt = std::get_if<OptionalUnsignedIntValue>(&entry.value)) {
+            varInt::write(buffer, kOptionalUnsignedIntSerializer);
+            varInt::write(buffer, optionalInt->value.has_value() ? *optionalInt->value + 1 : 0);
         } else if (const auto* registryValue = std::get_if<RegistryIdValue>(&entry.value)) {
             varInt::write(buffer, static_cast<std::int32_t>(registryValue->registry));
             varInt::write(buffer, registryValue->value);
@@ -228,6 +236,14 @@ std::optional<SetEntityDataPacket> SetEntityDataPacket::read(io::ByteBuffer& buf
             value.y = buffer.readFloat();
             value.z = buffer.readFloat();
             entry.value = value;
+            break;
+        }
+        case kLongSerializer:
+            entry.value = LongValue{varLong::read(buffer)};
+            break;
+        case kOptionalUnsignedIntSerializer: {
+            const std::int32_t raw = varInt::read(buffer);
+            entry.value = OptionalUnsignedIntValue{raw == 0 ? std::nullopt : std::optional{raw - 1}};
             break;
         }
         case kVillagerDataSerializer: {
