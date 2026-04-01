@@ -120,11 +120,8 @@ struct PlayerInfoEntry {
 
 /// Clientbound, id 0x47: adds or updates tab list entries.
 ///
-/// Carries a set of actions and, per entry, the fields those actions call for, in the enum's own
-/// order: the set is a bitset over that enum, so the ordinals are protocol.
-///
-/// The game mode is not cosmetic: a client reads its own tab-list entry to decide it is a spectator,
-/// so the game event alone switches the HUD while the player still collides.
+/// The action set is a bitset over vanilla's enum, so its ordinals are protocol. The game mode is not
+/// cosmetic: the client decides it is a spectator from its own entry, not from the game event.
 struct PlayerInfoUpdatePacket {
     static constexpr std::int32_t kId = 0x47;
 
@@ -181,9 +178,8 @@ struct PlayerInfoRemovePacket {
 /// Clientbound, id 0x80: an absolute position and rotation update for an entity other than the
 /// receiving player.
 ///
-/// parity: PositionMoveRotation is position, then velocity, then two floats of rotation. The
-/// velocity is not optional, and leaving it out is what made a client read three doubles it was
-/// owed, run off the end of the packet and drop the connection.
+/// parity: `PositionMoveRotation` is position, velocity, then two float rotations. The velocity is
+/// mandatory; without it the client reads past the end and drops the connection.
 struct EntityTeleportPacket {
     static constexpr std::int32_t kId = 0x80;
 
@@ -357,10 +353,8 @@ struct ServerboundUseItemOnPacket {
 
 /// Serverbound, id 0x43: using an item with no block under the crosshair.
 ///
-/// A bucket rides on this rather than on the use-on packet: fluids are not block targets, and the
-/// item's own use is what fills or empties it. The client predicts the change locally and undoes it
-/// only when the ack arrives, so a server that ignores this leaves the water it just scooped missing
-/// from that client for good.
+/// Buckets use this rather than the use-on packet, since fluids are not block targets. The client
+/// predicts the change, so ignoring this leaves scooped water missing on that client for good.
 struct ServerboundUseItemPacket {
     static constexpr std::int32_t kId = 0x43;
 
@@ -395,7 +389,7 @@ struct PickItemFromBlockPacket {
     static constexpr std::int32_t kId = 0x24;
 
     BlockPos pos;
-    /// Asks for the block entity's data copied onto the picked stack, which this build ignores.
+    /// Asks for the block entity's data copied onto the picked stack.
     bool includeData = false;
 
     void write(io::ByteBuffer& buffer) const;
