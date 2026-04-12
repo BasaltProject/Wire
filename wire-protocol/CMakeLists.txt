@@ -8,6 +8,7 @@ basalt_module(wire-protocol
         src/ConfigurationPackets.cpp
         src/EntityData.cpp
         src/EntityPackets.cpp
+        src/VehiclePackets.cpp
         src/HandshakePacket.cpp
         src/HudPackets.cpp
         src/InventoryPackets.cpp

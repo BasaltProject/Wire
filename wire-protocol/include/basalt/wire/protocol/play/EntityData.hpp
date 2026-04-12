@@ -74,7 +74,8 @@ enum class RegistryHolder : std::int32_t {
     ArmadilloState = 36,
     CopperGolemState = 37,
     WeatheringCopperState = 38,
-    DyeColor = 42,
+    HumanoidArm = 42,
+    DyeColor = 43,
 };
 
 /// Clientbound, id 0x65: entity metadata. A stream of entries, each an index byte, a serializer id

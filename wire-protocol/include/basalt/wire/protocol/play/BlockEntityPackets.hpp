@@ -30,9 +30,8 @@ struct BlockEntityDataPacket {
 
 /// Clientbound, id 0x07: a one-off event on a block, as two bytes the block itself gives meaning to.
 ///
-/// It is how a chest lid opens, a note block plays and a piston is drawn sliding: none of that is a
-/// change of state, so nothing else carries it. What the two bytes mean is up to the block, which is
-/// why they are named after the packet and not after any one use.
+/// How a chest lid opens, a note block plays and a piston is drawn sliding: none of it is a change of
+/// state. The bytes are named after the packet because each block reads them its own way.
 struct BlockEventPacket {
     static constexpr std::int32_t kId = 0x07;
 
@@ -83,9 +82,8 @@ struct SignUpdatePacket {
 
 /// Serverbound, id 0x37: what somebody typed into a command block's screen.
 ///
-/// parity: `ServerboundSetCommandBlockPacket`. The three modes are the block itself (an impulse, a
-/// repeating or a chain block), so accepting one means putting a different block down; the flags are
-/// a single byte and vanilla names them one, two and four.
+/// parity: `ServerboundSetCommandBlockPacket`. The mode is the block itself (impulse, repeating or
+/// chain), so accepting one puts a different block down; the flags are one byte (1, 2, 4).
 struct SetCommandBlockPacket {
     static constexpr std::int32_t kId = 0x37;
 
@@ -107,6 +105,50 @@ struct SetCommandBlockPacket {
     [[nodiscard]] static std::optional<SetCommandBlockPacket> read(io::ByteBuffer& buffer);
 
     friend bool operator==(const SetCommandBlockPacket&, const SetCommandBlockPacket&) = default;
+};
+
+/// Serverbound, id 0x3c: what somebody set in a structure block's screen, and the button they pressed.
+///
+/// parity: `ServerboundSetStructureBlockPacket`. The offset and size travel as clamped bytes and the
+/// four switches as one flag byte; the enums are varints in their declared order.
+struct SetStructureBlockPacket {
+    static constexpr std::int32_t kId = 0x3c;
+
+    /// parity: `StructureBlockEntity.UpdateType`.
+    enum class Update : std::int32_t { UpdateData, SaveArea, LoadArea, ScanArea };
+    /// parity: `StructureMode`.
+    enum class Mode : std::int32_t { Save, Load, Corner, Data };
+
+    static constexpr std::int32_t kMaxOffset = 48;
+    static constexpr std::int32_t kMaxSize = 48;
+    static constexpr std::int32_t kMaxDataLength = 128;
+    static constexpr std::int32_t kIgnoreEntitiesFlag = 1;
+    static constexpr std::int32_t kShowAirFlag = 2;
+    static constexpr std::int32_t kShowBoundingBoxFlag = 4;
+    static constexpr std::int32_t kStrictFlag = 8;
+
+    BlockPos pos;
+    Update update = Update::UpdateData;
+    Mode mode = Mode::Load;
+    std::string name;
+    std::array<std::int32_t, 3> offset{};
+    std::array<std::int32_t, 3> size{};
+    /// parity: `Mirror`, none, left-right and front-back.
+    std::int32_t mirror = 0;
+    /// parity: `Rotation`, in quarter turns clockwise.
+    std::int32_t rotation = 0;
+    std::string data;
+    bool ignoreEntities = true;
+    bool strict = false;
+    bool showAir = false;
+    bool showBoundingBox = true;
+    float integrity = 1.0F;
+    std::int64_t seed = 0;
+
+    void write(io::ByteBuffer& buffer) const;
+    [[nodiscard]] static std::optional<SetStructureBlockPacket> read(io::ByteBuffer& buffer);
+
+    friend bool operator==(const SetStructureBlockPacket&, const SetStructureBlockPacket&) = default;
 };
 
 } // namespace basalt::wire::protocol::play
