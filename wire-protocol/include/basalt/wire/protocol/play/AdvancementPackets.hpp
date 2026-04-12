@@ -26,6 +26,9 @@ struct AdvancementDisplayData {
     friend bool operator==(const AdvancementDisplayData&, const AdvancementDisplayData&) = default;
 };
 
+/// parity: `ItemStackTemplate.STREAM_CODEC`, the item before the count, then the patch.
+void writeItemStackTemplate(io::ByteBuffer& buffer, const WireItemStack& stack);
+
 /// One advancement as the client builds its screen from. parity: `PositionedAdvancement`.
 struct AdvancementEntry {
     std::string id;

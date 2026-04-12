@@ -1,5 +1,7 @@
 #include <basalt/wire/multiversion/ProtocolVersions.hpp>
+#include <basalt/wire/multiversion/java/AdvancementLayouts.hpp>
 #include <basalt/wire/multiversion/java/ContentRewriter.hpp>
+#include <basalt/wire/multiversion/java/MapLayouts.hpp>
 #include <basalt/wire/protocol/ProtocolBuffer.hpp>
 #include <basalt/wire/protocol/VarInt.hpp>
 #include <basalt/wire/protocol/configuration/ConfigurationPackets.hpp>
@@ -7,6 +9,7 @@
 #include <basalt/wire/protocol/play/EntityData.hpp>
 #include <basalt/wire/protocol/play/EntityPackets.hpp>
 #include <basalt/wire/protocol/play/ItemComponent.hpp>
+#include <basalt/wire/protocol/play/MapPackets.hpp>
 #include <basalt/wire/protocol/play/PlayerStatePackets.hpp>
 #include <basalt/wire/protocol/play/RecipePackets.hpp>
 #include <basalt/wire/protocol/play/SimplePackets.hpp>
@@ -40,11 +43,14 @@ void encode(MutablePacket& packet, Write&& write) {
 /// An entity nothing announced the type of: only its shared fields can be placed.
 constexpr std::int32_t kUnknownType = -1;
 
+/// Stone's item id, the same in every version this reaches.
+constexpr std::int32_t kStone = 1;
+
 } // namespace
 
 ContentRewriter::ContentRewriter(const ComposedTables& tables, const SubstitutionLabels* labels, std::int32_t farEnd,
                                  std::vector<std::int32_t> links)
-    : tables_(&tables), labels_(labels),
+    : tables_(&tables), labels_(labels), farEnd_(farEnd),
       entityData_(farEnd, std::move(links),
                   [this](const std::optional<play::WireItemStack>& item) { return stack(item); }),
       chunks_(tables.blockStates, ChunkRewriter::Options{.olderDirectBits = tables.blockStateDirectBits(),
@@ -250,6 +256,17 @@ bool ContentRewriter::clientbound(ProtocolState state, MutablePacket& packet) {
     case play::SetEntityDataPacket::kId:
         rewriteEntityData(packet);
         break;
+    case play::UpdateAdvancementsPacket::kId:
+        rewriteAdvancements(packet);
+        break;
+    case play::MapItemDataPacket::kId: {
+        // Written whole in the far end's layout: the links in between could not read it back.
+        const auto map = decode(packet, [](io::ByteBuffer& in) { return play::MapItemDataPacket::read(in); });
+        if (map.has_value()) {
+            encode(packet, [&](io::ByteBuffer& out) { mapLayouts::write(out, *map, farEnd_); });
+        }
+        break;
+    }
     default:
         break;
     }
@@ -465,6 +482,21 @@ bool ContentRewriter::serverbound(ProtocolState state, MutablePacket& packet) {
     creative->item->itemId = id;
     encode(packet, [&](io::ByteBuffer& out) { creative->write(out); });
     return true;
+}
+
+void ContentRewriter::rewriteAdvancements(MutablePacket& packet) const {
+    auto advancements = decode(packet, [](io::ByteBuffer& in) { return play::UpdateAdvancementsPacket::read(in); });
+    if (!advancements.has_value()) {
+        return;
+    }
+    for (play::AdvancementEntry& entry : advancements->added) {
+        if (!entry.display.has_value()) {
+            continue;
+        }
+        // An icon is never empty: one the far end has no item for is drawn as stone.
+        entry.display->icon = stack(entry.display->icon).value_or(play::WireItemStack{.itemId = kStone, .count = 1});
+    }
+    encode(packet, [&](io::ByteBuffer& out) { advancementLayouts::write(out, *advancements, farEnd_); });
 }
 
 std::int32_t ContentRewriter::blockState(std::int32_t id) const {

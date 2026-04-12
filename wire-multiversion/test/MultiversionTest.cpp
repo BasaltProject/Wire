@@ -14,8 +14,10 @@
 #include <basalt/wire/nbt/NbtTag.hpp>
 #include <basalt/wire/protocol/ProtocolBuffer.hpp>
 #include <basalt/wire/protocol/configuration/ConfigurationPackets.hpp>
+#include <basalt/wire/protocol/play/AdvancementPackets.hpp>
 #include <basalt/wire/protocol/play/EntityPackets.hpp>
 #include <basalt/wire/protocol/play/InventoryPackets.hpp>
+#include <basalt/wire/protocol/play/MapPackets.hpp>
 #include <basalt/wire/protocol/play/PalettedContainer.hpp>
 #include <basalt/wire/protocol/play/PlayerStatePackets.hpp>
 #include <basalt/wire/protocol/play/WorldPackets.hpp>
@@ -543,6 +545,177 @@ TEST_CASE("a chain for 26.2 gives back the shapes 26.3 changed") {
         const auto read = java::readLongMaskLight(out);
         REQUIRE(read.has_value());
         CHECK(read->skyLightMask == std::vector<std::int64_t>{0x102});
+    }
+}
+
+TEST_CASE("an advancement reaches an older client in the layout that client reads") {
+    namespace play = basalt::wire::protocol::play;
+    namespace buffer = basalt::wire::protocol;
+    using basalt::wire::io::ByteBuffer;
+
+    play::UpdateAdvancementsPacket update;
+    update.reset = true;
+    play::AdvancementEntry entry;
+    entry.id = "minecraft:story/root";
+    entry.display = play::AdvancementDisplayData{.title = basalt::wire::text::Component::text("Root"),
+                                                 .icon = play::WireItemStack{.itemId = 1, .count = 1},
+                                                 .background = "minecraft:gui/advancements/backgrounds/stone"};
+    entry.requirements = {{"a", "b"}};
+    entry.sendsTelemetryEvent = true;
+    entry.x = 1.5F;
+    entry.y = 2.5F;
+    update.added.push_back(entry);
+    ByteBuffer body;
+    update.write(body);
+
+    const auto through = [&body](std::int32_t version, bool& emitted) {
+        const std::unique_ptr<java::JavaChain> built = java::javaTranslators::chainFor(version);
+        REQUIRE(built != nullptr);
+        std::vector<std::uint8_t> out;
+        emitted = false;
+        built->chain().clientbound(basalt::wire::protocol::ProtocolState::Play, play::UpdateAdvancementsPacket::kId,
+                                   body.toVector(), [&](std::int32_t, std::span<const std::uint8_t> bytes) {
+                                       emitted = true;
+                                       out.assign(bytes.begin(), bytes.end());
+                                   });
+        return out;
+    };
+
+    SUBCASE("26.2 keeps the position inside the display") {
+        bool emitted = false;
+        ByteBuffer in = ByteBuffer::wrap(through(protocolVersions::kV26_2, emitted));
+        REQUIRE(emitted);
+        CHECK(buffer::readBoolean(in));
+        CHECK(buffer::varInt::read(in) == 1);
+        CHECK(buffer::readString(in) == "minecraft:story/root");
+        CHECK_FALSE(buffer::readBoolean(in));
+        REQUIRE(buffer::readBoolean(in));
+        static_cast<void>(buffer::readAnonymousNbt(in));
+        static_cast<void>(buffer::readAnonymousNbt(in));
+        CHECK(buffer::varInt::read(in) == 1);
+        CHECK(buffer::varInt::read(in) == 1);
+        CHECK(buffer::varInt::read(in) == 0);
+        CHECK(buffer::varInt::read(in) == 0);
+        CHECK(buffer::varInt::read(in) == 0);
+        CHECK(in.readInt() == 3);
+        CHECK(buffer::readString(in) == "minecraft:gui/advancements/backgrounds/stone");
+        CHECK(in.readFloat() == 1.5F);
+        CHECK(in.readFloat() == 2.5F);
+    }
+
+    SUBCASE("1.12.2 gets json text, a damaged stack, the texture path and the criteria by name") {
+        bool emitted = false;
+        ByteBuffer in = ByteBuffer::wrap(through(protocolVersions::kV1_12_2, emitted));
+        REQUIRE(emitted);
+        CHECK(buffer::readBoolean(in));
+        CHECK(buffer::varInt::read(in) == 1);
+        CHECK(buffer::readString(in) == "minecraft:story/root");
+        CHECK_FALSE(buffer::readBoolean(in));
+        REQUIRE(buffer::readBoolean(in));
+        CHECK(buffer::readString(in).find("Root") != std::string::npos);
+        static_cast<void>(buffer::readString(in));
+        CHECK(in.readShort() == 1);
+        CHECK(in.readByte() == 1);
+        CHECK(in.readShort() == 0);
+        CHECK(in.readByte() == 0);
+        CHECK(buffer::varInt::read(in) == 0);
+        CHECK(in.readInt() == 3);
+        CHECK(buffer::readString(in) == "minecraft:textures/gui/advancements/backgrounds/stone.png");
+        CHECK(in.readFloat() == 1.5F);
+        CHECK(in.readFloat() == 2.5F);
+        CHECK(buffer::varInt::read(in) == 2);
+        CHECK(buffer::readString(in) == "a");
+        CHECK(buffer::readString(in) == "b");
+        CHECK(buffer::varInt::read(in) == 1);
+        CHECK(buffer::varInt::read(in) == 2);
+        static_cast<void>(buffer::readString(in));
+        static_cast<void>(buffer::readString(in));
+        CHECK(buffer::varInt::read(in) == 0);
+        CHECK(buffer::varInt::read(in) == 0);
+        CHECK_FALSE(in.failed());
+        CHECK(in.readableBytes() == 0);
+    }
+
+    SUBCASE("1.11 has no advancements, so it gets nothing") {
+        bool emitted = true;
+        static_cast<void>(through(protocolVersions::kV1_11_1, emitted));
+        CHECK_FALSE(emitted);
+    }
+}
+
+TEST_CASE("a map reaches an older client in the layout and palette that client has") {
+    namespace play = basalt::wire::protocol::play;
+    namespace buffer = basalt::wire::protocol;
+    using basalt::wire::io::ByteBuffer;
+
+    play::MapItemDataPacket map;
+    map.mapId = 3;
+    map.scale = 1;
+    map.locked = true;
+    // A player marker, a banner and one of 26.3's structure icons.
+    map.decorations = std::vector<play::MapDecorationEntry>{
+        {.type = 0, .x = 4, .y = 5, .rotation = 7}, {.type = 10, .x = 1, .y = 2}, {.type = 36, .x = 3, .y = 3}};
+    // Deepslate's normal shade, which only 1.17 and up can draw.
+    map.patch = play::MapColorPatch{.width = 1, .height = 1, .colors = {59 * 4 + 1}};
+    ByteBuffer body;
+    map.write(body);
+
+    const auto through = [&body](std::int32_t version) {
+        const std::unique_ptr<java::JavaChain> built = java::javaTranslators::chainFor(version);
+        REQUIRE(built != nullptr);
+        std::vector<std::uint8_t> out;
+        built->chain().clientbound(
+            basalt::wire::protocol::ProtocolState::Play, play::MapItemDataPacket::kId, body.toVector(),
+            [&](std::int32_t, std::span<const std::uint8_t> bytes) { out.assign(bytes.begin(), bytes.end()); });
+        return out;
+    };
+
+    SUBCASE("26.2 draws the new icon as the red cross") {
+        ByteBuffer in = ByteBuffer::wrap(through(protocolVersions::kV26_2));
+        const auto read = play::MapItemDataPacket::read(in);
+        REQUIRE(read.has_value());
+        REQUIRE(read->decorations.has_value());
+        CHECK(read->decorations->at(2).type == 26);
+        CHECK(read->patch->colors == std::vector<std::uint8_t>{59 * 4 + 1});
+    }
+
+    SUBCASE("1.16.4 has the tracking flag, a bare count and no deepslate") {
+        ByteBuffer in = ByteBuffer::wrap(through(protocolVersions::kV1_16_4));
+        CHECK(buffer::varInt::read(in) == 3);
+        CHECK(in.readByte() == 1);
+        CHECK(buffer::readBoolean(in));
+        CHECK(buffer::readBoolean(in));
+        CHECK(buffer::varInt::read(in) == 3);
+        for (int i = 0; i < 3; ++i) {
+            static_cast<void>(buffer::varInt::read(in));
+            static_cast<void>(in.readByte());
+            static_cast<void>(in.readByte());
+            static_cast<void>(in.readByte());
+            CHECK_FALSE(buffer::readBoolean(in));
+        }
+        CHECK(in.readByte() == 1);
+        static_cast<void>(in.readByte());
+        static_cast<void>(in.readByte());
+        static_cast<void>(in.readByte());
+        const std::vector<std::uint8_t> colors = buffer::readByteArray(in);
+        REQUIRE(colors.size() == 1);
+        CHECK(colors[0] < 59 * 4);
+        CHECK(colors[0] >= 4);
+        CHECK_FALSE(in.failed());
+        CHECK(in.readableBytes() == 0);
+    }
+
+    SUBCASE("1.12.2 packs type and rotation in a byte and drops what it has no icon for") {
+        ByteBuffer in = ByteBuffer::wrap(through(protocolVersions::kV1_12_2));
+        CHECK(buffer::varInt::read(in) == 3);
+        CHECK(in.readByte() == 1);
+        CHECK(buffer::readBoolean(in));
+        // The banner and the red cross the new icon became are both past 1.12's icons.
+        CHECK(buffer::varInt::read(in) == 1);
+        CHECK(in.readByte() == 7);
+        CHECK(in.readByte() == 4);
+        CHECK(in.readByte() == 5);
+        CHECK(in.readByte() == 1);
     }
 }
 
