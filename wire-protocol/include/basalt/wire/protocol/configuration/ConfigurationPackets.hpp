@@ -44,9 +44,6 @@ struct KnownPack {
 
 /// Clientbound id 0x0f and serverbound id 0x07: negotiates which data packs both ends already know,
 /// so the registry data can leave out what the client has bundled.
-///
-/// Basalt sends an empty list: it has no data packs of its own, so every registry entry it sends
-/// has to carry its full value.
 struct SelectKnownPacksPacket {
     static constexpr std::int32_t kClientboundId = 0x0f;
     static constexpr std::int32_t kServerboundId = 0x07;
@@ -165,6 +162,19 @@ struct PostEffectsPacket {
     [[nodiscard]] static std::optional<PostEffectsPacket> read(io::ByteBuffer& buffer);
 
     friend bool operator==(const PostEffectsPacket&, const PostEffectsPacket&) = default;
+};
+
+/// parity: `ClientboundUpdateEnabledFeaturesPacket`, the feature flags the world runs with. A client
+/// told nothing assumes only `minecraft:vanilla`.
+struct UpdateEnabledFeaturesPacket {
+    static constexpr std::int32_t kId = 0x0d;
+
+    std::vector<std::string> features;
+
+    void write(io::ByteBuffer& buffer) const;
+    [[nodiscard]] static std::optional<UpdateEnabledFeaturesPacket> read(io::ByteBuffer& buffer);
+
+    friend bool operator==(const UpdateEnabledFeaturesPacket&, const UpdateEnabledFeaturesPacket&) = default;
 };
 
 } // namespace basalt::wire::protocol::configuration

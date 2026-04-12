@@ -20,6 +20,7 @@ basalt_module(wire-protocol
         src/NibbleArray.cpp
         src/PalettedContainer.cpp
         src/ParticleOptions.cpp
+        src/AdvancementPackets.cpp
         src/RecipePackets.cpp
         src/SimplePackets.cpp
         src/StatusPackets.cpp

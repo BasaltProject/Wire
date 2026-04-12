@@ -17,6 +17,7 @@ constexpr std::int32_t kByteSerializer = 0;
 constexpr std::int32_t kIntSerializer = 1;
 constexpr std::int32_t kLongSerializer = 2;
 constexpr std::int32_t kFloatSerializer = 3;
+constexpr std::int32_t kStringSerializer = 4;
 constexpr std::int32_t kComponentSerializer = 5;
 constexpr std::int32_t kOptionalComponentSerializer = 6;
 constexpr std::int32_t kItemStackSerializer = 7;
@@ -125,6 +126,9 @@ void SetEntityDataPacket::write(io::ByteBuffer& buffer) const {
         } else if (const auto* floatValue = std::get_if<FloatValue>(&entry.value)) {
             varInt::write(buffer, kFloatSerializer);
             buffer.writeFloat(floatValue->value);
+        } else if (const auto* stringValue = std::get_if<StringValue>(&entry.value)) {
+            varInt::write(buffer, kStringSerializer);
+            writeString(buffer, stringValue->value);
         } else if (const auto* textValue = std::get_if<TextValue>(&entry.value)) {
             varInt::write(buffer, kComponentSerializer);
             writeComponent(buffer, textValue->value);
@@ -214,6 +218,9 @@ std::optional<SetEntityDataPacket> SetEntityDataPacket::read(io::ByteBuffer& buf
             break;
         case kFloatSerializer:
             entry.value = FloatValue{buffer.readFloat()};
+            break;
+        case kStringSerializer:
+            entry.value = StringValue{readString(buffer)};
             break;
         case kComponentSerializer:
             entry.value = TextValue{readComponent(buffer)};

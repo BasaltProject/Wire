@@ -1,6 +1,8 @@
 #include <basalt/wire/protocol/ProtocolBuffer.hpp>
 #include <basalt/wire/protocol/play/VehiclePackets.hpp>
 
+#include <cmath>
+
 namespace basalt::wire::protocol::play {
 namespace {
 
@@ -20,6 +22,16 @@ void writePosition(io::ByteBuffer& buffer, const VehiclePosition& position) {
     position.yRot = buffer.readFloat();
     position.xRot = buffer.readFloat();
     return position;
+}
+
+/// parity: `ByteBufCodecs.ROTATION_BYTE`, `Mth.packDegrees` and back.
+void writeRotation(io::ByteBuffer& buffer, float degrees) {
+    buffer.writeByte(static_cast<std::uint8_t>(
+        static_cast<std::int8_t>(static_cast<std::int32_t>(std::floor(degrees * 256.0F / 360.0F)))));
+}
+
+[[nodiscard]] float readRotation(io::ByteBuffer& buffer) {
+    return static_cast<float>(static_cast<std::int8_t>(buffer.readByte())) * 360.0F / 256.0F;
 }
 
 } // namespace
@@ -68,6 +80,56 @@ std::optional<MountScreenOpenPacket> MountScreenOpenPacket::read(io::ByteBuffer&
     packet.inventoryColumns = varInt::read(buffer);
     packet.entityId = buffer.readInt();
     return buffer.failed() ? std::nullopt : std::optional{packet};
+}
+
+void ClientboundMoveMinecartPacket::write(io::ByteBuffer& buffer) const {
+    varInt::write(buffer, entityId);
+    varInt::write(buffer, static_cast<std::int32_t>(steps.size()));
+    for (const MinecartStep& step : steps) {
+        for (const double value : step.position) {
+            buffer.writeDouble(value);
+        }
+        for (const double value : step.movement) {
+            buffer.writeDouble(value);
+        }
+        writeRotation(buffer, step.yRot);
+        writeRotation(buffer, step.xRot);
+        buffer.writeFloat(step.weight);
+    }
+}
+
+std::optional<ClientboundMoveMinecartPacket> ClientboundMoveMinecartPacket::read(io::ByteBuffer& buffer) {
+    ClientboundMoveMinecartPacket packet;
+    packet.entityId = varInt::read(buffer);
+    const std::int32_t count = varInt::read(buffer);
+    for (std::int32_t i = 0; i < count && !buffer.failed(); ++i) {
+        MinecartStep step;
+        for (double& value : step.position) {
+            value = buffer.readDouble();
+        }
+        for (double& value : step.movement) {
+            value = buffer.readDouble();
+        }
+        step.yRot = readRotation(buffer);
+        step.xRot = readRotation(buffer);
+        step.weight = buffer.readFloat();
+        packet.steps.push_back(step);
+    }
+    return buffer.failed() ? std::nullopt : std::optional{std::move(packet)};
+}
+
+void ServerboundSetCommandMinecartPacket::write(io::ByteBuffer& buffer) const {
+    varInt::write(buffer, entityId);
+    writeString(buffer, command);
+    buffer.writeByte(trackOutput ? 1 : 0);
+}
+
+std::optional<ServerboundSetCommandMinecartPacket> ServerboundSetCommandMinecartPacket::read(io::ByteBuffer& buffer) {
+    ServerboundSetCommandMinecartPacket packet;
+    packet.entityId = varInt::read(buffer);
+    packet.command = readString(buffer);
+    packet.trackOutput = buffer.readByte() != 0;
+    return buffer.failed() ? std::nullopt : std::optional{std::move(packet)};
 }
 
 } // namespace basalt::wire::protocol::play
