@@ -6,6 +6,9 @@ basalt_module(wire-io
         src/LogFile.cpp
         src/Platform.cpp
         src/TcpSocket.cpp
+        src/TaskQueue.cpp
+        src/TimerQueue.cpp
+        src/WorkerPool.cpp
         src/UdpSocket.cpp
         src/ZipReader.cpp
         src/Zstd.cpp
@@ -13,8 +16,19 @@ basalt_module(wire-io
     PRIVATE_DEPENDS basalt::zlib basalt::zstd
 )
 
+option(BASALT_IO_FORCE_POLL "Use portable poll readiness instead of the native backend" OFF)
+if(BASALT_IO_FORCE_POLL)
+    target_compile_definitions(wire-io PRIVATE BASALT_IO_FORCE_POLL=1)
+endif()
+
 basalt_test(wire-io-test
     SOURCES
         test/IoTest.cpp
+        test/SchedulingTest.cpp
+        test/WorkerPoolTest.cpp
     DEPENDS basalt::wire-io
 )
+
+if(BASALT_BUILD_TESTS)
+    set_tests_properties(wire-io-test PROPERTIES TIMEOUT 30)
+endif()

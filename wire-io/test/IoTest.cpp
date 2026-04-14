@@ -8,9 +8,11 @@
 
 #include <doctest.h>
 
+#include <atomic>
 #include <cstdint>
 #include <numeric>
 #include <string>
+#include <thread>
 #include <vector>
 
 using namespace basalt::wire::io;
@@ -348,4 +350,173 @@ TEST_CASE("the platform helpers answer or say they cannot") {
     // test runner that is exactly the situation, and restoring is safe either way.
     static_cast<void>(terminal::enableRawMode());
     terminal::restoreMode();
+}
+
+TEST_CASE("nonblocking connections report readiness and distinguish would-block from EOF") {
+    auto listener = TcpListener::bind(0);
+    REQUIRE(listener);
+    REQUIRE(listener->setNonBlocking());
+    const auto empty = listener->accept();
+    REQUIRE_FALSE(empty);
+    CHECK(empty.error().kind == SocketError::Kind::WouldBlock);
+    const auto port = listener->localPort();
+    REQUIRE(port);
+    auto client = TcpConnection::connectNonBlocking("127.0.0.1", *port);
+    REQUIRE(client);
+    EventLoop loop;
+    REQUIRE(loop.watch(client->nativeHandle(), {false, true}, 41));
+    auto ready = loop.wait(2000);
+    REQUIRE(ready);
+    REQUIRE(ready->size() == 1);
+    CHECK(ready->front().token == 41);
+    CHECK(ready->front().writable);
+    const auto connected = client->finishConnect();
+    REQUIRE(connected);
+    REQUIRE(*connected);
+    auto peer = listener->accept();
+    REQUIRE(peer);
+    REQUIRE(peer->setNonBlocking());
+    std::array<std::uint8_t, 16> bytes{};
+    const auto nothing = client->read(bytes);
+    REQUIRE_FALSE(nothing);
+    CHECK(nothing.error().kind == SocketError::Kind::WouldBlock);
+    REQUIRE(loop.watch(client->nativeHandle(), {true, false}, 42));
+    ready = loop.wait(0);
+    REQUIRE(ready);
+    CHECK(ready->empty());
+    REQUIRE(peer->writeSome(std::array<std::uint8_t, 3>{1, 2, 3}));
+    ready = loop.wait(2000);
+    REQUIRE(ready);
+    REQUIRE(ready->size() == 1);
+    CHECK(ready->front().token == 42);
+    CHECK(ready->front().readable);
+    const auto received = client->read(bytes);
+    REQUIRE(received);
+    CHECK(*received == 3);
+    peer->close();
+    ready = loop.wait(2000);
+    REQUIRE(ready);
+    REQUIRE_FALSE(ready->empty());
+    const auto eof = client->read(bytes);
+    REQUIRE(eof);
+    CHECK(*eof == 0);
+    loop.unwatch(client->nativeHandle());
+    CHECK(loop.watchedCount() == 0);
+    ready = loop.wait(0);
+    REQUIRE(ready);
+    CHECK(ready->empty());
+}
+
+TEST_CASE("a stalled receiver never makes a nonblocking writer wait for the whole payload") {
+    auto listener = TcpListener::bind(0);
+    REQUIRE(listener);
+    const auto port = listener->localPort();
+    REQUIRE(port);
+    auto client = TcpConnection::connect("127.0.0.1", *port);
+    REQUIRE(client);
+    auto peer = listener->accept();
+    REQUIRE(peer);
+    REQUIRE(client->setNonBlocking());
+    const std::vector<std::uint8_t> bytes(1024 * 1024, 0x5A);
+    bool blocked = false;
+    for (int attempt = 0; attempt < 64; ++attempt) {
+        const auto sent = client->writeSome(bytes);
+        if (!sent) {
+            CHECK(sent.error().kind == SocketError::Kind::WouldBlock);
+            blocked = true;
+            break;
+        }
+        CHECK(*sent > 0);
+        CHECK(*sent <= bytes.size());
+    }
+    CHECK(blocked);
+}
+
+TEST_CASE("an idle event loop can be woken by a worker without leaking a readiness event") {
+    EventLoop loop;
+    std::atomic<int> workerError{0};
+    std::jthread worker([&] {
+        const auto woken = loop.wake();
+        if (!woken) {
+            workerError.store(woken.error());
+        }
+    });
+    const auto ready = loop.wait(2000);
+    REQUIRE(ready);
+    CHECK(ready->empty());
+    worker.join();
+    CHECK(workerError.load() == 0);
+    const auto drained = loop.wait(0);
+    REQUIRE(drained);
+    CHECK(drained->empty());
+}
+
+TEST_CASE("changing a readiness registration replaces its generation token") {
+    auto listener = TcpListener::bind(0);
+    REQUIRE(listener);
+    const auto port = listener->localPort();
+    REQUIRE(port);
+    auto client = TcpConnection::connect("127.0.0.1", *port);
+    REQUIRE(client);
+    auto peer = listener->accept();
+    REQUIRE(peer);
+    EventLoop loop;
+    REQUIRE(loop.watch(client->nativeHandle(), {false, true}, 1));
+    loop.unwatch(client->nativeHandle());
+    REQUIRE(loop.watch(client->nativeHandle(), {false, true}, 2));
+    const auto ready = loop.wait(2000);
+    REQUIRE(ready);
+    REQUIRE(ready->size() == 1);
+    CHECK(ready->front().token == 2);
+    CHECK(loop.watchedCount() == 1);
+}
+
+TEST_CASE("resolved endpoints support numeric IPv4 and IPv6 without treating hostnames as literals") {
+    const auto v4 = TcpAddress::literal("127.0.0.1", 25565);
+    REQUIRE(v4);
+    CHECK(v4->host() == "127.0.0.1");
+    CHECK(v4->port() == 25565);
+    const auto v6 = TcpAddress::literal("::1", 25565);
+    REQUIRE(v6);
+    CHECK(v6->host() == "::1");
+    CHECK(v6->port() == 25565);
+    CHECK_FALSE(TcpAddress::literal("localhost", 25565));
+    CHECK_FALSE(TcpAddress::literal("127.0.0.1.bad", 25565));
+    CHECK_FALSE(TcpAddress::resolve(std::string{"localhost\0other", 15}, 25565));
+    const auto local = TcpAddress::resolve("localhost", 25565);
+    REQUIRE(local);
+    REQUIRE_FALSE(local->empty());
+    for (const auto& address : *local) {
+        CHECK(address.port() == 25565);
+    }
+}
+
+TEST_CASE("an IPv6 loopback listener supports nonblocking readiness and peer addressing") {
+    const auto endpoint = TcpAddress::literal("::1", 0);
+    REQUIRE(endpoint);
+    auto listener = TcpListener::bind(*endpoint);
+    REQUIRE(listener);
+    const auto port = listener->localPort();
+    REQUIRE(port);
+    const auto remote = TcpAddress::literal("::1", *port);
+    REQUIRE(remote);
+    auto client = TcpConnection::connectNonBlocking(*remote);
+    REQUIRE(client);
+    EventLoop loop;
+    REQUIRE(loop.watch(client->nativeHandle(), {false, true}, 1));
+    const auto ready = loop.wait(2000);
+    REQUIRE(ready);
+    REQUIRE_FALSE(ready->empty());
+    const auto connected = client->finishConnect();
+    REQUIRE(connected);
+    REQUIRE(*connected);
+    auto peer = listener->accept();
+    REQUIRE(peer);
+    CHECK(peer->remoteAddress() == "::1");
+    REQUIRE(client->writeSome(std::array<std::uint8_t, 1>{0x42}));
+    std::array<std::uint8_t, 1> bytes{};
+    const auto received = peer->read(bytes);
+    REQUIRE(received);
+    CHECK(*received == 1);
+    CHECK(bytes[0] == 0x42);
 }
