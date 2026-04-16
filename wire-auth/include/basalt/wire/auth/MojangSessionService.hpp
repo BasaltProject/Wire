@@ -8,6 +8,9 @@
 
 namespace basalt::wire::auth {
 
+/// Profiles are small JSON documents, not the jars fetched by other HTTPS callers.
+inline constexpr std::size_t kMaxSessionProfileBytes = 64 * 1024;
+
 /// The real session service, against Mojang's own endpoint.
 ///
 /// parity: `MinecraftSessionService.hasJoinedServer`, which is one `GET` carrying the username and

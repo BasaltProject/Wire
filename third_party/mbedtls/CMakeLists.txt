@@ -9,10 +9,22 @@
 
 file(GLOB BASALT_MBEDTLS_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/library/*.c)
 
-add_library(basalt_mbedtls STATIC ${BASALT_MBEDTLS_SOURCES})
+add_library(basalt_mbedtls STATIC ${BASALT_MBEDTLS_SOURCES} basalt/threading.c)
 add_library(basalt::mbedtls ALIAS basalt_mbedtls)
 
 target_include_directories(basalt_mbedtls SYSTEM PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 target_include_directories(basalt_mbedtls PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/library)
 set_target_properties(basalt_mbedtls PROPERTIES POSITION_INDEPENDENT_CODE ON)
 target_compile_options(basalt_mbedtls PRIVATE -w)
+
+# PSA key slots and shared crypto state are used concurrently by native sessions/workers.
+# Keep definitions public: mutex fields change the context ABI seen by consumers.
+target_include_directories(basalt_mbedtls SYSTEM PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/basalt)
+target_compile_definitions(basalt_mbedtls PUBLIC MBEDTLS_THREADING_C)
+if(WIN32)
+    target_compile_definitions(basalt_mbedtls PUBLIC MBEDTLS_THREADING_ALT WIN32_LEAN_AND_MEAN NOMINMAX)
+else()
+    find_package(Threads REQUIRED)
+    target_compile_definitions(basalt_mbedtls PUBLIC MBEDTLS_THREADING_PTHREAD)
+    target_link_libraries(basalt_mbedtls PUBLIC Threads::Threads)
+endif()

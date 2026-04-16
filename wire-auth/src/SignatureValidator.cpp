@@ -4,6 +4,7 @@
 #include <basalt/wire/common/json/Json.hpp>
 
 #include <array>
+#include <basalt_mbedtls_threads.h>
 #include <mbedtls/md.h>
 #include <mbedtls/pk.h>
 #include <mutex>
@@ -26,7 +27,10 @@ struct RsaPublicKey::State {
     /// mbedTLS keeps scratch state in the context, so one key is checked by one thread at a time.
     std::mutex mutex;
 
-    State() { mbedtls_pk_init(&key); }
+    State() {
+        basalt_mbedtls_threading_init();
+        mbedtls_pk_init(&key);
+    }
 
     ~State() { mbedtls_pk_free(&key); }
 

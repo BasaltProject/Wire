@@ -268,3 +268,17 @@ TEST_CASE("an RSA public key checks PKCS#1 v1.5 signatures in both digests") {
     CHECK(signedPayload[23] == 3);
     CHECK(signedPayload[24] == 9);
 }
+
+TEST_CASE("profile authentication rejects oversized bodies and non-200 success statuses") {
+    const std::string valid = R"({"id":"8667ba71b85a4004af54457a9734eed7","name":"Steve"})";
+    const std::vector<std::uint8_t> body{valid.begin(), valid.end()};
+    for (const int status : {201, 202, 204, 206, 302, 500}) {
+        MojangSessionService service{[&](std::string_view) { return HttpsResponse{.status = status, .body = body}; }};
+        CHECK_FALSE(service.hasJoined("Steve", "hash", ""));
+    }
+    std::vector<std::uint8_t> large = body;
+    large.resize(kMaxSessionProfileBytes + 1, ' ');
+    MojangSessionService service{[&](std::string_view) { return HttpsResponse{.status = 200, .body = large}; }};
+    CHECK_FALSE(service.hasJoined("Steve", "hash", ""));
+    CHECK_FALSE(mojangUuidOf("Steve", [&](std::string_view) { return HttpsResponse{.status = 200, .body = large}; }));
+}

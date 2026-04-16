@@ -3,6 +3,7 @@
 #include <basalt/wire/common/json/Json.hpp>
 
 #include <array>
+#include <basalt_mbedtls_threads.h>
 #include <mbedtls/ctr_drbg.h>
 #include <mbedtls/ecdh.h>
 #include <mbedtls/ecdsa.h>
@@ -106,6 +107,7 @@ bool verifyJwt(const JwtParts& parts, std::span<const std::uint8_t> publicKeyDer
     }
 
     mbedtls_pk_context key;
+    basalt_mbedtls_threading_init();
     mbedtls_pk_init(&key);
     bool verified = false;
 
@@ -116,6 +118,7 @@ bool verifyJwt(const JwtParts& parts, std::span<const std::uint8_t> publicKeyDer
         mbedtls_mpi secret;
         mbedtls_mpi left;
         mbedtls_mpi right;
+        basalt_mbedtls_threading_init();
         mbedtls_ecp_group_init(&group);
         mbedtls_ecp_point_init(&point);
         mbedtls_mpi_init(&secret);
@@ -149,6 +152,7 @@ struct EcKeyPair::State {
     std::vector<std::uint8_t> publicDer;
 
     State() {
+        basalt_mbedtls_threading_init();
         mbedtls_pk_init(&key);
         mbedtls_entropy_init(&entropy);
         mbedtls_ctr_drbg_init(&random);
@@ -211,6 +215,7 @@ std::optional<std::vector<std::uint8_t>> EcKeyPair::sharedSecret(std::span<const
     }
 
     mbedtls_pk_context peer;
+    basalt_mbedtls_threading_init();
     mbedtls_pk_init(&peer);
     std::optional<std::vector<std::uint8_t>> result;
 
@@ -223,6 +228,7 @@ std::optional<std::vector<std::uint8_t>> EcKeyPair::sharedSecret(std::span<const
         mbedtls_mpi ourSecret;
         mbedtls_mpi theirSecret;
         mbedtls_mpi shared;
+        basalt_mbedtls_threading_init();
         mbedtls_ecp_group_init(&group);
         mbedtls_ecp_group_init(&peerGroup);
         mbedtls_ecp_point_init(&ours);
@@ -266,6 +272,7 @@ std::optional<std::string> EcKeyPair::signJwt(std::string_view payloadJson) cons
     mbedtls_mpi secret;
     mbedtls_mpi left;
     mbedtls_mpi right;
+    basalt_mbedtls_threading_init();
     mbedtls_ecp_group_init(&group);
     mbedtls_ecp_point_init(&point);
     mbedtls_mpi_init(&secret);

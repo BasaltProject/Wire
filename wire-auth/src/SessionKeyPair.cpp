@@ -1,6 +1,7 @@
 #include <basalt/wire/auth/SessionKeyPair.hpp>
 
 #include <array>
+#include <basalt_mbedtls_threads.h>
 #include <cstdint>
 #include <mbedtls/ctr_drbg.h>
 #include <mbedtls/entropy.h>
@@ -24,6 +25,7 @@ struct Rng {
     bool ready = false;
 
     Rng() {
+        basalt_mbedtls_threading_init();
         mbedtls_entropy_init(&entropy);
         mbedtls_ctr_drbg_init(&drbg);
         ready = mbedtls_ctr_drbg_seed(&drbg, mbedtls_entropy_func, &entropy,
@@ -55,7 +57,10 @@ struct SessionKeyPair::State {
     mbedtls_pk_context key{};
     std::vector<std::uint8_t> publicKeyDer;
 
-    State() { mbedtls_pk_init(&key); }
+    State() {
+        basalt_mbedtls_threading_init();
+        mbedtls_pk_init(&key);
+    }
 
     ~State() { mbedtls_pk_free(&key); }
 
@@ -162,6 +167,7 @@ std::string formatSessionHash(std::span<const std::uint8_t> digest) {
 std::string sessionHash(std::string_view serverId, std::span<const std::uint8_t> secretKey,
                         std::span<const std::uint8_t> publicKeyDer) {
     mbedtls_sha1_context context{};
+    basalt_mbedtls_threading_init();
     mbedtls_sha1_init(&context);
     mbedtls_sha1_starts(&context);
 

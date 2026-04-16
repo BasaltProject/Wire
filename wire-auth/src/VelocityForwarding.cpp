@@ -3,6 +3,7 @@
 #include <basalt/wire/protocol/ProtocolBuffer.hpp>
 
 #include <array>
+#include <basalt_mbedtls_threads.h>
 #include <cstdint>
 #include <cstring>
 #include <mbedtls/md.h>
@@ -16,6 +17,7 @@ constexpr std::int32_t kMaxNameLength = 16;
 
 std::array<std::uint8_t, kSignatureLength> hmac(std::string_view secret, std::span<const std::uint8_t> payload) {
     std::array<std::uint8_t, kSignatureLength> tag{};
+    basalt_mbedtls_threading_init();
     const mbedtls_md_info_t* info = mbedtls_md_info_from_type(MBEDTLS_MD_SHA256);
     mbedtls_md_hmac(info, reinterpret_cast<const unsigned char*>(secret.data()), secret.size(), payload.data(),
                     payload.size(), tag.data());
