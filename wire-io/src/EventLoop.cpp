@@ -255,6 +255,9 @@ std::expected<void, int> EventLoop::watch(std::int64_t handle, IoInterest intere
 #endif
     }
     const auto old = impl_->watched.find(handle);
+    if (old != impl_->watched.end() && old->second.token == token &&
+        old->second.interest.readable == interest.readable && old->second.interest.writable == interest.writable)
+        return {};
     const Impl::Registration item{handle, interest, token, impl_->nextSerial++};
     const auto result = impl_->update(item, old != impl_->watched.end());
     if (!result) {

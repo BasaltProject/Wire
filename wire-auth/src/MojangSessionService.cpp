@@ -64,7 +64,10 @@ namespace {
 
 MojangSessionService::MojangSessionService(Fetch fetch) : fetch_(std::move(fetch)) {
     if (!fetch_) {
-        fetch_ = [](std::string_view url) { return httpsGet(url, kMaxSessionProfileBytes); };
+        fetch_ = [](std::string_view url) {
+            return httpsGetBounded(url, kMaxSessionProfileBytes,
+                                   {.deadline = std::chrono::steady_clock::now() + std::chrono::seconds{10}});
+        };
     }
 }
 
@@ -88,7 +91,8 @@ std::optional<SessionProfile> MojangSessionService::hasJoined(std::string_view u
 
 std::optional<std::string> mojangUuidOf(const std::string& name, const MojangSessionService::Fetch& fetch) {
     const MojangSessionService::Fetch get = fetch ? fetch : MojangSessionService::Fetch{[](std::string_view url) {
-        return httpsGet(url, kMaxSessionProfileBytes);
+        return httpsGetBounded(url, kMaxSessionProfileBytes,
+                               {.deadline = std::chrono::steady_clock::now() + std::chrono::seconds{10}});
     }};
     const std::expected<HttpsResponse, HttpsError> answered =
         get("https://api.mojang.com/users/profiles/minecraft/" + name);

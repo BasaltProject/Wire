@@ -50,6 +50,14 @@ struct HttpsOptions {
     std::string_view trustPem;
 };
 
+struct BoundedHttpsOptions {
+    std::chrono::steady_clock::time_point deadline;
+    std::stop_token stop;
+    std::string_view trustPem;
+    /// Empty selects system DNS configuration; explicit numeric servers use c-ares CSV syntax.
+    std::string_view dnsServers;
+};
+
 /// The ceiling a caller gets without asking for one. Large enough for the client jar, small enough
 /// that a server answering with a stream of nonsense is dropped rather than kept in memory.
 inline constexpr std::size_t kDefaultMaxBytes = 512UL * 1024UL * 1024UL;
@@ -69,5 +77,11 @@ using HttpsProgress = std::function<void(std::size_t bytesSoFar)>;
                                                                 std::size_t maxBytes = kDefaultMaxBytes,
                                                                 const HttpsProgress& onProgress = {},
                                                                 const HttpsOptions& options = {});
+
+/// Resolves DNS and fetches HTTPS with one shared deadline and cancellation token.
+/// Call on a bounded worker; local trust/resolver configuration reads are OS filesystem operations.
+[[nodiscard]] std::expected<HttpsResponse, HttpsError> httpsGetBounded(std::string_view url, std::size_t maxBytes,
+                                                                       const BoundedHttpsOptions& options,
+                                                                       const HttpsProgress& onProgress = {});
 
 } // namespace basalt::wire::auth

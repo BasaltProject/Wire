@@ -21,6 +21,8 @@ enum class TomlError : std::uint8_t {
     UnterminatedArray,
     UnknownEscape,
     NotAValue,
+    DuplicateKey,
+    ConflictingTable,
 };
 
 [[nodiscard]] std::string_view tomlErrorMessage(TomlError error) noexcept;

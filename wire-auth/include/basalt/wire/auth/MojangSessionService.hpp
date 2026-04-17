@@ -22,6 +22,8 @@ public:
     /// only one that knows the endpoint's shape.
     using Fetch = std::function<std::expected<HttpsResponse, HttpsError>(std::string_view url)>;
 
+    /// Default fetch bounds DNS and HTTPS to ten seconds and 64 KiB per request.
+    /// Runtime callers can inject a fetch carrying their session deadline and stop token.
     explicit MojangSessionService(Fetch fetch = {});
 
     [[nodiscard]] std::optional<SessionProfile> hasJoined(std::string_view username, std::string_view serverHash,

@@ -1,6 +1,7 @@
 #include "HttpsResponseDecoder.hpp"
 
 #include <basalt/wire/auth/HttpsClient.hpp>
+#include <basalt/wire/io/DnsResolver.hpp>
 #include <basalt/wire/io/EventLoop.hpp>
 #include <basalt/wire/io/TcpSocket.hpp>
 
@@ -579,6 +580,43 @@ std::expected<HttpsResponse, HttpsError> httpsGet(std::string_view url, std::siz
         return std::unexpected{HttpsError{"the response exceeded its body byte limit"}};
     }
     return response;
+}
+
+std::expected<HttpsResponse, HttpsError> httpsGetBounded(std::string_view url, std::size_t maxBytes,
+                                                         const BoundedHttpsOptions& options,
+                                                         const HttpsProgress& onProgress) {
+    const auto target = parse(url);
+    if (!target || maxBytes > std::numeric_limits<std::size_t>::max() - 64 * 1024)
+        return std::unexpected(HttpsError{"invalid bounded HTTPS request", HttpsError::Kind::InvalidRequest});
+    std::uint16_t port = 0;
+    (void)std::from_chars(target->port.data(), target->port.data() + target->port.size(), port);
+    auto addresses = io::resolveDns(target->host, port, {options.deadline, options.stop, options.dnsServers});
+    if (!addresses) {
+        auto kind = HttpsError::Kind::Transport;
+        switch (addresses.error().kind) {
+        case io::DnsError::Kind::Canceled:
+            kind = HttpsError::Kind::Canceled;
+            break;
+        case io::DnsError::Kind::TimedOut:
+            kind = HttpsError::Kind::TimedOut;
+            break;
+        case io::DnsError::Kind::InvalidRequest:
+            kind = HttpsError::Kind::InvalidRequest;
+            break;
+        case io::DnsError::Kind::Limit:
+            kind = HttpsError::Kind::Limit;
+            break;
+        default:
+            break;
+        }
+        return std::unexpected(
+            HttpsError{"HTTPS DNS resolution failed (" + std::to_string(addresses.error().code) + ")", kind});
+    }
+    return httpsGet(url, maxBytes, onProgress,
+                    {.deadline = options.deadline,
+                     .stop = options.stop,
+                     .resolvedAddresses = *addresses,
+                     .trustPem = options.trustPem});
 }
 
 } // namespace basalt::wire::auth
