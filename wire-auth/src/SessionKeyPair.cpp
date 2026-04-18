@@ -51,11 +51,17 @@ std::mutex& rngMutex() {
     return instance;
 }
 
+int lockedRandom(void*, unsigned char* data, std::size_t size) {
+    const std::scoped_lock lock{rngMutex()};
+    return mbedtls_ctr_drbg_random(&rng().drbg, data, size);
+}
+
 } // namespace
 
 struct SessionKeyPair::State {
     mbedtls_pk_context key{};
     std::vector<std::uint8_t> publicKeyDer;
+    std::mutex mutex;
 
     State() {
         basalt_mbedtls_threading_init();
@@ -82,13 +88,10 @@ std::optional<SessionKeyPair> SessionKeyPair::generate() {
     }
 
     SessionKeyPair pair;
-    const std::scoped_lock lock{rngMutex()};
-
     if (mbedtls_pk_setup(&pair.state_->key, mbedtls_pk_info_from_type(MBEDTLS_PK_RSA)) != 0) {
         return std::nullopt;
     }
-    if (mbedtls_rsa_gen_key(mbedtls_pk_rsa(pair.state_->key), mbedtls_ctr_drbg_random, &rng().drbg, kRsaKeyBits,
-                            kRsaExponent) != 0) {
+    if (mbedtls_rsa_gen_key(mbedtls_pk_rsa(pair.state_->key), lockedRandom, nullptr, kRsaKeyBits, kRsaExponent) != 0) {
         return std::nullopt;
     }
 
@@ -109,9 +112,9 @@ std::optional<std::vector<std::uint8_t>> SessionKeyPair::decrypt(std::span<const
     std::array<unsigned char, 512> plain{};
     std::size_t length = 0;
 
-    const std::scoped_lock lock{rngMutex()};
+    const std::scoped_lock lock{state_->mutex};
     const int result = mbedtls_pk_decrypt(&state_->key, ciphertext.data(), ciphertext.size(), plain.data(), &length,
-                                          plain.size(), mbedtls_ctr_drbg_random, &rng().drbg);
+                                          plain.size(), lockedRandom, nullptr);
     if (result != 0) {
         return std::nullopt;
     }
