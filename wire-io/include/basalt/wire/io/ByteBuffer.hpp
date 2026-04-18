@@ -1,10 +1,16 @@
 #pragma once
 
+#include <basalt/wire/io/detail/ByteStorage.hpp>
+
+#include <array>
 #include <bit>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <limits>
+#include <new>
 #include <span>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -20,10 +26,15 @@ class ByteBuffer {
 public:
     explicit ByteBuffer(std::size_t initialCapacity = 256) { storage_.reserve(initialCapacity); }
 
+    /// Resource must outlive this buffer and any managed copies. Allocation remains owner-only.
+    ByteBuffer(std::size_t initialCapacity, std::pmr::memory_resource& resource) : storage_(resource) {
+        storage_.reserve(initialCapacity);
+    }
+
     /// Adopts the bytes as readable content without copying.
     [[nodiscard]] static ByteBuffer wrap(std::vector<std::uint8_t> bytes) {
         ByteBuffer buffer{0};
-        buffer.storage_ = std::move(bytes);
+        buffer.storage_.adopt(std::move(bytes));
         return buffer;
     }
 
@@ -46,11 +57,22 @@ public:
 
     void reserve(std::size_t extraBytes) { storage_.reserve(storage_.size() + extraBytes); }
 
+    [[nodiscard]] bool tryReserve(std::size_t extraBytes) noexcept {
+        if (extraBytes > std::numeric_limits<std::size_t>::max() - storage_.size())
+            return false;
+        try {
+            reserve(extraBytes);
+            return true;
+        } catch (const std::bad_alloc&) {
+            return false;
+        } catch (const std::length_error&) {
+            return false;
+        }
+    }
+
     void writeByte(std::uint8_t value) { storage_.push_back(value); }
 
-    void writeBytes(std::span<const std::uint8_t> bytes) {
-        storage_.insert(storage_.end(), bytes.begin(), bytes.end());
-    }
+    void writeBytes(std::span<const std::uint8_t> bytes) { storage_.append(bytes); }
 
     void writeShort(std::int16_t value) { writeUnsigned(static_cast<std::uint16_t>(value)); }
 
@@ -151,9 +173,11 @@ public:
 private:
     template <typename U>
     void writeUnsigned(U value) {
-        for (std::size_t i = sizeof(U); i > 0; --i) {
-            storage_.push_back(static_cast<std::uint8_t>(value >> ((i - 1) * 8)));
+        std::array<std::uint8_t, sizeof(U)> bytes{};
+        for (std::size_t i = 0; i < sizeof(U); ++i) {
+            bytes[i] = static_cast<std::uint8_t>(value >> ((sizeof(U) - i - 1) * 8));
         }
+        storage_.append(bytes);
     }
 
     template <typename U>
@@ -164,14 +188,15 @@ private:
             return 0;
         }
         U result = 0;
+        const auto* bytes = storage_.data() + readerIndex_;
         for (std::size_t i = 0; i < sizeof(U); ++i) {
-            result = static_cast<U>((result << 8) | storage_[readerIndex_ + i]);
+            result = static_cast<U>((result << 8) | bytes[i]);
         }
         readerIndex_ += sizeof(U);
         return result;
     }
 
-    std::vector<std::uint8_t> storage_;
+    detail::ByteStorage storage_;
     std::size_t readerIndex_ = 0;
     bool failed_ = false;
 };
