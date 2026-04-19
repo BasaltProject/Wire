@@ -30,6 +30,18 @@ namespace packetFraming {
 inline constexpr std::int32_t kMaxFrameSize = (1 << 21) - 1;
 inline constexpr std::int32_t kMaxUncompressedSize = 8 * 1024 * 1024;
 
+struct FrameSizeHint {
+    std::size_t frameBytes;
+    std::optional<std::size_t> packetBytes;
+    bool complete;
+};
+
+/// Inspects available headers without consuming, allocating or inflating. Compression headers
+/// cannot read outside their declared frame, even when a following frame is already buffered.
+[[nodiscard]] std::expected<std::optional<FrameSizeHint>, FramingError>
+inspectFrame(std::span<const std::uint8_t> bytes, bool compressed, std::size_t maxPacketBytes = kMaxUncompressedSize,
+             std::optional<std::int32_t> threshold = std::nullopt);
+
 [[nodiscard]] std::expected<void, FramingError> writeUncompressed(io::ByteBuffer& output,
                                                                   std::span<const std::uint8_t> packetIdAndData);
 
