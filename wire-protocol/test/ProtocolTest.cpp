@@ -287,6 +287,16 @@ TEST_CASE("the configuration packets round trip") {
     effects.write(effectsBuffer);
     CHECK(*PostEffectsPacket::read(effectsBuffer) == effects);
 
+    const play::PlaceRecipePacket placeRecipe{.containerId = 3, .recipeId = 17, .useMaxItems = true};
+    io::ByteBuffer placeRecipeBuffer;
+    placeRecipe.write(placeRecipeBuffer);
+    CHECK(*play::PlaceRecipePacket::read(placeRecipeBuffer) == placeRecipe);
+
+    const ServerLinksPacket links{{{kBugReportLinkType, "https://example.org/bugs"}}};
+    io::ByteBuffer linksBuffer;
+    links.write(linksBuffer);
+    CHECK(*ServerLinksPacket::read(linksBuffer) == links);
+
     const SelectKnownPacksPacket packs{{{"minecraft", "core", "26.3"}}};
     io::ByteBuffer packsBuffer;
     packs.write(packsBuffer);

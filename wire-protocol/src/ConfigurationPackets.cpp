@@ -189,4 +189,26 @@ std::optional<UpdateEnabledFeaturesPacket> UpdateEnabledFeaturesPacket::read(io:
     return buffer.failed() ? std::nullopt : std::optional{std::move(packet)};
 }
 
+void ServerLinksPacket::write(io::ByteBuffer& buffer) const {
+    varInt::write(buffer, static_cast<std::int32_t>(links.size()));
+    for (const ServerLink& entry : links) {
+        writeBoolean(buffer, true);
+        varInt::write(buffer, entry.knownType);
+        writeString(buffer, entry.link);
+    }
+}
+
+std::optional<ServerLinksPacket> ServerLinksPacket::read(io::ByteBuffer& buffer) {
+    ServerLinksPacket packet;
+    const std::int32_t count = readCollectionSize(buffer);
+    for (std::int32_t i = 0; i < count && !buffer.failed(); ++i) {
+        if (!readBoolean(buffer)) {
+            return std::nullopt;
+        }
+        const std::int32_t type = varInt::read(buffer);
+        packet.links.push_back(ServerLink{.knownType = type, .link = readString(buffer)});
+    }
+    return buffer.failed() ? std::nullopt : std::optional{std::move(packet)};
+}
+
 } // namespace basalt::wire::protocol::configuration
