@@ -292,6 +292,18 @@ TEST_CASE("the configuration packets round trip") {
     placeRecipe.write(placeRecipeBuffer);
     CHECK(*play::PlaceRecipePacket::read(placeRecipeBuffer) == placeRecipe);
 
+    play::RecipeBookSettingsPacket bookSettings;
+    bookSettings.types[2] = {.open = true, .filtering = false};
+    io::ByteBuffer bookSettingsBuffer;
+    bookSettings.write(bookSettingsBuffer);
+    CHECK(*play::RecipeBookSettingsPacket::read(bookSettingsBuffer) == bookSettings);
+
+    const ResourcePackResponsePacket packResponse{.id = common::Uuid::offlinePlayer("pack"), .action = 2};
+    io::ByteBuffer packResponseBuffer;
+    packResponse.write(packResponseBuffer);
+    const std::optional<ResourcePackResponsePacket> packRead = ResourcePackResponsePacket::read(packResponseBuffer);
+    CHECK((packRead.has_value() && packRead->id == packResponse.id && packRead->action == 2));
+
     const ServerLinksPacket links{{{kBugReportLinkType, "https://example.org/bugs"}}};
     io::ByteBuffer linksBuffer;
     links.write(linksBuffer);
