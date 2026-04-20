@@ -9,9 +9,6 @@
 #include <string_view>
 #include <vector>
 
-/// The packets that describe the world itself: its chunks, its light, its clocks and the blocks
-/// inside it. Split from the session packets because a chunk send and a tab list have nothing to do
-/// with each other beyond travelling down the same socket.
 namespace basalt::wire::protocol::play {
 
 enum class HeightmapType : std::uint8_t {
@@ -23,8 +20,6 @@ enum class HeightmapType : std::uint8_t {
     MotionBlockingNoLeaves,
 };
 
-/// What a heightmap is called where it travels by name rather than by number, which is how every
-/// version below 1.21.5 carried it. parity: Heightmap.Types' own constant names.
 [[nodiscard]] std::string_view heightmapName(HeightmapType type) noexcept;
 
 struct Heightmap {
@@ -37,11 +32,7 @@ struct Heightmap {
     friend bool operator==(const Heightmap&, const Heightmap&) = default;
 };
 
-/// Clientbound, id 0x27: a miscellaneous world or game-state notification, one of a fixed set of
-/// numeric event types.
-///
-/// The chunk-load-start event goes right before chunk data on join: without it the loading screen
-/// never dismisses. A game mode change rides on this packet too.
+/// The chunk-load-start event goes right before chunk data on join: without it the loading screen never dismisses.
 struct GameEventPacket {
     static constexpr std::int32_t kId = 0x27;
     static constexpr std::uint8_t kStartRaining = 1;
@@ -60,7 +51,6 @@ struct GameEventPacket {
     friend bool operator==(const GameEventPacket&, const GameEventPacket&) = default;
 };
 
-/// The network form of ClientboundLevelChunkPacketData.BlockEntityInfo.
 struct ChunkBlockEntityInfo {
     std::uint8_t packedXZ = 0;
     std::int16_t y = 0;
@@ -73,7 +63,6 @@ struct ChunkBlockEntityInfo {
     friend bool operator==(const ChunkBlockEntityInfo&, const ChunkBlockEntityInfo&) = default;
 };
 
-/// The light half of a chunk, which travels both inside a chunk packet and on its own.
 struct LightData {
     std::vector<std::int64_t> skyLightMask;
     std::vector<std::int64_t> blockLightMask;
@@ -88,7 +77,6 @@ struct LightData {
     friend bool operator==(const LightData&, const LightData&) = default;
 };
 
-/// Clientbound, id 0x2e: one chunk column's block and biome data.
 struct MapChunkPacket {
     static constexpr std::int32_t kId = 0x2e;
 
@@ -100,17 +88,13 @@ struct MapChunkPacket {
     LightData light;
 
     void write(io::ByteBuffer& buffer) const;
-    /// Without `withLight` the light is left unread, for a caller that knows an older shape of it.
     [[nodiscard]] static std::optional<MapChunkPacket> read(io::ByteBuffer& buffer, bool withLight = true);
 
     friend bool operator==(const MapChunkPacket&, const MapChunkPacket&) = default;
 };
 
-/// Clientbound, id 0x0c: marks the start of a batch of chunk sends. No payload.
 inline constexpr std::int32_t kChunkBatchStartId = 0x0c;
 
-/// Clientbound, id 0x26: discard a chunk column that fell outside the view distance. Its body is one
-/// packed chunk position, not two separate ints like the chunk packet.
 struct ForgetLevelChunkPacket {
     static constexpr std::int32_t kId = 0x26;
 
@@ -123,10 +107,6 @@ struct ForgetLevelChunkPacket {
     friend bool operator==(const ForgetLevelChunkPacket&, const ForgetLevelChunkPacket&) = default;
 };
 
-/// Clientbound, id 0x0b: the end of a chunk batch, with how many chunks it held.
-///
-/// Without wrapping chunk sends in a start and finish pair a real client's loading screen never
-/// dismisses: it tracks progress by batch, not by individual chunk arrivals.
 struct ChunkBatchFinishedPacket {
     static constexpr std::int32_t kId = 0x0b;
 
@@ -150,7 +130,6 @@ struct ChunkBatchReceivedPacket {
     friend bool operator==(const ChunkBatchReceivedPacket&, const ChunkBatchReceivedPacket&) = default;
 };
 
-/// Clientbound, id 0x31: the light half of chunk sync, sent alongside the chunk itself.
 struct UpdateLightPacket {
     static constexpr std::int32_t kId = 0x31;
 
@@ -164,9 +143,7 @@ struct UpdateLightPacket {
     friend bool operator==(const UpdateLightPacket&, const UpdateLightPacket&) = default;
 };
 
-/// Clientbound, id 0x60: which chunk is the centre of the client's loaded area. Sent on join before
-/// any chunk data: without it the loading screen never dismisses, because the client never learns
-/// which chunks to expect.
+/// Clientbound, id 0x60: which chunk is the centre of the client's loaded area.
 struct SetChunkCacheCenterPacket {
     static constexpr std::int32_t kId = 0x60;
 
@@ -179,8 +156,7 @@ struct SetChunkCacheCenterPacket {
     friend bool operator==(const SetChunkCacheCenterPacket&, const SetChunkCacheCenterPacket&) = default;
 };
 
-/// Clientbound, id 0x61: how many chunks around the centre to expect. It has to match what the
-/// server actually sends, or the client waits for chunks that never arrive.
+/// It has to match what the server actually sends, or the client waits for chunks that never arrive.
 struct SetChunkCacheRadiusPacket {
     static constexpr std::int32_t kId = 0x61;
 
@@ -204,7 +180,6 @@ struct SetSimulationDistancePacket {
     friend bool operator==(const SetSimulationDistancePacket&, const SetSimulationDistancePacket&) = default;
 };
 
-/// Clientbound, id 0x08: a single block changed.
 struct ClientboundBlockUpdatePacket {
     static constexpr std::int32_t kId = 0x08;
 
@@ -217,8 +192,6 @@ struct ClientboundBlockUpdatePacket {
     friend bool operator==(const ClientboundBlockUpdatePacket&, const ClientboundBlockUpdatePacket&) = default;
 };
 
-/// Clientbound, id 0x25: a block shown to the client that the world does not hold.
-///
 /// parity: `ClientboundAddTransientBlockPacket`; the client draws it until the next update there.
 struct AddTransientBlockPacket {
     static constexpr std::int32_t kId = 0x25;
@@ -232,10 +205,7 @@ struct AddTransientBlockPacket {
     friend bool operator==(const AddTransientBlockPacket&, const AddTransientBlockPacket&) = default;
 };
 
-/// One clock's state: how many ticks it has counted, where it is between ticks, and how fast it
-/// runs. A rate of zero is how a paused clock is expressed, since there is no paused flag.
 struct ClockUpdate {
-    /// The clock's index in the `minecraft:world_clock` registry: 0 the overworld, 1 the end.
     std::int32_t clockId = 0;
     std::int64_t totalTicks = 0;
     float partialTick = 0.0F;
@@ -244,13 +214,10 @@ struct ClockUpdate {
     friend bool operator==(const ClockUpdate&, const ClockUpdate&) = default;
 };
 
-/// Clientbound, id 0x73: the world clocks' state.
-///
 /// Since 26.2 these are clocks, registry entries the dimension type points at, not a day-time number.
-/// A dimension with no clock (the Nether) is never updated.
 struct SetTimePacket {
     static constexpr std::int32_t kId = 0x73;
-    /// parity: WorldClocks, whose registration order is the id the holder carries.
+    /// parity: WorldClocks.
     static constexpr std::int32_t kOverworldClock = 0;
     static constexpr std::int32_t kEndClock = 1;
 
@@ -263,7 +230,6 @@ struct SetTimePacket {
     friend bool operator==(const SetTimePacket&, const SetTimePacket&) = default;
 };
 
-/// Clientbound, id 0x0a: the difficulty to show, and whether the client may change it.
 struct ChangeDifficultyPacket {
     static constexpr std::int32_t kId = 0x0a;
 
@@ -276,15 +242,10 @@ struct ChangeDifficultyPacket {
     friend bool operator==(const ChangeDifficultyPacket&, const ChangeDifficultyPacket&) = default;
 };
 
-/// Clientbound, id 0x56: every block that changed inside one section, in one packet.
-///
-/// The section packs as `SectionPos.asLong` (22 bits of x, 20 of y, 22 of z), each change as a varlong
-/// of the state id shifted over a 12-bit relative position.
 struct SectionBlocksUpdatePacket {
     static constexpr std::int32_t kId = 0x56;
 
     struct Change {
-        /// A section-relative position, already packed the way the wire wants it.
         std::int16_t position = 0;
         std::int32_t blockStateId = 0;
 
@@ -296,7 +257,7 @@ struct SectionBlocksUpdatePacket {
     std::int32_t sectionZ = 0;
     std::vector<Change> changes;
 
-    /// parity: SectionPos.sectionRelativePos, whose order is x, then z, then y.
+    /// parity: SectionPos.sectionRelativePos.
     [[nodiscard]] static constexpr std::int16_t packPosition(std::int32_t x, std::int32_t y, std::int32_t z) noexcept {
         return static_cast<std::int16_t>(((x & 15) << 8) | ((z & 15) << 4) | (y & 15));
     }

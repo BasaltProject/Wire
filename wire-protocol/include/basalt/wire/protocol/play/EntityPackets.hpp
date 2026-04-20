@@ -14,8 +14,6 @@
 
 namespace basalt::wire::protocol::play {
 
-/// Clientbound, id 0x68: equipment changes. The high bit on every slot except the last one is the
-/// continuation marker.
 struct SetEquipmentPacket {
     static constexpr std::int32_t kId = 0x68;
 
@@ -46,8 +44,6 @@ struct SetEquipmentPacket {
     friend bool operator==(const SetEquipmentPacket&, const SetEquipmentPacket&) = default;
 };
 
-/// Clientbound, id 0x7f: plays the "item flies to the player" pickup animation. Purely cosmetic: the
-/// inventory change itself travels through the container packets sent alongside it.
 struct TakeItemEntityPacket {
     static constexpr std::int32_t kId = 0x7f;
 
@@ -61,13 +57,9 @@ struct TakeItemEntityPacket {
     friend bool operator==(const TakeItemEntityPacket&, const TakeItemEntityPacket&) = default;
 };
 
-/// Clientbound, id 0x2f: a one-off effect at a position.
-///
-/// The one this build sends is the block-break puff of particles and its sound: the breaker plays
-/// its own, so without this everyone else sees blocks vanish in silence.
 struct LevelEventPacket {
     static constexpr std::int32_t kId = 0x2f;
-    /// parity: LevelEvent.PARTICLES_DESTROY_BLOCK, whose data is the broken block's state id.
+    /// parity: LevelEvent.PARTICLES_DESTROY_BLOCK.
     static constexpr std::int32_t kParticlesDestroyBlock = 2001;
 
     std::int32_t event = 0;
@@ -81,10 +73,6 @@ struct LevelEventPacket {
     friend bool operator==(const LevelEventPacket&, const LevelEventPacket&) = default;
 };
 
-/// Clientbound, id 0x05: the cracks on a block somebody is mining.
-///
-/// The stage is 0 to 9, and anything outside that range clears it: the digger predicts its own
-/// cracks, and everyone else only sees them because of this.
 struct BlockDestructionPacket {
     static constexpr std::int32_t kId = 0x05;
     /// parity: ServerPlayerGameMode's own range, and 10 as the "no cracks" value it sends.
@@ -101,10 +89,6 @@ struct BlockDestructionPacket {
     friend bool operator==(const BlockDestructionPacket&, const BlockDestructionPacket&) = default;
 };
 
-/// Clientbound, id 0x55: where an entity's head is looking.
-///
-/// The rotation packets carry the *body*, and a player's head is tracked apart from it: without
-/// this, another player's head only tips up and down and never turns to look sideways.
 struct RotateHeadPacket {
     static constexpr std::int32_t kId = 0x55;
 
@@ -117,7 +101,6 @@ struct RotateHeadPacket {
     friend bool operator==(const RotateHeadPacket&, const RotateHeadPacket&) = default;
 };
 
-/// Clientbound, id 0x02: a one-off animation on an entity. Arm swings go by `SwingAnimationPacket`.
 struct AnimatePacket {
     static constexpr std::int32_t kId = 0x02;
     static constexpr std::uint8_t kWakeUp = 0;
@@ -136,7 +119,7 @@ struct AnimatePacket {
 /// parity: `SwingAnimationType`.
 enum class SwingAnimationType : std::uint8_t { None, Whack, Stab };
 
-/// parity: `SwingAnimation`, the shape and length of an arm swing.
+/// parity: `SwingAnimation`.
 struct SwingAnimation {
     SwingAnimationType type = SwingAnimationType::Whack;
     std::int32_t duration = 6;
@@ -147,12 +130,10 @@ struct SwingAnimation {
     friend bool operator==(const SwingAnimation&, const SwingAnimation&) = default;
 };
 
-/// Clientbound, id 0x7b: somebody swung an arm.
 struct SwingAnimationPacket {
     static constexpr std::int32_t kId = 0x7b;
 
     std::int32_t entityId = 0;
-    /// 0 main hand, 1 off hand.
     std::int32_t hand = 0;
     SwingAnimation animation;
 
@@ -162,10 +143,6 @@ struct SwingAnimationPacket {
     friend bool operator==(const SwingAnimationPacket&, const SwingAnimationPacket&) = default;
 };
 
-/// Clientbound, id 0x66: who is leashed to, or riding, what.
-///
-/// Both ids are plain ints rather than varints, which is unusual enough to be worth stating: a
-/// varint here writes a shorter frame and desynchronises the client on the next packet.
 struct SetEntityLinkPacket {
     static constexpr std::int32_t kId = 0x66;
     /// What vanilla writes to say "nothing", which is how a dismount is expressed.
@@ -180,7 +157,7 @@ struct SetEntityLinkPacket {
     friend bool operator==(const SetEntityLinkPacket&, const SetEntityLinkPacket&) = default;
 };
 
-/// Clientbound, id 0x30: particles at a position. The type goes first, with its own options.
+/// The type goes first, with its own options.
 struct LevelParticlesPacket {
     static constexpr std::int32_t kId = 0x30;
 
@@ -198,11 +175,10 @@ struct LevelParticlesPacket {
     float maxSpeedY = 0.0F;
     float maxSpeedZ = 0.0F;
     std::int32_t count = 1;
-    /// parity: `force`, which shows the particle past the client's own particle-count setting.
+    /// parity: `force`.
     bool overrideLimiter = false;
     bool alwaysShow = false;
     Randomization randomization = Randomization::Default;
-    /// The type's own extra data. Absent for the types that carry none.
     std::optional<ParticleOptions> options;
 
     /// The same speed on the three axes, which is what every vanilla caller but a few passes.
@@ -216,13 +192,11 @@ struct LevelParticlesPacket {
     friend bool operator==(const LevelParticlesPacket&, const LevelParticlesPacket&) = default;
 };
 
-/// parity: ClientboundEntityEventPacket. Events 24 to 28 are the player's own permission level: the
-/// client's command parser refuses selectors below gamemaster, drawing a valid command in red.
+/// parity: ClientboundEntityEventPacket.
 struct EntityEventPacket {
     static constexpr std::int32_t kId = 0x22;
-    /// parity: EntityEvent.PERMISSION_LEVEL_ALL and the four above it.
     static constexpr std::int8_t kPermissionLevelBase = 24;
-    /// parity: EntityEvent.DEATH, which is what plays the dying animation.
+    /// parity: EntityEvent.DEATH.
     static constexpr std::int8_t kLivingDeath = 3;
 
     std::int32_t entityId = 0;
@@ -236,13 +210,9 @@ struct EntityEventPacket {
     friend bool operator==(const EntityEventPacket&, const EntityEventPacket&) = default;
 };
 
-/// Clientbound, id 0x8d: one entry of the locator bar.
-///
-/// The identifier is an either of a UUID and a string, written as a boolean and then the chosen
-/// side. Only the positioned kind is written here, which is the kind a command can point at.
 struct TrackedWaypointPacket {
     static constexpr std::int32_t kId = 0x8d;
-    /// parity: TrackedWaypoint.Type, where empty is 0, a position 1, a chunk 2 and an azimuth 3.
+    /// parity: TrackedWaypoint.Type.
     static constexpr std::int32_t kWaypointTypeVec3i = 1;
 
     enum class Operation : std::uint8_t {
@@ -254,8 +224,7 @@ struct TrackedWaypointPacket {
     Operation operation = Operation::Track;
     common::Uuid entityUuid;
     std::string style;
-    /// parity: ByteBufCodecs.RGB_COLOR is three bytes, not an int. Writing four disconnects the
-    /// client: it reads the waypoint type out of the leftover byte.
+    /// parity: ByteBufCodecs.RGB_COLOR is three bytes, not an int.
     std::optional<std::int32_t> color;
     std::int32_t x = 0;
     std::int32_t y = 0;
@@ -267,14 +236,10 @@ struct TrackedWaypointPacket {
     friend bool operator==(const TrackedWaypointPacket&, const TrackedWaypointPacket&) = default;
 };
 
-/// Clientbound, id 0x86: an entity's attributes and the modifiers on them.
-///
-/// This is how a client learns about mining efficiency: it reads the attribute off its own map,
-/// which only this packet fills, and not off the item in its hand.
 struct UpdateAttributesPacket {
     static constexpr std::int32_t kId = 0x86;
 
-    /// parity: AttributeModifier.Operation, in its own declared order.
+    /// parity: AttributeModifier.Operation.
     enum class Operation : std::uint8_t {
         AddValue,
         AddMultipliedBase,
@@ -290,7 +255,6 @@ struct UpdateAttributesPacket {
     };
 
     struct AttributeSnapshot {
-        /// The `minecraft:attribute` registry id.
         std::int32_t attribute = 0;
         double base = 0.0;
         std::vector<Modifier> modifiers;
@@ -307,19 +271,12 @@ struct UpdateAttributesPacket {
     friend bool operator==(const UpdateAttributesPacket&, const UpdateAttributesPacket&) = default;
 };
 
-/// What made an entity flash red, and where the hit came from.
-///
-/// The damage type travels as a holder of the synced registry, and the two entity ids as "id plus
-/// one", so zero means nobody.
 struct DamageEventPacket {
     static constexpr std::int32_t kId = 0x19;
 
     std::int32_t entityId = 0;
-    /// The index of the damage type in the `minecraft:damage_type` registry.
     std::int32_t damageType = 0;
-    /// Whoever is blamed for the hit, or -1 for a hit nobody dealt.
     std::int32_t causeEntityId = -1;
-    /// What actually touched them, an arrow say, or -1.
     std::int32_t directEntityId = -1;
     std::optional<double> sourceX;
     double sourceY = 0.0;
@@ -331,16 +288,11 @@ struct DamageEventPacket {
     friend bool operator==(const DamageEventPacket&, const DamageEventPacket&) = default;
 };
 
-/// Clientbound, id 0x87: one status effect on an entity.
-///
-/// parity: the effect id travels bare, because MobEffect.STREAM_CODEC is holderRegistry and not
-/// holder, so there is no plus one here. The two are easy to confuse and the wrong one silently
-/// shifts every effect.
+/// parity: the effect id travels bare, because MobEffect.STREAM_CODEC is holderRegistry and not.
 struct UpdateMobEffectPacket {
     static constexpr std::int32_t kId = 0x87;
 
     std::int32_t entityId = 0;
-    /// The `minecraft:mob_effect` registry id.
     std::int32_t effect = 0;
     std::int32_t amplifier = 0;
     std::int32_t durationTicks = 0;
@@ -355,7 +307,6 @@ struct UpdateMobEffectPacket {
     friend bool operator==(const UpdateMobEffectPacket&, const UpdateMobEffectPacket&) = default;
 };
 
-/// Clientbound, id 0x4f: one status effect gone.
 struct RemoveMobEffectPacket {
     static constexpr std::int32_t kId = 0x4f;
 
@@ -368,9 +319,7 @@ struct RemoveMobEffectPacket {
     friend bool operator==(const RemoveMobEffectPacket&, const RemoveMobEffectPacket&) = default;
 };
 
-/// Clientbound, id 0x23: where an entity is and which way it faces.
-///
-/// parity: `PositionPath`, written here only as its linear form, a single end point.
+/// parity: `PositionPath`.
 struct EntityPositionSyncPacket {
     static constexpr std::int32_t kId = 0x23;
 
@@ -388,13 +337,9 @@ struct EntityPositionSyncPacket {
     friend bool operator==(const EntityPositionSyncPacket&, const EntityPositionSyncPacket&) = default;
 };
 
-/// Serverbound, id 0x1a: somebody right-clicked an entity.
-///
-/// This is how a player feeds an animal, opens a villager's trades, or gets on a boat. The point is
-/// where on the entity the click landed, which is what tells sitting on a boat from riding it.
 struct InteractPacket {
     static constexpr std::int32_t kId = 0x1a;
-    /// parity: InteractionHand, the main hand and then the off hand.
+    /// parity: InteractionHand.
     static constexpr std::int32_t kMainHand = 0;
     static constexpr std::int32_t kOffHand = 1;
 
@@ -411,7 +356,6 @@ struct InteractPacket {
     friend bool operator==(const InteractPacket&, const InteractPacket&) = default;
 };
 
-/// Serverbound, id 0x01: somebody hit an entity, which 26.2 split out of the interact packet.
 struct AttackPacket {
     static constexpr std::int32_t kId = 0x01;
 
@@ -423,10 +367,6 @@ struct AttackPacket {
     friend bool operator==(const AttackPacket&, const AttackPacket&) = default;
 };
 
-/// Clientbound, id 0x67: how fast an entity is going now.
-///
-/// A client moves its own player, so a push it is not told about never happens: this is what makes
-/// knockback, a piston or a bubble column move the person standing there.
 struct SetEntityMotionPacket {
     static constexpr std::int32_t kId = 0x67;
 
@@ -441,10 +381,7 @@ struct SetEntityMotionPacket {
     friend bool operator==(const SetEntityMotionPacket&, const SetEntityMotionPacket&) = default;
 };
 
-/// Clientbound, id 0x2b: the tilt of a hit.
-///
-/// parity: ServerPlayer.indicateDamage, where the angle is where the hit came from relative to the
-/// way the player is looking, which is what leans the screen towards it.
+/// parity: ServerPlayer.indicateDamage.
 struct HurtAnimationPacket {
     static constexpr std::int32_t kId = 0x2b;
 
@@ -457,10 +394,6 @@ struct HurtAnimationPacket {
     friend bool operator==(const HurtAnimationPacket&, const HurtAnimationPacket&) = default;
 };
 
-/// Clientbound, id 0x6d: who is riding what.
-///
-/// Riding is not a position: a client draws the passenger on the vehicle because this says so, and
-/// a player who mounted without it stays standing beside the cart on every other screen.
 struct SetPassengersPacket {
     static constexpr std::int32_t kId = 0x6d;
 

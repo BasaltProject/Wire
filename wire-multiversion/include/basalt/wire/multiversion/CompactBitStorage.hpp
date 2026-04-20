@@ -7,19 +7,13 @@
 namespace basalt::wire::multiversion::compactBitStorage {
 
 /// The way values were packed into longs before 1.16: end to end, spilling across the boundary.
-///
-/// 1.16 stopped an entry ever spanning two longs and left the top of each long unused instead, so
-/// every version below it needs the tight packing written back, and a link below that one has to
-/// read what the link above it wrote.
 
 [[nodiscard]] constexpr std::size_t longsFor(std::size_t size, int bits) noexcept {
     return (size * static_cast<std::size_t>(bits) + 63) / 64;
 }
 
-/// The entries of the words, each that many bits wide, packed the old way.
 [[nodiscard]] std::vector<std::int32_t> unpack(std::span<const std::int64_t> words, int bits, std::size_t size);
 
-/// The values as entries of that width, packed the old way.
 [[nodiscard]] std::vector<std::int64_t> pack(std::span<const std::int32_t> values, int bits);
 
 } // namespace basalt::wire::multiversion::compactBitStorage

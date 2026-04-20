@@ -148,8 +148,6 @@ bool appendText(const std::string& path, std::string_view content) {
 bool createDirectories(const std::string& path) {
     std::error_code error;
     std::filesystem::create_directories(toPath(path), error);
-    // An existing directory is not a failure: create_directories reports false for it without an
-    // error code, and every caller means "make sure this is there".
     return !error;
 }
 

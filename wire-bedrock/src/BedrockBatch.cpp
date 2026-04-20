@@ -5,11 +5,9 @@
 namespace basalt::wire::bedrock {
 namespace {
 
-/// No single batch is bigger than this once decompressed. A Bedrock chunk batch is tens of
-/// kilobytes; anything near this is a peer asking for memory rather than sending a packet.
 constexpr std::size_t kMaxBatchSize = 16U * 1024U * 1024U;
 
-} // namespace
+}
 
 bool packBatch(std::span<const std::vector<std::uint8_t>> packets, const BatchSettings& settings,
                io::ByteBuffer& destination) {
@@ -34,8 +32,6 @@ bool packBatch(std::span<const std::vector<std::uint8_t>> packets, const BatchSe
         return true;
     }
 
-    // Snappy is the other algorithm a client will take, and this server does not offer it: the
-    // network settings say zlib, so a client never answers in anything else.
     const auto compressed = io::rawDeflate::compress(body.readable(), settings.level);
     if (!compressed) {
         return false;

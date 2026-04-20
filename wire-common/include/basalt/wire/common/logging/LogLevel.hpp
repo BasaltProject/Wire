@@ -5,7 +5,6 @@
 
 namespace basalt::wire::common {
 
-/// Ordered from most to least verbose; the numeric value drives level filtering in Logger.
 enum class LogLevel : std::uint8_t {
     Trace,
     Debug,

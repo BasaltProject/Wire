@@ -6,7 +6,6 @@
 
 namespace basalt::wire::io {
 
-/// Shared across owners; units are chosen by the consumer (bytes, sessions or pending jobs).
 class ResourceBudget {
     struct State;
 
@@ -21,7 +20,6 @@ public:
         Reservation& operator=(const Reservation&) = delete;
 
         [[nodiscard]] std::size_t size() const noexcept;
-        /// Growth fails atomically; shrinking immediately releases capacity.
         [[nodiscard]] bool resize(std::size_t units) noexcept;
         void reset() noexcept;
 
@@ -33,7 +31,6 @@ public:
     };
 
     explicit ResourceBudget(std::size_t limit);
-    /// Copies refer to the same budget. Reservations may outlive this handle.
     [[nodiscard]] std::optional<Reservation> acquire(std::size_t units) const noexcept;
     [[nodiscard]] std::size_t used() const noexcept;
     [[nodiscard]] std::size_t limit() const noexcept;

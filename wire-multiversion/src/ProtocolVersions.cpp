@@ -34,7 +34,7 @@ constexpr std::array<ProtocolVersion, 50> kAll = {{
     ProtocolVersion{776, "26.2"},          ProtocolVersion{777, "26.3"},
 }};
 
-} // namespace
+}
 
 std::string ProtocolVersion::toString() const { return std::string{label} + " (" + std::to_string(number) + ")"; }
 
@@ -45,8 +45,6 @@ std::span<const ProtocolVersion> known() noexcept { return kAll; }
 std::int32_t oldest() noexcept { return kAll.front().number; }
 
 std::optional<ProtocolVersion> of(std::int32_t number) noexcept {
-    // The table is sorted, so this is a binary search rather than a map: it is read on every
-    // handshake and never written.
     std::size_t low = 0;
     std::size_t high = kAll.size();
     while (low < high) {

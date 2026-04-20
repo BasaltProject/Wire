@@ -40,7 +40,6 @@ void BudgetMemoryResource::do_deallocate(void* pointer, std::size_t, std::size_t
         std::ranges::find_if(blocks_, [&](const Block& block) { return block.storage && block.aligned == pointer; });
     if (slot == blocks_.end())
         std::terminate();
-    // Destroy storage before returning either lease to another owner.
     slot->storage.reset();
     *slot = Block{};
 }

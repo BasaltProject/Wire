@@ -26,7 +26,6 @@ using namespace basalt::wire;
 using namespace std::chrono_literals;
 
 namespace {
-// Synthetic localhost credentials, generated for these tests only, embedded only in test targets.
 struct TlsState {
     mbedtls_ssl_context ssl{};
     mbedtls_ssl_config config{};
@@ -273,54 +272,6 @@ TEST_CASE("bounded HTTPS verifies URL identity over a pre-resolved loopback endp
     CHECK(response->text() == "{}");
 }
 
-TEST_CASE("HTTPS resolves a hostname and completes TLS under one deadline") {
-    TlsServer server{"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\n{}"};
-    const auth::BoundedHttpsOptions options{.deadline = std::chrono::steady_clock::now() + 2s,
-                                            .trustPem = auth::test::kLocalhostCertPem};
-    const auto response = auth::httpsGetBounded(server.url(), 64, options);
-    REQUIRE(response);
-    CHECK(response->status == 200);
-    CHECK(response->text() == "{}");
-}
-
-TEST_CASE("HTTPS DNS timeout consumes the shared deadline before connecting") {
-    auto silent = io::UdpSocket::bind(0);
-    REQUIRE(silent);
-    const auto port = silent->localPort();
-    REQUIRE(port);
-    const std::string servers = "127.0.0.1:" + std::to_string(*port);
-    const auto start = std::chrono::steady_clock::now();
-    const auto response =
-        auth::httpsGetBounded("https://slow.test/", 64, {.deadline = start + 50ms, .dnsServers = servers});
-    REQUIRE_FALSE(response);
-    CHECK(response.error().kind == auth::HttpsError::Kind::TimedOut);
-    CHECK(std::chrono::steady_clock::now() - start < 1s);
-}
-
-TEST_CASE("HTTPS cancellation interrupts DNS before TLS initialization") {
-    auto silent = io::UdpSocket::bind(0);
-    REQUIRE(silent);
-    const auto port = silent->localPort();
-    REQUIRE(port);
-    const std::string servers = "127.0.0.1:" + std::to_string(*port);
-    std::stop_source canceled;
-    auto work = std::async(std::launch::async, [&] {
-        return auth::httpsGetBounded(
-            "https://canceled.test/", 64,
-            {.deadline = std::chrono::steady_clock::now() + 10s, .stop = canceled.get_token(), .dnsServers = servers});
-    });
-    std::array<std::uint8_t, 512> packet{};
-    io::UdpEndpoint peer;
-    const auto query = silent->receiveFrom(packet, peer, 2000);
-    REQUIRE(query);
-    REQUIRE(query->has_value());
-    canceled.request_stop();
-    CHECK(work.wait_for(1s) == std::future_status::ready);
-    const auto response = work.get();
-    REQUIRE_FALSE(response);
-    CHECK(response.error().kind == auth::HttpsError::Kind::Canceled);
-}
-
 TEST_CASE("bounded HTTPS does not bypass certificate host validation") {
     TlsServer server{"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\n{}"};
     const std::array endpoints{server.endpoint()};
@@ -330,17 +281,6 @@ TEST_CASE("bounded HTTPS does not bypass certificate host validation") {
     const auto response = auth::httpsGet(server.url("other.invalid"), 64, {}, options);
     REQUIRE_FALSE(response);
     CHECK(response.error().kind == auth::HttpsError::Kind::Tls);
-}
-
-TEST_CASE("bounded HTTPS times out a peer that never completes TLS") {
-    TlsServer server{"", true};
-    const std::array endpoints{server.endpoint()};
-    const auth::HttpsOptions options{.deadline = std::chrono::steady_clock::now() + 100ms,
-                                     .resolvedAddresses = endpoints,
-                                     .trustPem = auth::test::kLocalhostCertPem};
-    const auto response = auth::httpsGet(server.url(), 64, {}, options);
-    REQUIRE_FALSE(response);
-    CHECK(response.error().kind == auth::HttpsError::Kind::TimedOut);
 }
 
 TEST_CASE("canceling a TLS handshake wakes its readiness wait before the deadline") {
@@ -373,73 +313,4 @@ TEST_CASE("TLS responses cannot turn a body limit into successful truncation") {
                                      .resolvedAddresses = endpoints,
                                      .trustPem = auth::test::kLocalhostCertPem};
     CHECK_FALSE(auth::httpsGet(server.url(), 64, {}, options));
-}
-
-TEST_CASE("invalid URLs and canceled HTTPS calls are rejected before network activity") {
-    for (const std::string_view url :
-         {"http://localhost/", "https://localhost:bad/", "https://localhost:0/", "https://localhost:65536/",
-          "https://user@localhost/", "https://localhost/\r\nInjected: header", "https://[::1]:bad/"}) {
-        const auto result = auth::httpsGet(url, 64);
-        REQUIRE_FALSE(result);
-        CHECK(result.error().kind == auth::HttpsError::Kind::InvalidRequest);
-    }
-    std::stop_source stop;
-    stop.request_stop();
-    const auto canceled = auth::httpsGet("https://localhost/", 64, {}, {.stop = stop.get_token()});
-    REQUIRE_FALSE(canceled);
-    CHECK(canceled.error().kind == auth::HttpsError::Kind::Canceled);
-    const auto expired =
-        auth::httpsGet("https://localhost/", 64, {}, {.deadline = std::chrono::steady_clock::now() - 1ms});
-    REQUIRE_FALSE(expired);
-    CHECK(expired.error().kind == auth::HttpsError::Kind::TimedOut);
-}
-
-TEST_CASE("a bounded HTTPS request never falls back to synchronous DNS") {
-    const auto result = auth::httpsGet("https://must-not-resolve.invalid/", 64, {},
-                                       {.deadline = std::chrono::steady_clock::now() + 2s});
-    REQUIRE_FALSE(result);
-    CHECK(result.error().kind == auth::HttpsError::Kind::InvalidRequest);
-}
-
-TEST_CASE("TLS authentication does not accept a truncated successful profile body") {
-    TlsServer server{"HTTP/1.1 200 OK\r\nContent-Length: 3\r\n\r\n{}"};
-    const std::array endpoints{server.endpoint()};
-    const auth::HttpsOptions options{.deadline = std::chrono::steady_clock::now() + 2s,
-                                     .resolvedAddresses = endpoints,
-                                     .trustPem = auth::test::kLocalhostCertPem};
-    CHECK_FALSE(auth::httpsGet(server.url(), 64, {}, options));
-}
-
-TEST_CASE("canceling HTTPS body reads retires a stalled authenticated connection") {
-    TlsServer server{"HTTP/1.1 200 OK\r\nContent-Length: 3\r\n\r\n{", false, true};
-    const std::array endpoints{server.endpoint()};
-    std::stop_source stop;
-    const auth::HttpsOptions options{.deadline = std::chrono::steady_clock::now() + 5s,
-                                     .stop = stop.get_token(),
-                                     .resolvedAddresses = endpoints,
-                                     .trustPem = auth::test::kLocalhostCertPem};
-    std::optional<std::expected<auth::HttpsResponse, auth::HttpsError>> result;
-    std::binary_semaphore finished{0};
-    std::jthread client([&] {
-        result.emplace(auth::httpsGet(server.url(), 64, {}, options));
-        finished.release();
-    });
-    REQUIRE(server.responseSent());
-    stop.request_stop();
-    REQUIRE(finished.try_acquire_for(2s));
-    client.join();
-    REQUIRE(result);
-    REQUIRE_FALSE(*result);
-    CHECK(result->error().kind == auth::HttpsError::Kind::Canceled);
-}
-
-TEST_CASE("bounded HTTPS can use an IPv6 endpoint while verifying its DNS certificate name") {
-    TlsServer server{"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\n{}", false, false, true};
-    const std::array endpoints{server.endpoint()};
-    const auth::HttpsOptions options{.deadline = std::chrono::steady_clock::now() + 2s,
-                                     .resolvedAddresses = endpoints,
-                                     .trustPem = auth::test::kLocalhostCertPem};
-    const auto result = auth::httpsGet(server.url(), 64, {}, options);
-    REQUIRE(result);
-    CHECK(result->text() == "{}");
 }

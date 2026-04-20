@@ -16,8 +16,7 @@ namespace {
 namespace play = protocol::play;
 using protocol::ProtocolState;
 
-/// parity: `ClientboundSetEntityMotionPacket` before 1.21.9, which stored blocks per tick times
-/// 8000.
+/// parity: `ClientboundSetEntityMotionPacket` before 1.21.9, which stored blocks per tick times.
 constexpr double kVelocityScale = 8000.0;
 constexpr double kVelocityLimit = 3.9;
 
@@ -25,7 +24,6 @@ constexpr double kVelocityLimit = 3.9;
     return static_cast<std::int16_t>(std::lround(std::clamp(value, -kVelocityLimit, kVelocityLimit) * kVelocityScale));
 }
 
-/// The 256ths of a turn an angle travels as.
 [[nodiscard]] std::uint8_t angleOf(float degrees) {
     return static_cast<std::uint8_t>(std::lround(degrees * 256.0F / 360.0F));
 }
@@ -39,8 +37,6 @@ void writeShortVelocity(io::ByteBuffer& output, double x, double y, double z) {
 } // namespace
 
 bool Link772::clientbound(ProtocolState state, MutablePacket& packet) {
-    // Renumbering first, shape second: the numbers are read out of the packet as this server writes
-    // it, and what is written here is no longer that packet.
     if (!RenumberingLink::clientbound(state, packet)) {
         return false;
     }
@@ -94,7 +90,6 @@ bool Link772::clientbound(ProtocolState state, MutablePacket& packet) {
                 output.writeDouble(explode->knockbackZ);
             }
             protocol::varInt::write(output, explode->particleId);
-            // The sound as a direct holder, which is how this server always writes one.
             protocol::varInt::write(output, 0);
             protocol::writeString(output, explode->sound);
             protocol::writeBoolean(output, false);
@@ -106,8 +101,6 @@ bool Link772::clientbound(ProtocolState state, MutablePacket& packet) {
             if (!spawn.has_value()) {
                 return;
             }
-            // The dimension and the pitch have nowhere to go: 1.21.8 has one spawn point, in the
-            // world the player is in, and one angle to face it with.
             output.writeLong(spawn->globalPos.location.pack());
             output.writeFloat(spawn->yaw);
         });

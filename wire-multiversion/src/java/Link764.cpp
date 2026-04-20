@@ -39,7 +39,6 @@ bool Link764::clientbound(ProtocolState state, MutablePacket& packet) {
     case play::kSetTitleTextId:
     case play::kSetSubtitleTextId:
     case play::kSetActionBarTextId: {
-        // The three title lines share a body: one component and nothing else.
         const auto title = decode(packet, [](io::ByteBuffer& in) { return play::TitleTextPacket::read(in); });
         if (!title.has_value()) {
             return true;
@@ -78,12 +77,6 @@ bool Link764::clientbound(ProtocolState state, MutablePacket& packet) {
         });
         break;
     }
-    // Packets whose text sits inside a shape of its own, which this link does not unpick.
-    //
-    // A boss bar, an objective and a team all carry a component in the middle of a structure that
-    // changes with a mode byte. Sending them with the text still as NBT would leave the client
-    // reading a length where a tag is, so they are left out until they are done properly: the bar
-    // and the sidebar do not appear, and nothing else breaks.
     case play::BossEventPacket::kId:
     case play::SetObjectivePacket::kId:
     case play::SetPlayerTeamPacket::kId:

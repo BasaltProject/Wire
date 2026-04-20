@@ -81,8 +81,6 @@ std::optional<Uuid> Uuid::parse(std::string_view text) {
 }
 
 Uuid Uuid::random() {
-    // Not seeded from anything reproducible on purpose: these name things that exist only while
-    // the process does, and two servers that agreed on them would be wrong, not right.
     static thread_local std::mt19937_64 generator{std::random_device{}()};
     const std::uint64_t high = (generator() & 0xFFFFFFFFFFFF0FFFULL) | 0x0000000000004000ULL;
     const std::uint64_t low = (generator() & 0x3FFFFFFFFFFFFFFFULL) | 0x8000000000000000ULL;
@@ -91,7 +89,6 @@ Uuid Uuid::random() {
 
 Uuid Uuid::nameBased(std::string_view input) {
     std::array<std::uint8_t, 16> digest = md5(input);
-    // Version 3 in the high nibble of byte 6, variant 2 in the top bits of byte 8.
     digest[6] = static_cast<std::uint8_t>((digest[6] & 0x0F) | 0x30);
     digest[8] = static_cast<std::uint8_t>((digest[8] & 0x3F) | 0x80);
 

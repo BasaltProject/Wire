@@ -41,8 +41,6 @@ std::expected<std::vector<std::uint8_t>, CompressionError> decompress(std::span<
         return std::vector<std::uint8_t>{};
     }
 
-    // The frame usually declares its uncompressed size, which makes the common case a single
-    // allocation of exactly the right size.
     const unsigned long long declared = ZSTD_getFrameContentSize(source.data(), source.size());
     if (declared != ZSTD_CONTENTSIZE_UNKNOWN && declared != ZSTD_CONTENTSIZE_ERROR) {
         if (declared > kMaxDecompressedSize) {
@@ -100,7 +98,6 @@ struct StreamCompressor::State {
     State(const State&) = delete;
     State& operator=(const State&) = delete;
 
-    /// Drives one call of the compressor until it has nothing more to give for this input.
     bool drive(ZSTD_inBuffer& input, ZSTD_EndDirective mode) {
         while (true) {
             ZSTD_outBuffer out{output.data(), output.size(), 0};
@@ -159,7 +156,6 @@ struct StreamDecompressor::State {
     ZSTD_inBuffer input{nullptr, 0, 0};
     std::array<std::uint8_t, kChunkSize> buffer{};
 
-    /// What of `buffer` has been decompressed but not yet handed out.
     std::size_t pendingStart = 0;
     std::size_t pendingEnd = 0;
     bool failed = false;
@@ -175,7 +171,6 @@ struct StreamDecompressor::State {
     State(const State&) = delete;
     State& operator=(const State&) = delete;
 
-    /// Decompresses the next block into the buffer. False once the frame has ended or failed.
     bool refill() {
         if (failed || ended || input.pos == input.size) {
             return false;
@@ -232,9 +227,6 @@ bool StreamDecompressor::frameComplete() const noexcept {
     if (state_->pendingStart != state_->pendingEnd) {
         return false;
     }
-    // The frame may end on a block that filled the output buffer exactly, in which case the
-    // decompressor has not been asked the one more time that tells it so: with the input consumed
-    // and nothing pending there is nothing left either way.
     return state_->ended || state_->input.pos == state_->input.size;
 }
 

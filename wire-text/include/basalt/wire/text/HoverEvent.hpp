@@ -11,11 +11,7 @@ namespace basalt::wire::text {
 
 class Component;
 
-/// What appears when a player hovers a piece of text. Mirrors Adventure's HoverEvent model.
-///
-/// `show_item` and `show_entity` carry plain identifiers because the richer types live in
-/// server-registry and server-world, which sit above wire-text. The hovered component is held by
-/// shared pointer because Component owns a Style and a Style owns a HoverEvent.
+/// The hovered component is held by shared pointer because Component owns a Style and a Style owns a HoverEvent.
 struct HoverEvent {
     struct ShowText {
         std::shared_ptr<const Component> value;

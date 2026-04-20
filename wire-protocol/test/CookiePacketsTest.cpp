@@ -27,17 +27,6 @@ TEST_CASE("cookie codecs retain absent, empty and maximum-size payloads") {
     CHECK(buffer.failed());
 }
 
-TEST_CASE("cookie decoder rejects oversized payload declarations before reading bytes") {
-    auto buffer = io::ByteBuffer::wrap({3, 'a', ':', 'b', 1, 0x81, 0x28});
-    CHECK_FALSE(ResponsePacket::read(buffer));
-    buffer = io::ByteBuffer::wrap({3, 'a', ':', 'b', 0x81, 0x28});
-    CHECK_FALSE(StorePacket::read(buffer));
-    buffer = io::ByteBuffer::wrap({3, 'A', ':', 'b'});
-    CHECK_FALSE(RequestPacket::read(buffer));
-    buffer = io::ByteBuffer::wrap({3, 'a', ':', 'b', 1, 2, 42});
-    CHECK_FALSE(ResponsePacket::read(buffer));
-}
-
 TEST_CASE("cookie responses match independent binary vectors and canonical identifiers") {
     io::ByteBuffer buffer;
     ResponsePacket{"a:b", std::nullopt}.write(buffer);

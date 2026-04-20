@@ -71,7 +71,6 @@ void writeNewer(io::ByteBuffer& buffer, const BedrockMapData& map) {
     writeVarLong(buffer, map.mapId);
     buffer.writeByte(map.dimension);
     writeBool(buffer, map.locked);
-    // The origin, which only a map drawn by the client itself fills in.
     writeVarInt(buffer, 0);
     writeVarInt(buffer, 0);
     writeVarInt(buffer, 0);
@@ -89,10 +88,10 @@ void writeNewer(io::ByteBuffer& buffer, const BedrockMapData& map) {
     if (decorated) {
         writeVarUInt(buffer, static_cast<std::uint32_t>(map.decorations->size()));
         for (std::size_t index = 0; index < map.decorations->size(); ++index) {
-            writeIntLE(buffer, 0); // An entity,
+            writeIntLE(buffer, 0);
             writeBool(buffer, true);
             writeVarLong(buffer, static_cast<std::int64_t>(index));
-            writeBool(buffer, false); // not a block.
+            writeBool(buffer, false);
         }
     }
     writeBool(buffer, decorated);

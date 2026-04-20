@@ -7,7 +7,6 @@
 
 namespace basalt::wire::common {
 
-/// min, median, 95th and max of a set of samples, in milliseconds.
 struct DurationSummary {
     std::size_t samples = 0;
     double minMillis = 0.0;
@@ -19,15 +18,10 @@ struct DurationSummary {
     friend bool operator==(const DurationSummary&, const DurationSummary&) = default;
 };
 
-/// How long each tick took, for the last few minutes. TPS hides this: a server pinned at 20 with one
-/// tick in fifty taking 80 ms stutters. Hence min, median, 95th and max rather than an average.
-///
-/// A fixed-size ring with no lock, written by the tick thread: a reader catching a sample mid-write
-/// gets one wrong figure in thousands, and locking every tick would be measuring the measurement.
+/// Lock-free ring written by the tick thread: a reader may see one torn sample, which beats locking every tick.
 class TickDurations {
 public:
     static constexpr std::int64_t kNanosPerSecond = 1'000'000'000;
-    /// Five minutes at twenty a second, the longest window anything asks for.
     static constexpr std::size_t kDefaultCapacity = 20 * 60 * 5;
 
     explicit TickDurations(std::size_t capacity = kDefaultCapacity)
@@ -35,10 +29,6 @@ public:
 
     void record(std::int64_t atNanos, std::int64_t durationNanos);
 
-    /// Ticks counted in the window, divided by how much of that window actually exists.
-    ///
-    /// By observed time, not by the window: a server thirty seconds old has no last five minutes,
-    /// and dividing its ticks by three hundred reported 0.14 TPS on a server running perfectly.
     [[nodiscard]] double ticksPerSecond(std::int64_t nowNanos, int windowSeconds) const;
 
     [[nodiscard]] DurationSummary summary(std::int64_t nowNanos, int windowSeconds) const;

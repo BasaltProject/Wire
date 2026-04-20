@@ -6,7 +6,7 @@
 namespace basalt::wire::protocol::play {
 namespace {
 
-/// parity: ByteBufCodecs.LONG_ARRAY, what a heightmap travels as.
+/// parity: ByteBufCodecs.LONG_ARRAY.
 void writeLongArray(io::ByteBuffer& buffer, const std::vector<std::int64_t>& words) {
     varInt::write(buffer, static_cast<std::int32_t>(words.size()));
     for (const std::int64_t word : words) {
@@ -281,8 +281,7 @@ void SetTimePacket::write(io::ByteBuffer& buffer) const {
     buffer.writeLong(gameTime);
     varInt::write(buffer, static_cast<std::int32_t>(clocks.size()));
     for (const ClockUpdate& clock : clocks) {
-        // parity: WorldClock.STREAM_CODEC is holderRegistry, so this is the plain id. With one
-        // added, `/time` in the overworld drove the End's clock and nothing changed.
+        // parity: WorldClock.STREAM_CODEC is holderRegistry, so this is the plain id.
         varInt::write(buffer, clock.clockId);
         varLong::write(buffer, clock.totalTicks);
         buffer.writeFloat(clock.partialTick);

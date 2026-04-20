@@ -193,8 +193,6 @@ private:
     std::size_t position_;
 };
 
-/// Vanilla's own SNBT accepts exponent notation, and `stringify` can emit it for large or small
-/// values, so a token like `1e-7d` has to come back as a number and not as a string.
 NbtTag numberOrKeyword(std::string_view token) {
     if (token == "true") {
         return NbtTag::ofBoolean(true);
@@ -265,8 +263,6 @@ NbtTag numberOrKeyword(std::string_view token) {
         break;
     }
     }
-    // Anything that does not parse as the number its suffix promises stays a string, which is what
-    // an unquoted identifier in a command argument is.
     return NbtTag::ofString(std::string{token});
 }
 

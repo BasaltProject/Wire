@@ -57,8 +57,6 @@ void ChunkRewriter::writeContainer(io::ByteBuffer& output, std::span<const std::
         return;
     }
 
-    // The older form is the same bytes with the length of the long array in front, so this writes
-    // the modern one into a scratch buffer and copies it out with the count worked out from it.
     io::ByteBuffer modern;
     paletted::write(modern, values, minIndirectBits, maxIndirectBits, directBits);
 
@@ -66,8 +64,7 @@ void ChunkRewriter::writeContainer(io::ByteBuffer& output, std::span<const std::
     output.writeByte(bits);
     if (bits == 0) {
         varInt::write(output, varInt::read(modern));
-        // Even a container of one value counts its longs out loud in the older form, and the count
-        // is zero. Leaving it out is a byte short and the client reads the next field as a length.
+        // Leaving it out is a byte short and the client reads the next field as a length.
         varInt::write(output, 0);
         return;
     }

@@ -10,9 +10,7 @@
 
 namespace basalt::wire::protocol::play {
 
-/// The index of each parser in vanilla's COMMAND_ARGUMENT_TYPE registry, which is the registration
-/// order in ArgumentTypeInfos.bootstrap. A protocol fact, not content: the client resolves the
-/// parser by that number alone.
+/// A protocol fact, not content: the client resolves the parser by that number alone.
 namespace argumentType {
 inline constexpr std::int32_t kBrigadierBool = 0;
 inline constexpr std::int32_t kBrigadierFloat = 1;
@@ -79,17 +77,13 @@ inline constexpr std::int32_t kUuid = 61;
 inline constexpr std::int32_t kCount = 62;
 } // namespace argumentType
 
-/// One argument parser in the command tree: its registry id plus its own configuration. Most carry
-/// nothing (vanilla's `SingletonArgumentInfo`); bounded number parsers hold optional limits, matching
-/// the wire's flag byte rather than sentinel extremes.
 class ArgumentParser {
 public:
-    /// A parser with no configuration at all.
     struct None {
         friend bool operator==(const None&, const None&) = default;
     };
 
-    /// `brigadier:string`. The order is StringArgumentType.StringType's own.
+    /// The order is StringArgumentType.StringType's own.
     enum class StringKind : std::uint8_t {
         SingleWord,
         QuotablePhrase,
@@ -110,8 +104,6 @@ public:
         friend bool operator==(const Bounds&, const Bounds&) = default;
     };
 
-    /// `minecraft:entity`: a selector. The two flags decide how many entities and of what kind may
-    /// match.
     struct EntityProperties {
         bool single = false;
         bool playersOnly = false;
@@ -119,21 +111,18 @@ public:
         friend bool operator==(const EntityProperties&, const EntityProperties&) = default;
     };
 
-    /// `minecraft:score_holder`: a selector or a bare name, which is how fake players are scored.
     struct ScoreHolderProperties {
         bool multiple = false;
 
         friend bool operator==(const ScoreHolderProperties&, const ScoreHolderProperties&) = default;
     };
 
-    /// `minecraft:time`: a tick count with an optional unit, never below this.
     struct TimeProperties {
         std::int32_t min = 0;
 
         friend bool operator==(const TimeProperties&, const TimeProperties&) = default;
     };
 
-    /// The parsers that name a registry: `resource`, `resource_key`, `resource_or_tag` and friends.
     struct RegistryProperties {
         std::string registry;
 
@@ -155,7 +144,6 @@ public:
         return std::get_if<T>(&properties_);
     }
 
-    /// Writes the registry id and then whatever configuration follows it.
     void write(io::ByteBuffer& buffer) const;
 
     [[nodiscard]] static std::optional<ArgumentParser> read(io::ByteBuffer& buffer);
@@ -167,9 +155,6 @@ private:
     Properties properties_;
 };
 
-/// One node of the command tree on the wire, already flattened to indices. parity:
-/// ClientboundCommandsPacket.Entry, whose flag byte carries both the node kind in its low two bits
-/// and the executable, redirect and custom-suggestion bits above them.
 struct CommandNodeData {
     enum class Kind : std::uint8_t {
         Root,
@@ -193,11 +178,7 @@ struct CommandNodeData {
     friend bool operator==(const CommandNodeData&, const CommandNodeData&) = default;
 };
 
-/// Clientbound, id 0x10: the command tree, sent once the player is in play.
-///
-/// The client parses commands locally against this tree before sending anything, so it is what
-/// makes tab completion, the red "unknown command" highlight and argument colouring work. Vanilla
-/// sends a per-player tree, already filtered to the commands that player may use.
+/// Vanilla sends a per-player tree, already filtered to the commands that player may use.
 struct CommandsPacket {
     static constexpr std::int32_t kId = 0x10;
 

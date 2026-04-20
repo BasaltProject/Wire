@@ -197,8 +197,6 @@ std::optional<PlayerInfoUpdatePacket> PlayerInfoUpdatePacket::read(io::ByteBuffe
     if (buffer.failed()) {
         return std::nullopt;
     }
-    // The three actions this build does not write carry fields of unknown width, so a packet with one
-    // of them set cannot be walked past: refusing it is the only correct answer.
     constexpr std::uint8_t supported = kAddPlayer | kInitializeChat | kUpdateGameMode | kUpdateListed | kUpdateLatency;
     if ((packet.actions & static_cast<std::uint8_t>(~supported)) != 0) {
         buffer.markFailed();

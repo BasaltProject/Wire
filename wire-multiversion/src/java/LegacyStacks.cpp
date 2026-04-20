@@ -19,7 +19,6 @@ constexpr std::int32_t kItemMask = 0xFFFF;
 constexpr int kDamageShift = 16;
 
 void writeTag(io::ByteBuffer& output, const std::optional<nbt::NbtCompound>& tag) {
-    // No tag at all, which is a single zero byte rather than an empty compound.
     if (!tag.has_value()) {
         output.writeByte(0);
         return;
@@ -27,7 +26,6 @@ void writeTag(io::ByteBuffer& output, const std::optional<nbt::NbtCompound>& tag
     protocol::writeAnonymousNbt(output, nbt::NbtTag::ofCompound(*tag));
 }
 
-/// 1.13 to 1.20.4: present, then the item, the count and a tag.
 void writeTagged(io::ByteBuffer& output, const std::optional<WireItemStack>& item) {
     if (!item.has_value() || item->count <= 0) {
         protocol::writeBoolean(output, false);
@@ -39,13 +37,11 @@ void writeTagged(io::ByteBuffer& output, const std::optional<WireItemStack>& ite
     writeTag(output, tagOf(*item));
 }
 
-/// 1.12.2 and below: the item in a short, then the count, the damage, and the tag.
 void writeDamaged(io::ByteBuffer& output, const std::optional<WireItemStack>& item) {
     if (!item.has_value() || item->count <= 0) {
         output.writeShort(static_cast<std::int16_t>(kEmptyItem));
         return;
     }
-    // The damage rides in the high half of the id: below 1.13 a variant is an item and a number.
     output.writeShort(static_cast<std::int16_t>(item->itemId & kItemMask));
     output.writeByte(static_cast<std::uint8_t>(item->count));
     output.writeShort(static_cast<std::int16_t>(static_cast<std::uint32_t>(item->itemId) >> kDamageShift));

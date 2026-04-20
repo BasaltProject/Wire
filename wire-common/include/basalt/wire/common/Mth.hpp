@@ -12,8 +12,7 @@ namespace basalt::wire::common::mth {
 
 inline constexpr double kSinScale = 10430.378350470453;
 
-/// parity: Mth's 65536-entry float sine table. World carvers read these values instead of calling
-/// the platform trigonometric functions, and a one-bit trajectory difference moves many blocks.
+/// parity: Mth's 65536-entry sine table; carvers read it and a one-bit difference moves many blocks.
 [[nodiscard]] const float* sineTable() noexcept;
 
 [[nodiscard]] inline int floor(double v) noexcept { return toIntLikeJava(std::floor(v)); }
@@ -79,7 +78,6 @@ inline constexpr double kSinScale = 10430.378350470453;
     return clampedLerp(inverseLerp(value, fromMin, fromMax), toMin, toMax);
 }
 
-/// Unclamped linear remap of `value` from `[fromMin, fromMax]` to `[toMin, toMax]`.
 [[nodiscard]] constexpr double map(double value, double fromMin, double fromMax, double toMin, double toMax) noexcept {
     return lerp(inverseLerp(value, fromMin, fromMax), toMin, toMax);
 }
@@ -92,8 +90,6 @@ inline constexpr double kSinScale = 10430.378350470453;
     return estimate * (1.5 - half * estimate * estimate);
 }
 
-/// The first index in `[from, to)` for which `condition` holds, assuming it holds for a contiguous
-/// suffix of the range; `to` if it never does.
 template <typename Condition>
 [[nodiscard]] constexpr int binarySearch(int from, int to, Condition condition) {
     int lo = from;

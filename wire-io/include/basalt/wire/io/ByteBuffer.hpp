@@ -16,12 +16,6 @@
 
 namespace basalt::wire::io {
 
-/// A growable, big-endian byte buffer with independent read and write cursors, in the spirit of
-/// Netty's ByteBuf. This is what the packet codecs are built on.
-///
-/// Reading past the end neither throws nor reads out of bounds: it returns zero and raises a sticky
-/// failure flag the caller checks once per packet. Packet decoding is the main attack surface, and a
-/// codec layer this size cannot afford a branch on every read in the source, only in machine code.
 class ByteBuffer {
 public:
     explicit ByteBuffer(std::size_t initialCapacity = 256) { storage_.reserve(initialCapacity); }
@@ -31,7 +25,6 @@ public:
         storage_.reserve(initialCapacity);
     }
 
-    /// Adopts the bytes as readable content without copying.
     [[nodiscard]] static ByteBuffer wrap(std::vector<std::uint8_t> bytes) {
         ByteBuffer buffer{0};
         buffer.storage_.adopt(std::move(bytes));
@@ -46,13 +39,10 @@ public:
 
     [[nodiscard]] std::size_t capacity() const noexcept { return storage_.capacity(); }
 
-    /// True once a read has asked for more than the buffer held. Sticky until cleared.
     [[nodiscard]] bool failed() const noexcept { return failed_; }
 
     void clearFailure() noexcept { failed_ = false; }
 
-    /// Raised by the layers above when the bytes were there but did not mean anything: a varint
-    /// longer than five bytes, a string past its declared maximum.
     void markFailed() noexcept { failed_ = true; }
 
     void reserve(std::size_t extraBytes) { storage_.reserve(storage_.size() + extraBytes); }
@@ -125,7 +115,6 @@ public:
 
     void skip(std::size_t length) noexcept { static_cast<void>(readSpan(length)); }
 
-    /// The unread region, without consuming it. Invalidated by the next write.
     [[nodiscard]] std::span<const std::uint8_t> readable() const noexcept {
         return {storage_.data() + readerIndex_, readableBytes()};
     }
@@ -136,17 +125,12 @@ public:
         return {storage_.data() + at, length};
     }
 
-    /// A writable view of everything from an offset to the end, for a layer that has to go back and
-    /// fill in a length it could not know when it reserved room for it.
     [[nodiscard]] std::span<std::uint8_t> mutableSpan(std::size_t from) noexcept {
         return {storage_.data() + from, storage_.size() - from};
     }
 
-    /// Drops however much of the tail was not used, after writing straight into `writableTail`.
     void trimTail(std::size_t unused) noexcept { storage_.resize(storage_.size() - unused); }
 
-    /// Moves the unread bytes to the front so the buffer can be reused without reallocating. This is
-    /// what keeps a connection's read buffer alive across packets instead of one per packet.
     void discardReadBytes() {
         if (readerIndex_ == 0) {
             return;

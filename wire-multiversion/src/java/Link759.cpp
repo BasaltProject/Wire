@@ -19,7 +19,6 @@ bool Link759::clientbound(protocol::ProtocolState state, MutablePacket& packet) 
     if (state != protocol::ProtocolState::Play || packet.nativeId() != protocol::play::SystemChatPacket::kId) {
         return true;
     }
-    // The text is already a string of json by here: the link to 1.20.2 put it back.
     io::ByteBuffer input = io::ByteBuffer::wrap(packet.body);
     const std::string json = protocol::readString(input, kMaxText);
     const bool overlay = input.readByte() != 0;

@@ -19,7 +19,6 @@ using protocol::ProtocolState;
 constexpr std::string_view kDimensionType = "minecraft:dimension_type";
 constexpr std::string_view kChatType = "minecraft:chat_type";
 
-/// Everything a client of 1.20.1 looks for in the codec, in the order vanilla writes it.
 constexpr std::array<std::string_view, 3> kCodecRegistries = {kDimensionType, "minecraft:worldgen/biome", kChatType};
 
 [[nodiscard]] std::pair<std::string, nbt::NbtCompound> defaultChatType() {
@@ -50,8 +49,6 @@ bool Link763::clientbound(ProtocolState state, MutablePacket& packet) {
         return true;
     }
     if (packet.nativeId() == play::RespawnPacket::kId) {
-        // The spawn arrives without its sea level (the link to 1.21 took it out) and has to come out
-        // named rather than numbered, like the one inside the login packet.
         io::ByteBuffer input = io::ByteBuffer::wrap(packet.body);
         const LoginFields::SpawnFields spawn = LoginFields::SpawnFields::read(input, false);
         const std::uint8_t keep = input.readByte();
@@ -79,7 +76,6 @@ bool Link763::clientbound(ProtocolState state, MutablePacket& packet) {
     if (packet.nativeId() != play::LoginPlayPacket::kId) {
         return true;
     }
-    // By here the two links above have taken the online-mode flag and the sea level out of it.
     const LoginFields login = decode(packet, [](io::ByteBuffer& in) { return LoginFields::read(in, false, false); });
     encode(packet, [&](io::ByteBuffer& output) {
         output.writeInt(login.entityId);

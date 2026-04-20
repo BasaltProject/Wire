@@ -31,8 +31,6 @@ void writePacked(io::ByteBuffer& buffer, const BitStorageView& storage, std::spa
     if (palette.size() == 1) {
         buffer.writeByte(0);
         varInt::write(buffer, palette[0]);
-        // No data array follows: a zero-bit storage has no words, and the length is never on the
-        // wire anyway, only derived from the bit width and the container size.
         return;
     }
 
@@ -50,8 +48,6 @@ void writePacked(io::ByteBuffer& buffer, const BitStorageView& storage, std::spa
 
 void write(io::ByteBuffer& buffer, std::span<const std::int32_t> values, int minIndirectBits, int maxIndirectBits,
            int directBits) {
-    // First-seen order into a flat array, no sets and no maps: this runs once per section of every
-    // chunk sent, and a palette small enough to be indirect is small enough to scan.
     const std::size_t paletteLimit = (1ULL << maxIndirectBits) + 1;
     std::vector<std::int32_t> palette;
     palette.reserve(paletteLimit);
@@ -112,8 +108,6 @@ std::vector<std::int32_t> read(io::ByteBuffer& buffer, std::size_t size, int max
         }
     }
 
-    // The word count is never sent: it comes from the bit width and the container's known size, the
-    // same formula the storage uses.
     const std::size_t wordCount = bitStorageLongCount(bitsPerEntry, size);
     std::vector<std::uint64_t> words(wordCount);
     for (std::size_t i = 0; i < wordCount; ++i) {

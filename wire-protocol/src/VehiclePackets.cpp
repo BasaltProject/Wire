@@ -24,7 +24,7 @@ void writePosition(io::ByteBuffer& buffer, const VehiclePosition& position) {
     return position;
 }
 
-/// parity: `ByteBufCodecs.ROTATION_BYTE`, `Mth.packDegrees` and back.
+/// parity: `ByteBufCodecs.ROTATION_BYTE`.
 void writeRotation(io::ByteBuffer& buffer, float degrees) {
     buffer.writeByte(static_cast<std::uint8_t>(
         static_cast<std::int8_t>(static_cast<std::int32_t>(std::floor(degrees * 256.0F / 360.0F)))));

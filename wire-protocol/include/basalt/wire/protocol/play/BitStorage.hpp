@@ -7,7 +7,6 @@
 
 namespace basalt::wire::protocol::play {
 
-/// How many longs a storage of this shape takes.
 [[nodiscard]] constexpr std::size_t bitStorageLongCount(int bitsPerEntry, std::size_t size) noexcept {
     if (bitsPerEntry == 0) {
         return 0;
@@ -16,13 +15,7 @@ namespace basalt::wire::protocol::play {
     return (size + valuesPerLong - 1) / valuesPerLong;
 }
 
-/// Fixed-width values packed into 64-bit words, matching vanilla's SimpleBitStorage: an entry never
-/// spans two words, and the leftover high bits of each word are padding. Not the pre-1.16 scheme
-/// that packed across word boundaries.
-///
-/// A view, not an owner. The words belong to the chunk section, and both the world and the network
-/// codec read them in place: expanding a section into 4096 ints to send it was 16 KB of garbage per
-/// section and 24 sections per chunk.
+/// Not the pre-1.16 scheme that packed across word boundaries.
 class BitStorageView {
 public:
     BitStorageView(int bitsPerEntry, std::size_t size, std::span<std::uint64_t> words) noexcept
@@ -66,7 +59,6 @@ private:
     std::uint64_t mask_;
 };
 
-/// A BitStorageView that owns its words, for the callers that do not already have storage.
 class BitStorage {
 public:
     BitStorage(int bitsPerEntry, std::size_t size)

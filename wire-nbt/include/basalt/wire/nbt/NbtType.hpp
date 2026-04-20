@@ -6,7 +6,6 @@
 
 namespace basalt::wire::nbt {
 
-/// The 13 NBT tag type ids, unchanged since Minecraft Beta 1.3.
 enum class NbtType : std::uint8_t {
     End = 0,
     Byte = 1,
@@ -32,9 +31,7 @@ enum class NbtType : std::uint8_t {
 
 [[nodiscard]] std::string_view nbtTypeName(NbtType type) noexcept;
 
-/// Why binary or SNBT input did not describe a well-formed NBT document. Parsing NBT off the wire
-/// is the server's main attack surface, so failure is a value the caller has to look at, never an
-/// exception thrown out of a packet handler.
+/// Failure is a value, never an exception thrown out of a packet handler.
 enum class NbtError : std::uint8_t {
     UnexpectedEnd,
     UnknownTagId,

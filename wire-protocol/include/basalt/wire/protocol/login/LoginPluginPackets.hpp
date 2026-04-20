@@ -9,12 +9,9 @@
 
 namespace basalt::wire::protocol::login {
 
-/// parity: ClientboundCustomQueryPacket.MAX_PAYLOAD_SIZE, the most a login query may carry either
-/// way.
+/// parity: ClientboundCustomQueryPacket.MAX_PAYLOAD_SIZE.
 inline constexpr std::int32_t kMaxLoginPayloadSize = 1048576;
 
-/// Clientbound, id 0x04: an out-of-band question during login. The payload is written raw and runs
-/// to the end of the frame.
 struct LoginPluginRequestPacket {
     static constexpr std::int32_t kId = 4;
 
@@ -28,8 +25,7 @@ struct LoginPluginRequestPacket {
     friend bool operator==(const LoginPluginRequestPacket&, const LoginPluginRequestPacket&) = default;
 };
 
-/// Serverbound, id 0x02: the answer, matched by transaction id. An absent payload is "I do not know
-/// that channel", which is what every real client answers.
+/// An absent payload is "I do not know that channel", which is what every real client answers.
 struct LoginPluginResponsePacket {
     static constexpr std::int32_t kId = 2;
 

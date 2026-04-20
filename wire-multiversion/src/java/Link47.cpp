@@ -27,14 +27,12 @@ constexpr std::size_t kColumns = 16 * 16;
 constexpr std::size_t kVelocityBytes = 6;
 constexpr std::size_t kPositionHeadBytes = 8 * 3 + 4 * 2 + 1;
 
-/// What 1.9 calls the packets this one has to know apart, in that version's numbering.
 constexpr std::int32_t kAddEntity = 0x00;
 constexpr std::int32_t kAddMob = 0x03;
 constexpr std::int32_t kAddPlayer = 0x05;
 constexpr std::int32_t kNamedSound47 = 0x19;
 constexpr std::int32_t kMapChunk47 = 0x21;
 
-/// parity: `ServerboundClientInformationPacket` in play, which is where 1.8 sends it.
 constexpr std::int32_t kClientInformation = 14;
 
 constexpr std::int32_t kMainHand = 0;
@@ -54,7 +52,6 @@ void writeFixed(io::ByteBuffer& output, double x, double y, double z) {
     output.writeInt(static_cast<std::int32_t>(z * kFixedPoint));
 }
 
-/// The values of one section, whatever width and palette it was written with.
 [[nodiscard]] std::vector<std::int32_t> readContainer(io::ByteBuffer& input) {
     const int bits = input.readByte();
     std::vector<std::int32_t> palette;
@@ -97,7 +94,6 @@ bool Link47::clientbound(ProtocolState state, MutablePacket& packet) {
         emptyChunk(packet);
         break;
     case play::SetEntityDataPacket::kId:
-        // The data arrives in 1.8's own shape, kind and index in one byte, so it goes through.
         break;
     case play::SpawnEntityPacket::kId:
         return rewriteSpawn(packet);
@@ -130,17 +126,12 @@ bool Link47::serverbound(ProtocolState state, MutablePacket& packet) {
         return true;
     }
     if (packet.nativeId() == kClientInformation) {
-        // 1.9 asked which hand is the main one. There is one hand there, and it is the right.
         encode(packet, [&](io::ByteBuffer& output) {
             output.writeBytes(packet.body);
             protocol::varInt::write(output, kMainHandRight);
         });
         return true;
     }
-    // Placing a block is the one thing a 1.8 client says that this server cannot read: it sends the
-    // stack it believes it is holding and the cursor in sixteenths, and what reads it here wants a
-    // hand, a hit and a sequence number that 1.8 has no idea about. Dropped rather than half-read: a
-    // misread packet takes the connection with it.
     return packet.nativeId() != play::ServerboundUseItemOnPacket::kId;
 }
 
@@ -227,7 +218,6 @@ bool Link47::rewriteSpawn(MutablePacket& packet) {
             output.writeByte(pitch);
             output.writeByte(yaw);
             output.writeInt(data);
-            // 1.8 only carries the velocity when there is object data to go with it.
             if (data != 0) {
                 output.writeBytes(velocity);
             }

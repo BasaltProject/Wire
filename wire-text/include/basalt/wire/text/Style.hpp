@@ -9,9 +9,6 @@
 
 namespace basalt::wire::text {
 
-/// Formatting for a Component. Every field is tri-state: absent means "inherited from the parent",
-/// not "off". That is vanilla's actual inheritance model, so a bold parent with a plain child still
-/// renders bold unless the child explicitly turns it off.
 struct Style {
     std::optional<TextColor> color;
     std::optional<bool> bold;
@@ -29,7 +26,6 @@ struct Style {
                !clickEvent && !hoverEvent;
     }
 
-    /// Every field of `other` overlaid on this one, wherever `other` sets it.
     [[nodiscard]] Style merge(const Style& other) const;
 
     friend bool operator==(const Style&, const Style&) = default;

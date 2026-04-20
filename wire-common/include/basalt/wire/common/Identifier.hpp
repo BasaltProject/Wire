@@ -8,13 +8,11 @@
 
 namespace basalt::wire::common {
 
-/// Why a string failed to parse as `namespace:path`.
 enum class IdentifierError : std::uint8_t {
     TooManySeparators,
     EmptyPart,
 };
 
-/// A namespaced key (`minecraft:stone`, `basalt:some_plugin_block`), the vanilla resource ID format.
 class Identifier {
 public:
     static constexpr std::string_view kVanillaNamespace = "minecraft";
@@ -26,7 +24,6 @@ public:
         return Identifier{std::string{kVanillaNamespace}, std::move(path)};
     }
 
-    /// Parses `namespace:path`, or bare `path` (defaulting to the vanilla namespace).
     [[nodiscard]] static std::expected<Identifier, IdentifierError> parse(std::string_view value);
 
     [[nodiscard]] const std::string& namespaceName() const noexcept { return namespace_; }
@@ -37,8 +34,6 @@ public:
 
     friend bool operator==(const Identifier&, const Identifier&) = default;
 
-    /// Namespace first, then path. A total order so an identifier can key an ordered container, and
-    /// the order tags and command completions come out in.
     friend std::strong_ordering operator<=>(const Identifier&, const Identifier&) = default;
 
 private:

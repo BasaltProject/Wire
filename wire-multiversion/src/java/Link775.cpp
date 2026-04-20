@@ -19,7 +19,6 @@ bool Link775::clientbound(protocol::ProtocolState state, MutablePacket& packet) 
         return true;
     }
     rewrite(packet, [](io::ByteBuffer& input, io::ByteBuffer& output) {
-        // The profile, field by field: there is no session id on the other side to write.
         output.writeLong(input.readLong());
         output.writeLong(input.readLong());
         protocol::writeString(output, protocol::readString(input, 16));

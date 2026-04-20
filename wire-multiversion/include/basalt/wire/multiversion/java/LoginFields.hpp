@@ -10,13 +10,8 @@
 
 namespace basalt::wire::multiversion::java {
 
-/// The packet that starts the game, read and written field by field. It cannot go through the packet
-/// class: by the time a link halfway down the chain sees it, the links above have already taken
-/// fields out, so the reader that matches this server no longer matches the bytes.
-///
 /// What each version dropped, newest first: 26.2 added `onlineMode`, 1.21.2 the spawn sea level.
 struct LoginFields {
-    /// The half of it that describes where the player is, which the respawn packet carries alone.
     struct SpawnFields {
         std::int32_t dimension = 0;
         std::string dimensionName;
@@ -32,8 +27,6 @@ struct LoginFields {
 
         void write(io::ByteBuffer& output, bool withSeaLevel) const;
 
-        /// `varIntGamemodes` reads 26.3's shape: the mode as a varint and the previous one as an
-        /// optional varint, where every version below writes two bytes.
         [[nodiscard]] static SpawnFields read(io::ByteBuffer& input, bool withSeaLevel, bool varIntGamemodes = false);
     };
 
@@ -55,7 +48,6 @@ struct LoginFields {
     [[nodiscard]] static LoginFields read(io::ByteBuffer& input, bool withOnlineMode, bool withSeaLevel,
                                           bool varIntGamemodes = false);
 
-    /// Where the player died, as a block position, for the versions that want it unpacked.
     [[nodiscard]] std::optional<protocol::play::BlockPos> deathBlock() const;
 };
 

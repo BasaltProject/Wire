@@ -10,11 +10,6 @@
 namespace basalt::wire::multiversion::java {
 
 /// A link between two versions that differ only in what things are called.
-///
-/// That is most of the modern range: Mojang inserts names into registries and reshuffles packet
-/// ids, and the packets themselves stay as they were. The renumbering itself is not done here, it
-/// is done once for the whole chain (see ComposedTables); this class exists to carry the id tables
-/// and to be the base of the links that do have a packet to reshape.
 class RenumberingLink : public ProtocolLink {
 public:
     explicit RenumberingLink(const VersionTables& tables)
@@ -33,14 +28,12 @@ public:
 protected:
     [[nodiscard]] const VersionTables& tables() const noexcept { return *tables_; }
 
-    /// Reads the packet's body without changing it.
     template <typename Read>
     static auto decode(const MutablePacket& packet, Read&& read) {
         io::ByteBuffer input = io::ByteBuffer::wrap(packet.body);
         return std::forward<Read>(read)(input);
     }
 
-    /// Replaces the packet's body with whatever `write` puts in the buffer.
     template <typename Write>
     static void encode(MutablePacket& packet, Write&& write) {
         io::ByteBuffer output;
@@ -48,7 +41,6 @@ protected:
         packet.body = output.toVector();
     }
 
-    /// Decodes, lets `block` write the older shape, and puts the result back in the packet.
     template <typename Block>
     static void rewrite(MutablePacket& packet, Block&& block) {
         io::ByteBuffer input = io::ByteBuffer::wrap(packet.body);

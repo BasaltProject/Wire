@@ -10,9 +10,7 @@
 namespace basalt::wire::protocol::play {
 namespace {
 
-// parity: EntityDataSerializers' own registration ids. Only the ones an entity this server sends
-// actually uses are here; anything else is refused rather than skipped, because a serializer whose
-// width is unknown cannot be stepped over without losing the rest of the stream.
+// parity: EntityDataSerializers' own registration ids. Only the ones an entity this server sends.
 constexpr std::int32_t kByteSerializer = 0;
 constexpr std::int32_t kIntSerializer = 1;
 constexpr std::int32_t kLongSerializer = 2;
@@ -26,7 +24,6 @@ constexpr std::int32_t kRotationsSerializer = 9;
 constexpr std::int32_t kOptionalBlockPosSerializer = 11;
 constexpr std::int32_t kParticleSerializer = 16;
 constexpr std::int32_t kParticlesSerializer = 17;
-/// A guard against a hostile count, far above the few dozen effects that exist.
 constexpr std::int32_t kMaxParticles = 1024;
 constexpr std::int32_t kVillagerDataSerializer = 18;
 constexpr std::int32_t kOptionalUnsignedIntSerializer = 19;

@@ -7,8 +7,6 @@
 namespace basalt::wire::bedrock {
 
 std::string_view bedrockEntityName(const std::string_view javaType) {
-    // The fourteen the two editions spell differently. Everything else is the same word on both,
-    // and there is nothing in a name that says which kind it is, so the list is the whole answer.
     static constexpr std::array<std::pair<std::string_view, std::string_view>, 14> kRenamed{{
         {"minecraft:breeze_wind_charge", "minecraft:breeze_wind_charge_projectile"},
         {"minecraft:end_crystal", "minecraft:ender_crystal"},

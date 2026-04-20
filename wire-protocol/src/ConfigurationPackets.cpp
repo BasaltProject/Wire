@@ -6,8 +6,6 @@
 namespace basalt::wire::protocol::configuration {
 namespace {
 
-/// Reads a list whose entries each take at least `bytesPerEntry`, refusing a count the buffer could
-/// not possibly hold.
 template <typename Entry, typename Read>
 std::vector<Entry> readList(io::ByteBuffer& buffer, std::int32_t bytesPerEntry, Read&& read) {
     const std::int32_t count = readCollectionSize(buffer, bytesPerEntry);

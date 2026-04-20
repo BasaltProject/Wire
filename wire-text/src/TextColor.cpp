@@ -9,7 +9,6 @@
 namespace basalt::wire::text {
 namespace {
 
-// Order is vanilla's colour order, which is also the legacy code order.
 constexpr std::array<std::pair<std::string_view, TextColor>, 16> kNamed = {{
     {"black", kBlack},
     {"dark_blue", kDarkBlue},

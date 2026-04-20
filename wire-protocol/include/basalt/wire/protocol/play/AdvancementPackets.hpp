@@ -17,7 +17,6 @@ struct AdvancementDisplayData {
     text::Component title = text::Component::empty();
     text::Component description = text::Component::empty();
     WireItemStack icon;
-    /// `AdvancementType` ids: 0 task, 1 challenge, 2 goal.
     std::int32_t frame = 0;
     std::optional<std::string> background;
     bool showToast = true;
@@ -26,24 +25,23 @@ struct AdvancementDisplayData {
     friend bool operator==(const AdvancementDisplayData&, const AdvancementDisplayData&) = default;
 };
 
-/// parity: `ItemStackTemplate.STREAM_CODEC`, the item before the count, then the patch.
+/// parity: `ItemStackTemplate.STREAM_CODEC`.
 void writeItemStackTemplate(io::ByteBuffer& buffer, const WireItemStack& stack);
 
-/// One advancement as the client builds its screen from. parity: `PositionedAdvancement`.
+/// parity: `PositionedAdvancement`.
 struct AdvancementEntry {
     std::string id;
     std::optional<std::string> parent;
     std::optional<AdvancementDisplayData> display;
     std::vector<std::vector<std::string>> requirements;
     bool sendsTelemetryEvent = false;
-    /// Where the screen draws it. parity: `AdvancementNode.x`/`y`, set by `TreeNodePosition`.
+    /// parity: `AdvancementNode.x`/`y`, set by `TreeNodePosition`.
     float x = 0.0F;
     float y = 0.0F;
 
     friend bool operator==(const AdvancementEntry&, const AdvancementEntry&) = default;
 };
 
-/// One advancement's criteria and when each was obtained, in epoch milliseconds, or nothing.
 struct AdvancementProgressData {
     std::string id;
     std::vector<std::pair<std::string, std::optional<std::int64_t>>> criteria;
@@ -51,7 +49,7 @@ struct AdvancementProgressData {
     friend bool operator==(const AdvancementProgressData&, const AdvancementProgressData&) = default;
 };
 
-/// Clientbound, id 0x85. parity: `ClientboundUpdateAdvancementsPacket`.
+/// parity: `ClientboundUpdateAdvancementsPacket`.
 struct UpdateAdvancementsPacket {
     static constexpr std::int32_t kId = 0x85;
 
@@ -68,7 +66,6 @@ struct UpdateAdvancementsPacket {
     friend bool operator==(const UpdateAdvancementsPacket&, const UpdateAdvancementsPacket&) = default;
 };
 
-/// Clientbound, id 0x57: the tab the advancement screen opens on, or none.
 struct SelectAdvancementsTabPacket {
     static constexpr std::int32_t kId = 0x57;
 
@@ -80,7 +77,6 @@ struct SelectAdvancementsTabPacket {
     friend bool operator==(const SelectAdvancementsTabPacket&, const SelectAdvancementsTabPacket&) = default;
 };
 
-/// Serverbound, id 0x33: a tab opened, or the screen closed.
 struct SeenAdvancementsPacket {
     static constexpr std::int32_t kId = 0x33;
 

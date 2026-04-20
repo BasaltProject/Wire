@@ -5,8 +5,6 @@
 
 namespace basalt::wire::text {
 
-/// Parses `assets/minecraft/lang/en_us.json`: one flat object of key to format string. Anything that
-/// is not a string is skipped rather than refused, so one odd entry does not cost the whole file.
 std::expected<LangTable, common::JsonError> parseLangTable(std::string_view json) {
     const auto parsed = common::parseJson(json);
     if (!parsed) {

@@ -11,10 +11,9 @@ namespace {
 
 namespace play = protocol::play;
 
-/// What the link to 1.16.4 named the mob spawn, in that version's numbering.
 constexpr std::int32_t kAddMob = 0x03;
 
-/// parity: `ClientboundSetTitlesPacket.Type`, where 1.11 put the action bar second.
+/// parity: `ClientboundSetTitlesPacket.Type`.
 constexpr std::int32_t kActionBar = 2;
 
 } // namespace

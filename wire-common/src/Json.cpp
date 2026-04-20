@@ -1,7 +1,5 @@
 #include <basalt/wire/common/json/Json.hpp>
 
-// The only translation unit that sees simdjson. Everything else in Basalt talks to JsonValue, so a
-// 5 MB header does not land on every file that happens to read a config.
 #include <array>
 #include <charconv>
 #include <cstdint>
@@ -23,8 +21,6 @@ std::expected<JsonValue, JsonError> convert(simdjson::dom::element element, int 
     case simdjson::dom::element_type::INT64:
         return JsonValue::of(std::int64_t{element});
     case simdjson::dom::element_type::UINT64:
-        // A value past the signed range is not something Minecraft data ever holds; keeping it as a
-        // double loses less than wrapping it would.
         return JsonValue::of(static_cast<double>(std::uint64_t{element}));
     case simdjson::dom::element_type::DOUBLE:
         return JsonValue::of(double{element});

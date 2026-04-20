@@ -22,8 +22,7 @@ struct IoReady {
     bool closed = false;
 };
 
-/// Level-triggered readiness. Registration and wait belong to one owner; wake may be called from
-/// another thread while the loop is alive. Tokens identify the caller's session generation.
+/// Registration and wait belong to one owner; wake may be called from another thread.
 class EventLoop {
 public:
     EventLoop();
@@ -31,18 +30,15 @@ public:
     EventLoop(const EventLoop&) = delete;
     EventLoop& operator=(const EventLoop&) = delete;
 
-    /// Adds or changes a registration. No readiness is retained after unwatch.
     [[nodiscard]] std::expected<void, int> watch(std::int64_t handle, IoInterest interest, std::uint64_t token);
     void unwatch(std::int64_t handle);
     [[nodiscard]] std::size_t watchedCount() const noexcept;
 
-    /// Result storage is reused; its view expires at the next wait or registration change.
     [[nodiscard]] std::expected<std::span<const IoReady>, int> wait(std::optional<int> timeoutMillis = std::nullopt);
 
     /// Coalesces notifications; the caller owns the task queue and must drain it after every wait.
     [[nodiscard]] std::expected<void, int> wake() const;
 
-    /// Blocking-reader compatibility for existing consumers. New runtimes use wait's borrowed view.
     void watch(std::int64_t handle);
     [[nodiscard]] std::expected<std::vector<std::int64_t>, int>
     waitReadable(std::optional<int> timeoutMillis = std::nullopt);

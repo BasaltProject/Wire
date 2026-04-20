@@ -22,10 +22,8 @@ constexpr int kMaxIndirectBits = 8;
 constexpr std::int32_t kMapChunk = 0x22;
 constexpr std::int32_t kOverworld = 0;
 
-/// parity: the difficulty stopped travelling with the world, so it is told the usual one.
 constexpr std::uint8_t kNormal = 2;
 
-/// A section with no light of its own is dark rather than absent: 1.13 has no way to say.
 constexpr std::array<std::uint8_t, 2048> kDark{};
 
 void copyContainer(io::ByteBuffer& input, io::ByteBuffer& output) {
@@ -80,8 +78,6 @@ bool Link404::clientbound(protocol::ProtocolState state, MutablePacket& packet) 
         break;
     }
     case play::SpawnEntityPacket::kId:
-        // Only the generic spawn: a mob or a player is its own packet by here, with its own shape,
-        // and the links above made it one.
         if (packet.id == kAddEntity) {
             narrowType(packet);
         }
@@ -126,7 +122,6 @@ bool Link404::lightTheChunk(MutablePacket& packet) {
     const std::int32_t blockMask = protocol::varInt::read(input);
     static_cast<void>(protocol::varInt::read(input));
     static_cast<void>(protocol::varInt::read(input));
-    // How many arrays there are is the masks: the count is not sent.
     const std::vector<std::vector<std::uint8_t>> skyLight =
         readArrays(input, std::popcount(static_cast<std::uint32_t>(skyMask)));
     const std::vector<std::vector<std::uint8_t>> blockLight =

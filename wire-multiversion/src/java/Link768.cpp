@@ -26,9 +26,6 @@ bool Link768::clientbound(protocol::ProtocolState state, MutablePacket& packet) 
         break;
     }
     case play::LevelParticlesPacket::kId: {
-        // Only the second field goes; the rest of the packet is the same bytes, so it is copied
-        // across rather than decoded, which keeps the particle's own options out of this link's
-        // business.
         io::ByteBuffer input = io::ByteBuffer::wrap(packet.body);
         const bool overrideLimiter = input.readByte() != 0;
         static_cast<void>(input.readByte());

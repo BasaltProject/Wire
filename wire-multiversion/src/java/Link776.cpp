@@ -30,12 +30,11 @@ namespace configuration = protocol::configuration;
 using protocol::ProtocolState;
 using Shape = play::ParticleOptionShape;
 
-/// 26.2's animate packet, which still carried the swings.
 constexpr std::int32_t kAnimate776 = 0x02;
 constexpr std::uint8_t kSwingMainHand776 = 0;
 constexpr std::uint8_t kSwingOffHand776 = 3;
 
-/// parity: ServerboundPlayerActionPacket.Action.CHANGE_DESTROY_DIRECTION, new at 1.
+/// parity: ServerboundPlayerActionPacket.Action.CHANGE_DESTROY_DIRECTION.
 constexpr std::int32_t kChangeDestroyDirection = 1;
 
 /// The brewing stand's total brew time and total fuel, the slots 26.3 added after the two it had.
@@ -51,11 +50,9 @@ constexpr std::array<std::pair<std::int32_t, Shape>, 22> kParticleShapes = {{
     {121, Shape::BlockState},    {125, Shape::BlockState},
 }};
 
-/// Registries 26.3 started sending that 26.2 has no idea of.
 constexpr std::array<std::string_view, 3> kNewRegistries = {
     "minecraft:decorated_pot_pattern", "minecraft:block_transformer", "minecraft:worldgen/block_state_provider"};
 
-/// The recipe property sets 26.2 hardcodes rather than reads.
 constexpr std::array<std::string_view, 2> kNewPropertySets = {"minecraft:brewing_input", "minecraft:brewing_reagent"};
 
 /// parity: the 26.2 trim materials that darkened on armour of their own metal.
@@ -63,8 +60,6 @@ constexpr std::array<std::string_view, 5> kDarkerOnOwnArmour = {"copper", "diamo
 
 constexpr std::string_view kTrimPalettePrefix = "trim/";
 
-/// 26.2's numbering of an argument parser. What 26.2 has no parser for is read as a quotable string,
-/// which is what those arguments are typed as anyway.
 play::ArgumentParser olderArgument(const play::ArgumentParser& parser) {
     namespace type = play::argumentType;
     switch (parser.registryId()) {
@@ -89,7 +84,6 @@ Shape shapeOf(std::int32_t nativeType) {
     return found == kParticleShapes.end() ? Shape::None : found->second;
 }
 
-/// A 26.3 trim material as the 26.2 one: the palette becomes an asset name again.
 void downgradeTrimMaterial(nbt::NbtCompound& material) {
     std::string palette{material.getString("palette_id")};
     material.remove("palette_id");
@@ -191,7 +185,6 @@ bool Link776::clientbound(ProtocolState state, MutablePacket& packet) {
         particles(packet);
         break;
     case play::ExplodePacket::kId:
-        // The sound flag is the last byte, and 26.2 always played the sound.
         if (!packet.body.empty()) {
             packet.body.pop_back();
         }
@@ -361,7 +354,6 @@ void Link776::particles(MutablePacket& packet) const {
             }
         }
         output.writeBytes(input.readSpan(2));
-        // Position and spread, then the one speed 26.2 had where 26.3 has three.
         output.writeBytes(input.readSpan(3 * 8 + 3 * 4));
         output.writeFloat(input.readFloat());
         static_cast<void>(input.readFloat());
@@ -386,7 +378,6 @@ bool Link776::serverbound(ProtocolState state, MutablePacket& packet) {
     }
     switch (packet.nativeId()) {
     case play::kPunchId: {
-        // 26.2's swing: only the main hand's is a punch.
         io::ByteBuffer input = io::ByteBuffer::wrap(packet.body);
         if (protocol::varInt::read(input) != 0) {
             return false;
@@ -402,7 +393,6 @@ bool Link776::serverbound(ProtocolState state, MutablePacket& packet) {
         });
         break;
     case play::AcceptTeleportationPacket::kId: {
-        // 26.2 says where it landed in the move right after, so the confirmation waits for it.
         io::ByteBuffer input = io::ByteBuffer::wrap(packet.body);
         pendingTeleport_ = protocol::varInt::read(input);
         return false;

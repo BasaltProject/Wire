@@ -27,7 +27,6 @@ std::string_view trim(std::string_view value) {
     return value;
 }
 
-/// Splits a tag body on `:`, honouring quotes so `<hover:show_text:'a:b'>` keeps its colon.
 std::vector<std::string> splitTagArguments(std::string_view raw) {
     std::vector<std::string> out;
     std::string current;

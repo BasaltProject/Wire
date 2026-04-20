@@ -4,7 +4,6 @@
 
 namespace basalt::wire::multiversion::java {
 
-/// What protocol 766 calls everything the version above it names differently.
 const VersionTables& tables766();
 
-} // namespace basalt::wire::multiversion::java
+}

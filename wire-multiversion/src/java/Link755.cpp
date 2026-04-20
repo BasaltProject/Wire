@@ -56,7 +56,7 @@ bool Link755::clientbound(protocol::ProtocolState state, MutablePacket& packet) 
     case play::ContainerSetSlotPacket::kId: {
         io::ByteBuffer input = io::ByteBuffer::wrap(packet.body);
         const std::uint8_t containerId = input.readByte();
-        static_cast<void>(protocol::varInt::read(input)); // The state id, which 1.17 does not have.
+        static_cast<void>(protocol::varInt::read(input));
         encode(packet, [&](io::ByteBuffer& output) {
             output.writeByte(containerId);
             output.writeBytes(input.readable());
@@ -66,7 +66,7 @@ bool Link755::clientbound(protocol::ProtocolState state, MutablePacket& packet) 
     case play::ContainerSetContentPacket::kId: {
         io::ByteBuffer input = io::ByteBuffer::wrap(packet.body);
         const std::uint8_t containerId = input.readByte();
-        static_cast<void>(protocol::varInt::read(input)); // The state id again.
+        static_cast<void>(protocol::varInt::read(input));
         const std::int32_t count = protocol::varInt::read(input);
         io::ByteBuffer items;
         for (std::int32_t i = 0; i < count && !input.failed(); ++i) {
@@ -78,7 +78,6 @@ bool Link755::clientbound(protocol::ProtocolState state, MutablePacket& packet) 
             output.writeShort(static_cast<std::int16_t>(count));
             output.writeBytes(slots);
         });
-        // What is on the cursor is the last stack of all, and 1.17 has no field for it.
         break;
     }
     default:

@@ -15,7 +15,6 @@ namespace {
 namespace play = protocol::play;
 using protocol::ProtocolState;
 
-/// The high bit of an equipment slot, saying another one follows.
 constexpr std::int32_t kContinues = 0x80;
 
 } // namespace
@@ -29,7 +28,6 @@ bool Link765::clientbound(ProtocolState state, MutablePacket& packet) {
         nameAttributes(packet);
         break;
     case play::ContainerSetSlotPacket::kId: {
-        // The link to 1.21 already put the container in one byte, so this reads that.
         io::ByteBuffer input = io::ByteBuffer::wrap(packet.body);
         const std::uint8_t container = input.readByte();
         const std::int32_t stateId = protocol::varInt::read(input);
@@ -92,7 +90,6 @@ bool Link765::serverbound(ProtocolState state, MutablePacket& packet) {
     if (state != ProtocolState::Play || packet.nativeId() != play::ServerboundSetCreativeModeSlotPacket::kId) {
         return true;
     }
-    // The stack coming back is the old shape, and what reads it next is the new one.
     io::ByteBuffer input = io::ByteBuffer::wrap(packet.body);
     const std::int16_t slot = input.readShort();
     if (input.readByte() == 0) {
@@ -108,8 +105,6 @@ bool Link765::serverbound(ProtocolState state, MutablePacket& packet) {
         output.writeShort(slot);
         protocol::varInt::write(output, count);
         protocol::varInt::write(output, itemId);
-        // The tag is dropped rather than guessed at: what it held is components over here, and the
-        // names do not line up. What the item is and how many survive.
         protocol::varInt::write(output, 0);
         protocol::varInt::write(output, 0);
     });

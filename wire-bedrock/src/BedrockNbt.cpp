@@ -8,7 +8,6 @@ namespace basalt::wire::bedrock::nbt {
 
 namespace {
 
-/// The tag numbers, which both editions share even though nothing else about the format is shared.
 constexpr std::uint8_t kEnd = 0x00;
 constexpr std::uint8_t kByte = 0x01;
 constexpr std::uint8_t kShort = 0x02;
@@ -24,15 +23,10 @@ void writeName(io::ByteBuffer& buffer, const std::uint8_t tag, const std::string
     buffer.writeBytes(std::span{reinterpret_cast<const std::uint8_t*>(name.data()), name.size()});
 }
 
-/// One tag's name, which is a length and its bytes in this format.
 [[nodiscard]] std::string readName(io::ByteBuffer& buffer) { return readString(buffer); }
 
-/// Walks past one value of that tag, whatever it is. False when the tag is one this build has no
-/// length for, which ends the walk rather than guessing.
 [[nodiscard]] bool skipValue(io::ByteBuffer& buffer, std::uint8_t tag);
 
-/// Walks a compound's fields, handing each name and tag to `visit`. The visitor answers true when
-/// it has taken the value itself, and false to have it walked past.
 [[nodiscard]] bool walkCompound(io::ByteBuffer& buffer,
                                 const std::function<bool(std::string_view, std::uint8_t)>& visit) {
     while (!buffer.failed()) {
@@ -52,7 +46,6 @@ void writeName(io::ByteBuffer& buffer, const std::uint8_t tag, const std::string
 }
 
 bool skipValue(io::ByteBuffer& buffer, const std::uint8_t tag) {
-    /// The three widths this format has that are not varints.
     constexpr std::size_t kLongBytes = 8;
 
     switch (tag) {
@@ -83,7 +76,7 @@ bool skipValue(io::ByteBuffer& buffer, const std::uint8_t tag) {
         }
         return !buffer.failed();
     }
-    case 0x04: // A long, which nothing here reads but everything has to be able to walk past.
+    case 0x04:
         for (std::size_t at = 0; at < kLongBytes; ++at) {
             static_cast<void>(buffer.readByte());
         }
@@ -148,9 +141,8 @@ std::optional<std::string> readStringAt(io::ByteBuffer& buffer, const std::span<
     if (path.empty() || buffer.readByte() != kCompound) {
         return std::nullopt;
     }
-    static_cast<void>(readName(buffer)); // The root's own name, which is empty and unused.
+    static_cast<void>(readName(buffer));
     std::optional<std::string> found;
-    // One level per name in the path: everything else at each level is walked past.
     std::size_t at = 0;
     while (at < path.size() && !buffer.failed()) {
         const bool last = at + 1 == path.size();

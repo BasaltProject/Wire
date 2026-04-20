@@ -11,7 +11,7 @@ namespace play = protocol::play;
 
 constexpr std::int32_t kPlayerInfo760 = 55;
 
-/// parity: `ClientboundPlayerInfoPacket.Action`, in the order 1.19.1 numbers them.
+/// parity: `ClientboundPlayerInfoPacket.Action`.
 constexpr std::int32_t kAddPlayer = 0;
 constexpr std::int32_t kUpdateGameMode = 1;
 constexpr std::int32_t kUpdateLatency = 2;
@@ -78,8 +78,6 @@ bool Link760::writeOneAction(MutablePacket& packet, const play::PlayerInfoUpdate
                 protocol::varInt::write(output, static_cast<std::int32_t>(entry.gamemode));
                 protocol::varInt::write(output, entry.latencyMillis);
                 protocol::writeBoolean(output, false);
-                // No signed chat session either: a client this old asks for a public key it will not
-                // get from this server.
                 protocol::writeBoolean(output, false);
             }
         });

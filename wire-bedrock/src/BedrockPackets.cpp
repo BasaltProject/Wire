@@ -21,24 +21,19 @@ namespace {
 
 void writeBool(io::ByteBuffer& buffer, bool value) { buffer.writeByte(value ? 1 : 0); }
 
-/// A block position, which writes its height unsigned. Only this one field does; every other
-/// coordinate on the wire is zigzag.
+/// Only this one field does; every other coordinate on the wire is zigzag.
 void writeBlockPosition(io::ByteBuffer& buffer, std::int32_t x, std::int32_t y, std::int32_t z) {
     writeVarInt(buffer, x);
     writeVarUInt(buffer, static_cast<std::uint32_t>(y));
     writeVarInt(buffer, z);
 }
 
-/// An empty NBT compound in the shape Bedrock's network NBT uses: the tag, a name of no length,
-/// and the end marker.
 void writeEmptyCompound(io::ByteBuffer& buffer) {
     buffer.writeByte(0x0a);
     writeVarUInt(buffer, 0);
     buffer.writeByte(0x00);
 }
 
-/// The last entry of the chain is the one that speaks for the client: the ones before it are there
-/// to prove it.
 std::optional<std::string> lastChainEntry(std::string_view certificateJson) {
     const auto document = common::parseJson(certificateJson);
     if (!document) {
@@ -63,7 +58,6 @@ std::optional<std::string> lastChainEntry(std::string_view certificateJson) {
     return *token;
 }
 
-/// The identity a chain entry carries, which lives one level down in extraData.
 void readExtraData(std::string_view payload, LoginRequest& login) {
     const auto document = common::parseJson(payload);
     if (!document) {
@@ -105,8 +99,6 @@ void readExtraData(std::string_view payload, LoginRequest& login) {
     }
 }
 
-/// The newer login carries claims of its own instead of a chain: the same three facts under
-/// shorter names, and no uuid at all, so the xuid is what it is derived from.
 void readTokenClaims(std::string_view payload, LoginRequest& login) {
     if (const auto key = jsonString(payload, "cpk"); key) {
         if (const auto decoded = common::base64::decode(*key); decoded) {
@@ -121,10 +113,8 @@ void readTokenClaims(std::string_view payload, LoginRequest& login) {
     }
 }
 
-/// The skin out of the client's own description of itself. Everything is optional: a client that
-/// sends none, or one this build cannot read, simply gets drawn in a flat colour.
+/// The skin out of the client's own description of itself.
 void readSkin(std::string_view payload, LoginRequest& login) {
-    // A skin is four bytes a pixel and nothing bigger than this is worth drawing.
     constexpr std::uint32_t kMaxSide = 256;
 
     const auto data = jsonString(payload, "SkinData");
@@ -170,7 +160,7 @@ std::optional<RequestNetworkSettings> readRequestNetworkSettings(io::ByteBuffer&
 void writeNetworkSettings(io::ByteBuffer& buffer, std::uint16_t compressionThreshold, std::uint16_t algorithm) {
     writeShortLE(buffer, compressionThreshold);
     writeShortLE(buffer, algorithm);
-    writeBool(buffer, false); // No client throttle: the server decides what it sends.
+    writeBool(buffer, false);
     buffer.writeByte(0);
     writeFloatLE(buffer, 0.0F);
 }
@@ -195,8 +185,6 @@ std::optional<LoginRequest> readLogin(io::ByteBuffer& buffer) {
     if (buffer.failed() || clientLength > buffer.readableBytes()) {
         return std::nullopt;
     }
-    // What the player looks like. The client signs its own description of itself, so nothing here
-    // is trusted beyond being drawn: a skin is pixels, and the worst a bad one does is look wrong.
     const std::span<const std::uint8_t> clientBytes = buffer.readSpan(clientLength);
     if (const auto parts =
             decodeJwt(std::string_view{reinterpret_cast<const char*>(clientBytes.data()), clientBytes.size()});
@@ -204,9 +192,6 @@ std::optional<LoginRequest> readLogin(io::ByteBuffer& buffer) {
         readSkin(parts->payload, login);
     }
 
-    // A chain proves who the client is with Mojang's signature over it; a token is the same claim
-    // made by the newer service. Either can arrive, and which one did is what says whether anybody
-    // vouched for the name.
     if (const auto certificate = jsonString(auth, "Certificate"); certificate && !certificate->empty()) {
         const auto entry = lastChainEntry(*certificate);
         if (!entry) {
@@ -226,7 +211,6 @@ std::optional<LoginRequest> readLogin(io::ByteBuffer& buffer) {
         readTokenClaims(parts->payload, login);
         login.authenticated = !login.xuid.empty();
     } else {
-        // The oldest shape: the chain is the whole document, with no wrapper around it.
         const auto entry = lastChainEntry(auth);
         if (!entry) {
             return std::nullopt;
@@ -245,7 +229,6 @@ std::optional<LoginRequest> readLogin(io::ByteBuffer& buffer) {
 }
 
 std::optional<ResourcePackResponse> readResourcePackResponse(io::ByteBuffer& buffer, const int protocol) {
-    // 2168 moved the status off by one and put its name behind it; below that it is a plain byte.
     const std::uint32_t status = writesNativeShapes(protocol) ? readVarUInt(buffer) + 1 : buffer.readByte();
     if (buffer.failed() || status < 1 || status > 4) {
         return std::nullopt;
@@ -258,13 +241,12 @@ void writePlayStatus(io::ByteBuffer& buffer, PlayStatus status) { buffer.writeIn
 void writeServerToClientHandshake(io::ByteBuffer& buffer, std::string_view jwt) { writeString(buffer, jwt); }
 
 void writeResourcePacksInfo(io::ByteBuffer& buffer, const int protocol) {
-    writeBool(buffer, false); // Nothing to accept.
-    writeBool(buffer, false); // No addon packs.
-    writeBool(buffer, false); // No scripting.
-    writeBool(buffer, false); // Vibrant visuals left to the client.
+    writeBool(buffer, false);
+    writeBool(buffer, false);
+    writeBool(buffer, false);
+    writeBool(buffer, false);
     writeUuid(buffer, 0, 0);
     writeString(buffer, "");
-    // No packs, counted as 2168 counts an array. Below it the count of this one list is a short.
     if (writesNativeShapes(protocol)) {
         writeVarUInt(buffer, 0);
     } else {
@@ -274,15 +256,15 @@ void writeResourcePacksInfo(io::ByteBuffer& buffer, const int protocol) {
 
 void writeResourcePackStack(io::ByteBuffer& buffer, std::string_view gameVersion) {
     writeBool(buffer, false);
-    writeVarUInt(buffer, 0); // No packs in the stack either.
+    writeVarUInt(buffer, 0);
     writeString(buffer, gameVersion);
-    writeIntLE(buffer, 0); // No experiments.
+    writeIntLE(buffer, 0);
     writeBool(buffer, false);
     writeBool(buffer, false);
 }
 
 void writeDisconnect(io::ByteBuffer& buffer, std::string_view reason) {
-    writeVarInt(buffer, 0); // Unknown: the message is what carries the explanation.
+    writeVarInt(buffer, 0);
     writeVarUInt(buffer, 0);
     writeString(buffer, reason);
     writeString(buffer, "");
@@ -298,46 +280,43 @@ void writeStartGame(io::ByteBuffer& buffer, const StartGameInfo& info, const int
     writeFloatLE(buffer, info.yaw);
     writeFloatLE(buffer, info.pitch);
 
-    // Level settings.
     writeLongLE(buffer, info.seed);
-    writeShortLE(buffer, 0); // Spawn biome: whatever the generator says.
+    writeShortLE(buffer, 0);
     writeString(buffer, "plains");
     writeVarInt(buffer, info.dimension);
-    writeVarInt(buffer, 1); // Infinite world.
+    writeVarInt(buffer, 1);
     writeVarInt(buffer, info.levelGameType);
-    writeBool(buffer, false); // Not hardcore.
+    writeBool(buffer, false);
     writeVarInt(buffer, info.difficulty);
     writeBlockPosition(buffer, info.spawnX, info.spawnY, info.spawnZ);
-    writeBool(buffer, true); // Achievements off: a server with commands cannot grant them anyway.
-    writeVarInt(buffer, 0);  // Not an editor world.
+    writeBool(buffer, true);
+    writeVarInt(buffer, 0);
     writeBool(buffer, false);
     writeBool(buffer, false);
-    writeVarInt(buffer, -1); // The day cycle runs.
-    writeVarUInt(buffer, 0); // No education offers.
+    writeVarInt(buffer, -1);
+    writeVarUInt(buffer, 0);
     writeBool(buffer, false);
     writeString(buffer, "");
     writeFloatLE(buffer, 0.0F);
     writeFloatLE(buffer, 0.0F);
     writeBool(buffer, false);
-    writeBool(buffer, true); // A multiplayer game, which is the only kind a server hosts.
     writeBool(buffer, true);
-    writeVarInt(buffer, 4); // Broadcast to everyone, on both counts.
+    writeBool(buffer, true);
+    writeVarInt(buffer, 4);
     writeVarInt(buffer, 4);
     writeBool(buffer, info.commandsEnabled);
     writeBool(buffer, false);
-    writeVarUInt(buffer, 0); // No gamerules yet.
-    writeIntLE(buffer, 0);   // No experiments.
+    writeVarUInt(buffer, 0);
+    writeIntLE(buffer, 0);
     writeBool(buffer, false);
     writeBool(buffer, false);
     writeBool(buffer, false);
-    // Members by default. 2168 writes the permission as a byte where everything below it wrote a
-    // varint, which for the number one is a different byte and not a different size.
     if (writesNativeShapes(protocol)) {
         buffer.writeByte(1);
     } else {
         writeVarInt(buffer, 1);
     }
-    writeIntLE(buffer, 4); // Chunk tick range.
+    writeIntLE(buffer, 4);
     writeBool(buffer, false);
     writeBool(buffer, false);
     writeBool(buffer, false);
@@ -351,56 +330,44 @@ void writeStartGame(io::ByteBuffer& buffer, const StartGameInfo& info, const int
     writeString(buffer, info.vanillaVersion);
     writeIntLE(buffer, 0);
     writeIntLE(buffer, 0);
-    writeBool(buffer, false); // Not the nether.
+    writeBool(buffer, false);
     writeString(buffer, "");
     writeString(buffer, "");
-    writeBool(buffer, false); // No forced experimental gameplay.
-    buffer.writeByte(0);      // Chat unrestricted.
-    writeBool(buffer, false); // Player interactions left alone.
+    writeBool(buffer, false);
+    buffer.writeByte(0);
+    writeBool(buffer, false);
     if (protocol >= kStartGameGrewProtocol) {
-        writeVarInt(buffer, 0);   // No editor connection,
-        writeBool(buffer, false); // and nothing dropped anonymously in an editor world.
+        writeVarInt(buffer, 0);
+        writeBool(buffer, false);
     }
 
     writeString(buffer, info.levelId);
     writeString(buffer, info.levelName);
-    writeString(buffer, ""); // No premium world template.
+    writeString(buffer, "");
     writeBool(buffer, false);
-    // How movement is settled, in two fields. There used to be a third in front of them saying
-    // which mode it was, and **818 took it away**: from there the server always verifies movement
-    // from `player_auth_input` and there is nothing to choose. Writing it anyway puts one varint
-    // too many in the middle of the packet, and a client reads everything after it shifted: that is
-    // what an `InitialConnection-90` on a real 1.26 client looks like.
-    writeVarInt(buffer, 0); // No rewind history: this server does not rewind.
-    // Not because this server decides how fast a block comes apart, which it cannot: it is what
-    // makes the client put a position on every breaking action it sends. Left off, the one action
-    // that says a block is gone arrives with no coordinates at all.
+    writeVarInt(buffer, 0);
     writeBool(buffer, true);
     writeLongLE(buffer, info.currentTick);
-    writeVarInt(buffer, 0);  // Enchantment seed.
-    writeVarUInt(buffer, 0); // No custom blocks.
+    writeVarInt(buffer, 0);
+    writeVarUInt(buffer, 0);
     writeString(buffer, info.multiplayerCorrelationId);
-    writeBool(buffer, true); // Inventories are the server's.
+    writeBool(buffer, true);
     writeString(buffer, "Basalt");
-    writeEmptyCompound(buffer); // No player properties.
-    writeLongLE(buffer, 0);     // No block registry checksum: the client checks nothing when it is zero.
+    writeEmptyCompound(buffer);
+    writeLongLE(buffer, 0);
     writeUuid(buffer, 0, 0);
-    writeBool(buffer, false); // The client does not generate its own chunks.
-    // Block ids are the position in the client's own palette, which is what the generated tables
-    // hold: saying they are hashes of the state would have the client resolve every one of them
-    // against the wrong thing.
     writeBool(buffer, false);
-    writeBool(buffer, true); // Sounds come from the server.
+    writeBool(buffer, false);
+    writeBool(buffer, true);
     if (protocol >= kStartGameGrewProtocol && !writesNativeShapes(protocol)) {
-        // Whether chat is logged, which only 1001 asks: 975 and below never had it and 2168
-        // stopped asking.
+        // Whether chat is logged, which only 1001 asks: 975 and below never had it and 2168 stopped asking.
         writeBool(buffer, false);
     }
-    writeBool(buffer, false); // No join info.
+    writeBool(buffer, false);
     writeString(buffer, info.serverId);
-    writeString(buffer, ""); // No scenario.
+    writeString(buffer, "");
     writeString(buffer, info.worldId);
-    writeString(buffer, ""); // No owner.
+    writeString(buffer, "");
 }
 
 void writeTeleport(io::ByteBuffer& buffer, const std::uint64_t runtimeEntityId, const float x, const float y,
@@ -409,15 +376,13 @@ void writeTeleport(io::ByteBuffer& buffer, const std::uint64_t runtimeEntityId, 
     writeFloatLE(buffer, x);
     writeFloatLE(buffer, y);
     writeFloatLE(buffer, z);
-    // The rotation is pitch, yaw and the head's own yaw, which for a teleport are all the same way.
     writeFloatLE(buffer, pitch);
     writeFloatLE(buffer, yaw);
     writeFloatLE(buffer, yaw);
-    buffer.writeByte(2); // A teleport, not a step.
+    buffer.writeByte(2);
     writeBool(buffer, false);
-    writeVarULong(buffer, 0); // Riding nothing.
-    // Only a teleport says why it happened, and this one always does. 2168 puts a "it is here"
-    // flag in front of the reason; below it the reason simply follows a teleport.
+    writeVarULong(buffer, 0);
+    // Only a teleport says why it happened, and this one always does.
     if (writesNativeShapes(protocol)) {
         writeBool(buffer, true);
     }
@@ -435,9 +400,9 @@ void writeSetTitle(io::ByteBuffer& buffer, const TitleType type, const std::stri
     writeVarInt(buffer, fadeIn);
     writeVarInt(buffer, stay);
     writeVarInt(buffer, fadeOut);
-    writeString(buffer, ""); // No xuid.
-    writeString(buffer, ""); // No platform id.
-    writeString(buffer, ""); // Nothing filtered.
+    writeString(buffer, "");
+    writeString(buffer, "");
+    writeString(buffer, "");
 }
 
 void writeSetTime(io::ByteBuffer& buffer, const std::int32_t time) { writeVarInt(buffer, time); }
@@ -447,7 +412,6 @@ std::optional<std::string> readCommandRequest(io::ByteBuffer& buffer) {
     if (buffer.failed() || command.empty()) {
         return std::nullopt;
     }
-    // A client sends the slash with it; the dispatcher wants the line without one.
     if (command.front() == '/') {
         command.erase(command.begin());
     }
@@ -459,9 +423,7 @@ void writeModalFormRequest(io::ByteBuffer& buffer, const std::uint32_t formId, c
     writeString(buffer, json);
 }
 
-void writeCloseForm(io::ByteBuffer& buffer) {
-    static_cast<void>(buffer); // Nothing in it: the packet itself is the message.
-}
+void writeCloseForm(io::ByteBuffer& buffer) { static_cast<void>(buffer); }
 
 std::optional<ModalFormResponse> readModalFormResponse(io::ByteBuffer& buffer) {
     ModalFormResponse response;
@@ -472,8 +434,6 @@ std::optional<ModalFormResponse> readModalFormResponse(io::ByteBuffer& buffer) {
     if (buffer.readByte() != 0) {
         response.data = readString(buffer);
     }
-    // What follows is why it was dismissed, which only matters when there is no answer, and "no
-    // answer" is already what an empty one means here.
     if (buffer.failed()) {
         return std::nullopt;
     }
@@ -500,8 +460,6 @@ std::string simpleFormJson(const std::string_view title, const std::string_view 
 
 namespace {
 
-/// Which of the flags this server acts on. They are positions in an enum the reference codec keeps,
-/// and nothing has moved them inside this window.
 constexpr std::int32_t kFlagSneaking = 8;
 constexpr std::int32_t kFlagSprinting = 20;
 constexpr std::int32_t kFlagVerticalCollision = 50;
@@ -511,27 +469,23 @@ constexpr std::int32_t kFlagItemStackRequest = 36;
 constexpr std::int32_t kFlagStartFlying = 42;
 constexpr std::int32_t kFlagStopFlying = 43;
 
-/// One block position as this edition writes it: the height is unsigned, which is not a mistake of
-/// ours either.
+/// One block position as this edition writes it: the height is unsigned, which is not a mistake of ours either.
 void readBedrockBlockPosition(io::ByteBuffer& buffer, std::int32_t& x, std::int32_t& y, std::int32_t& z) {
     x = readVarInt(buffer);
     y = static_cast<std::int32_t>(readVarUInt(buffer));
     z = readVarInt(buffer);
 }
 
-/// One item as the client sends it back. Only the id is wanted; the rest is walked past.
-///
-/// From 2168 it is the descriptor shape, which is not the same packet field written twice: the id
-/// is a short, and a stack of nothing still writes every field rather than stopping at the zero.
+/// One item as the client sends it back.
 [[nodiscard]] std::int32_t readItem(io::ByteBuffer& buffer, const int protocol) {
     if (protocol >= kHeldItemDescriptorProtocol) {
         const std::int32_t id = static_cast<std::int16_t>(readShortLE(buffer));
-        static_cast<void>(readShortLE(buffer)); // How many,
-        static_cast<void>(readVarUInt(buffer)); // how damaged,
+        static_cast<void>(readShortLE(buffer));
+        static_cast<void>(readVarUInt(buffer));
         if (buffer.readByte() != 0) {
-            static_cast<void>(readVarInt(buffer)); // and which one of its kind, when it is counted.
+            static_cast<void>(readVarInt(buffer));
         }
-        static_cast<void>(readVarUInt(buffer)); // Which block it places.
+        static_cast<void>(readVarUInt(buffer));
         const std::uint32_t trailing = readVarUInt(buffer);
         for (std::uint32_t at = 0; at < trailing && !buffer.failed(); ++at) {
             static_cast<void>(buffer.readByte());
@@ -542,12 +496,12 @@ void readBedrockBlockPosition(io::ByteBuffer& buffer, std::int32_t& x, std::int3
     if (id == 0) {
         return 0;
     }
-    static_cast<void>(readShortLE(buffer)); // How many,
-    static_cast<void>(readVarUInt(buffer)); // how damaged,
+    static_cast<void>(readShortLE(buffer));
+    static_cast<void>(readVarUInt(buffer));
     if (buffer.readByte() != 0) {
-        static_cast<void>(readVarInt(buffer)); // and which one of its kind, when it is counted.
+        static_cast<void>(readVarInt(buffer));
     }
-    static_cast<void>(readVarInt(buffer)); // Which block it places.
+    static_cast<void>(readVarInt(buffer));
     const std::uint32_t extra = readVarUInt(buffer);
     for (std::uint32_t at = 0; at < extra && !buffer.failed(); ++at) {
         static_cast<void>(buffer.readByte());
@@ -555,8 +509,7 @@ void readBedrockBlockPosition(io::ByteBuffer& buffer, std::int32_t& x, std::int3
     return id;
 }
 
-/// Whether an optional field follows, said with `flags` booleans in a row. The reading stops at the
-/// first one that is off, the way the client writes them.
+/// The reading stops at the first one that is off, the way the client writes them.
 [[nodiscard]] bool presentFlags(io::ByteBuffer& buffer, const int flags) {
     for (int at = 0; at < flags; ++at) {
         if (buffer.readByte() == 0) {
@@ -566,31 +519,25 @@ void readBedrockBlockPosition(io::ByteBuffer& buffer, std::int32_t& x, std::int3
     return true;
 }
 
-/// Where a stack came from. Unflagged (`flags` zero), three of the kinds carry a number of their
-/// own; flagged, a window and what the world did are both always announced, with that many flags.
 void readInventorySource(io::ByteBuffer& buffer, const int flags) {
     const std::uint32_t kind = readVarUInt(buffer);
     if (flags > 0) {
         if (presentFlags(buffer, flags)) {
-            static_cast<void>(buffer.readByte()); // Which window,
+            static_cast<void>(buffer.readByte());
         }
         if (presentFlags(buffer, flags)) {
-            static_cast<void>(readVarUInt(buffer)); // or what the world did with it.
+            static_cast<void>(readVarUInt(buffer));
         }
         return;
     }
     if (kind == 0 || kind == 100 || kind == 99999) {
-        static_cast<void>(readVarInt(buffer)); // Which window,
+        static_cast<void>(readVarInt(buffer));
     } else if (kind == 2) {
-        static_cast<void>(readVarUInt(buffer)); // or what the world did with it.
+        static_cast<void>(readVarUInt(buffer));
     }
 }
 
-/// The click itself. Everything before the block it names is walked past: this server does not let
-/// a client tell it what moved where, only what was clicked.
 [[nodiscard]] std::optional<BedrockItemUse> readItemUseTransaction(io::ByteBuffer& buffer, const int protocol) {
-    // 2168 put a boolean in front of each of the two lists, two in front of the second, and turned
-    // three of the small numbers from varints into single bytes. 26.50 dropped the pair again.
     const bool native = protocol >= kHeldItemDescriptorProtocol;
     const bool single = protocol >= kSingleFlagProtocol;
     const std::int32_t legacyRequestId = readVarInt(buffer);
@@ -609,9 +556,9 @@ void readInventorySource(io::ByteBuffer& buffer, const int flags) {
         const std::uint32_t actions = readVarUInt(buffer);
         for (std::uint32_t at = 0; at < actions && !buffer.failed(); ++at) {
             readInventorySource(buffer, single ? 1 : native ? 2 : 0);
-            static_cast<void>(readVarUInt(buffer));        // Which slot,
-            static_cast<void>(readItem(buffer, protocol)); // what was there,
-            static_cast<void>(readItem(buffer, protocol)); // and what is now.
+            static_cast<void>(readVarUInt(buffer));
+            static_cast<void>(readItem(buffer, protocol));
+            static_cast<void>(readItem(buffer, protocol));
         }
     }
 
@@ -623,20 +570,19 @@ void readInventorySource(io::ByteBuffer& buffer, const int flags) {
     use.face = native ? std::int32_t{buffer.readByte()} : readVarInt(buffer);
     use.hotbarSlot = readVarInt(buffer);
     if (protocol >= kItemUseHandProtocol) {
-        static_cast<void>(buffer.readByte()); // Which hand, which the held slot already says.
+        static_cast<void>(buffer.readByte());
     }
     use.itemRuntimeId = readItem(buffer, protocol);
-    static_cast<void>(readFloatLE(buffer)); // Where the player was,
     static_cast<void>(readFloatLE(buffer));
     static_cast<void>(readFloatLE(buffer));
-    use.clickX = readFloatLE(buffer); // and where on the face they clicked.
+    static_cast<void>(readFloatLE(buffer));
+    use.clickX = readFloatLE(buffer);
     use.clickY = readFloatLE(buffer);
     use.clickZ = readFloatLE(buffer);
-    static_cast<void>(readVarUInt(buffer)); // Which block they think they hit,
-    // and what they think the click did, which this server decides for itself.
+    static_cast<void>(readVarUInt(buffer));
     static_cast<void>(native ? std::int32_t{buffer.readByte()} : static_cast<std::int32_t>(readVarUInt(buffer)));
     if (protocol >= kItemCooldownProtocol) {
-        static_cast<void>(buffer.readByte()); // How far into its cooldown the client thinks it is.
+        static_cast<void>(buffer.readByte());
     }
     if (buffer.failed()) {
         return std::nullopt;
@@ -644,8 +590,6 @@ void readInventorySource(io::ByteBuffer& buffer, const int flags) {
     return use;
 }
 
-/// Every line a stack request can carry, whether or not this server acts on it: one that cannot be
-/// read leaves the rest of the tick's packet unreachable, so all of them are walked past.
 enum class RequestAction : std::int32_t {
     Unknown,
     Take,
@@ -668,8 +612,6 @@ enum class RequestAction : std::int32_t {
     CraftResults,
 };
 
-/// What the number on the wire means. 2168 renumbered the list from the top after two entries that
-/// had been removed left holes in the middle, so the two tables have nothing in common past six.
 [[nodiscard]] RequestAction requestActionOf(const std::int32_t id, const int protocol) {
     if (writesNativeShapes(protocol)) {
         switch (id) {
@@ -789,8 +731,6 @@ enum class RequestAction : std::int32_t {
     }
 }
 
-/// One end of a move. The window is named by a byte and an id of its own that only a bundle uses,
-/// and the stack's number went from a varint to a fixed four bytes at 2168.
 [[nodiscard]] BedrockStackSlot readStackSlot(io::ByteBuffer& buffer, const int protocol) {
     BedrockStackSlot slot;
     slot.container = buffer.readByte();
@@ -802,11 +742,10 @@ enum class RequestAction : std::int32_t {
     return slot;
 }
 
-/// One item as a recipe names it, which is a shape of its own: a name or a tag rather than an id.
 void readIngredient(io::ByteBuffer& buffer, const int protocol) {
     if (writesNativeShapes(protocol)) {
         const std::uint32_t kind = readVarUInt(buffer);
-        static_cast<void>(buffer.readByte()); // The same kind again, which the client writes twice.
+        static_cast<void>(buffer.readByte());
         if (kind == 1) {
             static_cast<void>(readString(buffer));
             static_cast<void>(readVarInt(buffer));
@@ -836,8 +775,6 @@ void readIngredient(io::ByteBuffer& buffer, const int protocol) {
     static_cast<void>(readVarInt(buffer));
 }
 
-/// One item as a finished result names it. Below 2168 it is the plain shape without the flag that
-/// says a server is counting stacks; from there it is named rather than numbered.
 void readResultItem(io::ByteBuffer& buffer, const int protocol) {
     if (writesNativeShapes(protocol)) {
         const std::uint32_t kind = readVarUInt(buffer);
@@ -846,8 +783,8 @@ void readResultItem(io::ByteBuffer& buffer, const int protocol) {
             static_cast<void>(readString(buffer));
             static_cast<void>(readVarInt(buffer));
         }
-        static_cast<void>(readShortLE(buffer)); // How many,
-        static_cast<void>(readVarUInt(buffer)); // which block it places,
+        static_cast<void>(readShortLE(buffer));
+        static_cast<void>(readVarUInt(buffer));
     } else {
         if (readVarInt(buffer) == 0) {
             return;
@@ -856,13 +793,12 @@ void readResultItem(io::ByteBuffer& buffer, const int protocol) {
         static_cast<void>(readVarUInt(buffer));
         static_cast<void>(readVarInt(buffer));
     }
-    const std::uint32_t trailing = readVarUInt(buffer); // and what is written on it.
+    const std::uint32_t trailing = readVarUInt(buffer);
     for (std::uint32_t at = 0; at < trailing && !buffer.failed(); ++at) {
         static_cast<void>(buffer.readByte());
     }
 }
 
-/// A request to move stacks between windows, as the client asks for it.
 [[nodiscard]] std::optional<BedrockStackRequest> readItemStackRequest(io::ByteBuffer& buffer, const int protocol) {
     const bool native = writesNativeShapes(protocol);
     BedrockStackRequest request;
@@ -872,7 +808,7 @@ void readResultItem(io::ByteBuffer& buffer, const int protocol) {
         const std::int32_t id = native ? static_cast<std::int32_t>(readVarUInt(buffer)) : buffer.readByte();
         const RequestAction kind = requestActionOf(id, protocol);
         if (native) {
-            static_cast<void>(buffer.readByte()); // The same line again, which the client writes twice.
+            static_cast<void>(buffer.readByte());
         }
         BedrockStackAction action;
         action.type = publicActionOf(kind);
@@ -891,7 +827,7 @@ void readResultItem(io::ByteBuffer& buffer, const int protocol) {
         case RequestAction::Drop:
             action.count = buffer.readByte();
             action.source = readStackSlot(buffer, protocol);
-            static_cast<void>(buffer.readByte()); // Whether it is thrown rather than dropped.
+            static_cast<void>(buffer.readByte());
             break;
         case RequestAction::Destroy:
         case RequestAction::Consume:
@@ -909,9 +845,9 @@ void readResultItem(io::ByteBuffer& buffer, const int protocol) {
             action.secondaryEffect = readVarInt(buffer);
             break;
         case RequestAction::MineBlock:
-            static_cast<void>(readVarInt(buffer)); // Which hotbar slot,
-            static_cast<void>(readVarInt(buffer)); // how worn the client thinks the tool is,
-            static_cast<void>(native ? readIntLE(buffer) : readVarInt(buffer)); // and which stack it was.
+            static_cast<void>(readVarInt(buffer));
+            static_cast<void>(readVarInt(buffer));
+            static_cast<void>(native ? readIntLE(buffer) : readVarInt(buffer));
             break;
         case RequestAction::CraftRecipe:
             action.recipeNetId = static_cast<std::int32_t>(readVarUInt(buffer));
@@ -925,7 +861,7 @@ void readResultItem(io::ByteBuffer& buffer, const int protocol) {
             action.recipeNetId = static_cast<std::int32_t>(readVarUInt(buffer));
             action.crafts = std::int32_t{buffer.readByte()};
             if (!native) {
-                static_cast<void>(buffer.readByte()); // How many times it was made, counted twice.
+                static_cast<void>(buffer.readByte());
             }
             const std::uint32_t ingredients = native ? readVarUInt(buffer) : buffer.readByte();
             for (std::uint32_t item = 0; item < ingredients && !buffer.failed(); ++item) {
@@ -955,13 +891,11 @@ void readResultItem(io::ByteBuffer& buffer, const int protocol) {
             break;
         }
         case RequestAction::Unknown:
-            // Nothing says how long an unknown line is, so the rest of the packet is given up on.
             return std::nullopt;
         }
         request.actions.push_back(action);
     }
 
-    // What the client typed where a server may filter it, and where that text came from.
     const std::uint32_t filtered = readVarUInt(buffer);
     for (std::uint32_t at = 0; at < filtered && !buffer.failed(); ++at) {
         request.typed.push_back(readString(buffer));
@@ -977,22 +911,18 @@ void readResultItem(io::ByteBuffer& buffer, const int protocol) {
 
 std::optional<PlayerAuthInput> readPlayerAuthInput(io::ByteBuffer& buffer, const int protocol) {
     PlayerAuthInput input;
-    // The rotation is split around the position: pitch and yaw lead, the head's own yaw follows the
-    // movement vector. It is not an accident of ours.
     input.pitch = readFloatLE(buffer);
     input.yaw = readFloatLE(buffer);
     input.x = readFloatLE(buffer);
     input.y = readFloatLE(buffer);
     input.z = readFloatLE(buffer);
-    static_cast<void>(readFloatLE(buffer)); // Where the client is trying to move, sideways.
-    static_cast<void>(readFloatLE(buffer)); // The same, forwards.
+    static_cast<void>(readFloatLE(buffer));
+    static_cast<void>(readFloatLE(buffer));
     input.headYaw = readFloatLE(buffer);
     if (buffer.failed()) {
         return std::nullopt;
     }
 
-    // What the player is doing, which decides what the rest of the packet holds. 2168 turned the
-    // run of bits into a list of the ones that are on; below it they are one long varint.
     std::set<std::int32_t> flags;
     if (protocol >= kInputFlagListProtocol) {
         if (protocol >= kSingleFlagProtocol || (buffer.readByte() != 0)) {
@@ -1022,22 +952,19 @@ std::optional<PlayerAuthInput> readPlayerAuthInput(io::ByteBuffer& buffer, const
     } else if (flags.contains(kFlagStopFlying)) {
         input.flying = false;
     }
-    static_cast<void>(readVarUInt(buffer)); // How they are playing: a keyboard, a pad, a screen,
-    static_cast<void>(readVarUInt(buffer)); // where they are playing it,
-    static_cast<void>(readVarUInt(buffer)); // and which of the two ways of touching things.
-    static_cast<void>(readFloatLE(buffer)); // Where they are looking when that is not where they face.
+    static_cast<void>(readVarUInt(buffer));
+    static_cast<void>(readVarUInt(buffer));
+    static_cast<void>(readVarUInt(buffer));
     static_cast<void>(readFloatLE(buffer));
-    static_cast<void>(readVarULong(buffer)); // Which tick this is,
-    static_cast<void>(readFloatLE(buffer));  // and how far they moved in it.
+    static_cast<void>(readFloatLE(buffer));
+    static_cast<void>(readVarULong(buffer));
+    static_cast<void>(readFloatLE(buffer));
     static_cast<void>(readFloatLE(buffer));
     static_cast<void>(readFloatLE(buffer));
     if (buffer.failed()) {
         return std::nullopt;
     }
 
-    // From here the packet is a run of optional pieces, each one there because a flag says so. 2168
-    // puts a pair of booleans in front of each, the first saying the field exists at all; 26.50
-    // keeps one.
     const auto present = [&buffer, protocol](const bool flagged) {
         if (protocol < kInputFlagListProtocol) {
             return flagged;
@@ -1089,7 +1016,7 @@ void writeText(io::ByteBuffer& buffer, TextType type, std::string_view source, s
                std::string_view xuid) {
     const bool withAuthor = type == TextType::Chat || type == TextType::Whisper || type == TextType::Announcement;
 
-    writeBool(buffer, false); // Nothing here is a translation key; the server resolved it already.
+    writeBool(buffer, false);
     buffer.writeByte(withAuthor ? 1 : 0);
     buffer.writeByte(static_cast<std::uint8_t>(type));
     if (withAuthor) {
@@ -1098,12 +1025,12 @@ void writeText(io::ByteBuffer& buffer, TextType type, std::string_view source, s
     // A client with an empty line to draw logs a complaint and draws nothing, so it gets a space.
     writeString(buffer, message.empty() ? std::string_view{" "} : message);
     writeString(buffer, xuid);
-    writeString(buffer, "");  // No platform chat id: this server does not route between consoles.
-    writeBool(buffer, false); // Nothing filtered.
+    writeString(buffer, "");
+    writeBool(buffer, false);
 }
 
 std::optional<IncomingText> readText(io::ByteBuffer& buffer) {
-    static_cast<void>(buffer.readByte()); // Whether the client thinks this needs translating.
+    static_cast<void>(buffer.readByte());
     const std::uint8_t shape = buffer.readByte();
     const std::uint8_t type = buffer.readByte();
     if (buffer.failed() || shape > 2 || type > static_cast<std::uint8_t>(TextType::Announcement)) {
@@ -1138,25 +1065,23 @@ void writeNetworkChunkPublisherUpdate(io::ByteBuffer& buffer, std::int32_t x, st
     writeVarInt(buffer, y);
     writeVarInt(buffer, z);
     writeVarUInt(buffer, radius);
-    writeIntLE(buffer, 0); // No saved chunks.
+    writeIntLE(buffer, 0);
 }
 
 namespace {
 
-/// A little-endian NBT key, which is a short length and the name.
 void writeNbtKey(io::ByteBuffer& buffer, std::uint8_t type, std::string_view name) {
     buffer.writeByte(type);
     writeShortLE(buffer, static_cast<std::uint16_t>(name.size()));
     buffer.writeBytes(std::span{reinterpret_cast<const std::uint8_t*>(name.data()), name.size()});
 }
 
-/// What is written on a stack and where it may be used, as the stream of its own the length in
-/// front counts. Only a map carries a tag: the map it shows, in the three keys a client reads.
+/// Only a map carries a tag: the map it shows, in the three keys a client reads.
 void writeItemUserData(io::ByteBuffer& buffer, const BedrockItemStack& item, bool blocking) {
     io::ByteBuffer data;
     if (item.mapId.has_value()) {
-        writeShortLE(data, 0xFFFF); // A tag follows,
-        data.writeByte(1);          // in the only version there is.
+        writeShortLE(data, 0xFFFF);
+        data.writeByte(1);
         writeNbtKey(data, 10, "");
         writeNbtKey(data, 4, "map_uuid");
         writeLongLE(data, *item.mapId);
@@ -1168,8 +1093,8 @@ void writeItemUserData(io::ByteBuffer& buffer, const BedrockItemStack& item, boo
     } else {
         writeShortLE(data, 0);
     }
-    writeIntLE(data, 0); // Nothing it may be placed on,
-    writeIntLE(data, 0); // and nothing it may break.
+    writeIntLE(data, 0);
+    writeIntLE(data, 0);
     if (blocking) {
         writeLongLE(data, 0);
     }
@@ -1177,8 +1102,7 @@ void writeItemUserData(io::ByteBuffer& buffer, const BedrockItemStack& item, boo
     buffer.writeBytes(data.readable());
 }
 
-/// The stack as a client of this protocol can draw it: an item it has no name for yet becomes its
-/// look-alike.
+/// The stack as a client of this protocol can draw it: an item it has no name for yet becomes its look-alike.
 [[nodiscard]] BedrockItemStack shownTo(BedrockItemStack item, const int protocol) {
     if (const ItemStandIn* standIn = bedrockItemStandIn(item.runtimeId - 1, protocol)) {
         item.runtimeId = standIn->standInPlace + 1;
@@ -1187,14 +1111,10 @@ void writeItemUserData(io::ByteBuffer& buffer, const BedrockItemStack& item, boo
     return item;
 }
 
-/// One stack where it is named rather than moved: the creative menu and an entity's hand. It is
-/// the window shape without the flag that says a server is counting stacks.
+/// It is the window shape without the flag that says a server is counting stacks.
 void writeItemInstance(io::ByteBuffer& buffer, const BedrockItemStack& named, const int protocol) {
     const BedrockItemStack item = shownTo(named, protocol);
     const bool air = item.runtimeId == 0 || item.count == 0;
-    // Nothing at all used to be a single zero and nothing after it. 2168 gave air the same fields as
-    // anything else, all of them empty, and a creative menu whose group icon is nothing was writing
-    // one byte where the client counted six: everything past the icon read shifted.
     if (air && protocol < kAirItemInstanceGrewProtocol) {
         writeVarInt(buffer, 0);
         return;
@@ -1204,11 +1124,9 @@ void writeItemInstance(io::ByteBuffer& buffer, const BedrockItemStack& named, co
     writeVarUInt(buffer, air ? 0U : static_cast<std::uint32_t>(item.data));
     writeVarInt(buffer, air ? 0 : item.blockRuntimeId);
     if (air) {
-        writeVarUInt(buffer, 0); // Nothing travels beside nothing.
+        writeVarUInt(buffer, 0);
         return;
     }
-    // One item carries a field nothing else does: a shield says how long it has been raised. The
-    // length in front counts it, so leaving it out of the one entry shifts every item after it.
     const std::span<const std::string_view> palette = bedrockItemPalette();
     const std::size_t at = static_cast<std::size_t>(item.runtimeId) - 1;
     const bool blocking = at < palette.size() && palette[at] == "minecraft:shield";
@@ -1216,9 +1134,6 @@ void writeItemInstance(io::ByteBuffer& buffer, const BedrockItemStack& named, co
     writeItemUserData(buffer, item, blocking);
 }
 
-/// How many bits a palette of this size needs, rounded up to one of the widths Bedrock packs with.
-/// Six and five and three leave two bits of every word unused, which is why the list is not simply
-/// the powers of two.
 [[nodiscard]] std::uint8_t bitsFor(const std::size_t entries) {
     for (const std::uint8_t bits : std::array<std::uint8_t, 8>{1, 2, 3, 4, 5, 6, 8, 16}) {
         if (entries <= (std::size_t{1} << bits)) {
@@ -1232,19 +1147,15 @@ void writeItemInstance(io::ByteBuffer& buffer, const BedrockItemStack& named, co
 
 void writeSubChunk(io::ByteBuffer& buffer, const JavaSubChunk blocks, const std::int8_t subChunkIndex,
                    const int protocol) {
-    // Version nine, which is the one that says which subchunk it is rather than leaving the client
-    // to count. One storage layer: the second is for water inside another block, and nothing here
-    // puts anything there yet.
+    // Version nine, which is the one that says which subchunk it is rather than leaving the client to count.
     buffer.writeByte(9);
     buffer.writeByte(1);
     buffer.writeByte(static_cast<std::uint8_t>(subChunkIndex));
 
-    // The palette, in the order the blocks are first met, and the blocks as indices into it.
     std::vector<std::uint16_t> palette;
     std::array<std::uint16_t, kSubChunkBlocks> indices{};
     for (std::size_t over = 0; over < kSubChunkBlocks; ++over) {
-        // The two editions nest their loops the opposite way round: Bedrock counts x slowest and y
-        // fastest, Java the other way. This is the only place the two orders have to meet.
+        // This is the only place the two orders have to meet.
         const std::size_t x = (over >> 8U) & 0xFU;
         const std::size_t z = (over >> 4U) & 0xFU;
         const std::size_t y = over & 0xFU;
@@ -1283,13 +1194,7 @@ void writeSubChunk(io::ByteBuffer& buffer, const JavaSubChunk blocks, const std:
 void writeAvailableEntityIdentifiers(io::ByteBuffer& buffer) { buffer.writeBytes(entityIdentifiers()); }
 
 void writeCreativeContent(io::ByteBuffer& buffer, const int protocol, const std::size_t items) {
-    // One group with everything in it. Vanilla sorts its creative menu into four tabs and a great
-    // many groups, and that order is content rather than protocol: what the protocol needs is that
-    // every item a player may take is in a group, and that the group exists.
     writeVarUInt(buffer, 1);
-    // The `items` tab, which is the one a mixed bag belongs under. Not `all`, which is a word for
-    // the whole menu rather than a tab a group can sit in: a client looking for the tab by that
-    // number finds nothing there and stops reading.
     constexpr int kItemsTab = 4;
     if (protocol >= kCreativeCategoryByteProtocol) {
         buffer.writeByte(kItemsTab);
@@ -1309,7 +1214,7 @@ void writeCreativeContent(io::ByteBuffer& buffer, const int protocol, const std:
         shown += known(at) ? 1 : 0;
     }
     writeVarUInt(buffer, shown);
-    std::uint32_t netId = 1; // Zero is "no stack", so the menu counts from one.
+    std::uint32_t netId = 1;
     for (std::size_t at = 0; at < offered; ++at) {
         if (!known(at)) {
             continue;
@@ -1317,12 +1222,11 @@ void writeCreativeContent(io::ByteBuffer& buffer, const int protocol, const std:
         writeVarUInt(buffer, netId++);
         writeItemInstance(buffer, BedrockItemStack{.runtimeId = static_cast<std::int32_t>(at) + 1, .count = 1},
                           protocol);
-        writeVarUInt(buffer, 0); // All of them in the one group.
+        writeVarUInt(buffer, 0);
     }
 }
 
 void writeGameRulesChanged(io::ByteBuffer& buffer, const int protocol) {
-    /// What a rule's value is: a flag, a whole number, or a fraction.
     constexpr std::uint32_t kBool = 1;
     constexpr std::uint32_t kInt = 2;
 
@@ -1330,7 +1234,7 @@ void writeGameRulesChanged(io::ByteBuffer& buffer, const int protocol) {
     const auto flag = [&buffer, editable](const std::string_view name, const bool value) {
         writeString(buffer, name);
         if (editable) {
-            writeBool(buffer, false); // Not the player's to change: the server decides all of these.
+            writeBool(buffer, false);
         }
         writeVarUInt(buffer, kBool);
         writeBool(buffer, value);
@@ -1341,7 +1245,6 @@ void writeGameRulesChanged(io::ByteBuffer& buffer, const int protocol) {
             writeBool(buffer, false);
         }
         writeVarUInt(buffer, kInt);
-        // 844 turned this one from a varint into four bytes.
         if (editable) {
             writeIntLE(buffer, value);
         } else {
@@ -1352,33 +1255,26 @@ void writeGameRulesChanged(io::ByteBuffer& buffer, const int protocol) {
     writeVarUInt(buffer, 5);
     // Off, so the client never heals anybody by itself: hearts come from this server or not at all.
     flag("naturalregeneration", false);
-    // On, so the client never empties a bag on death. What is kept is decided here.
+    // On, so the client never empties a bag on death.
     flag("keepinventory", true);
     // Recipes are unlocked by being shown, not by the client deciding it has earned them.
     flag("recipesunlock", true);
-    // And nobody is moved around their spawn by the client's own idea of where that is.
     number("spawnradius", 0);
-    // From 944 the bar is drawn only when something is on it, so it can be left on; below that it
-    // is drawn whenever it is on, and is turned on and off as waypoints come and go.
     flag("locatorBar", protocol >= kLocatorBarProtocol);
 }
 
 namespace {
 
-/// What an ingredient's kind is called on the wire. The client reads the word, not the number.
+/// The client reads the word, not the number.
 constexpr std::string_view kDescriptorByName = "name";
 constexpr std::string_view kDescriptorByTag = "item_tag";
 
-/// The aux value that means "any of them", which is what a tag and a damaged tool both ask for.
 constexpr std::int32_t kAnyAux = 32767;
 
-/// Which screen a recipe belongs to when it does not say: a table, or a hand, which are the same
-/// word to that client.
+/// Which screen a recipe belongs to when it does not say: a table, or a hand, which are the same word to that client.
 constexpr std::string_view kCraftingTableTag = "crafting_table";
 
 void writeIngredient(io::ByteBuffer& buffer, const BedrockIngredient& ingredient) {
-    // An empty cell is the one kind that carries no name at all, and it says so with a nought
-    // where every other kind says one.
     if (ingredient.name.empty()) {
         writeVarUInt(buffer, 0);
         writeVarInt(buffer, kAnyAux);
@@ -1392,26 +1288,21 @@ void writeIngredient(io::ByteBuffer& buffer, const BedrockIngredient& ingredient
     writeVarInt(buffer, ingredient.count);
 }
 
-/// A stack as a recipe's result carries it, which is not the shape a window carries: the id is a
-/// varint here and there is no net id in front of the block.
 void writeItemInstance(io::ByteBuffer& buffer, const BedrockItemStack& item) {
     writeVarInt(buffer, item.runtimeId);
     writeShortLE(buffer, static_cast<std::uint16_t>(item.count));
     writeVarUInt(buffer, static_cast<std::uint32_t>(item.data));
     writeVarInt(buffer, item.blockRuntimeId);
-    // What is written on it and where it may be used, all three empty, as a stream of its own.
     writeVarUInt(buffer, 10);
     writeShortLE(buffer, 0);
     writeIntLE(buffer, 0);
     writeIntLE(buffer, 0);
 }
 
-/// Nothing has to be unlocked before this recipe can be used, said the long way the packet asks
-/// for: the context, then the optional list of what would unlock it.
 void writeNoUnlocking(io::ByteBuffer& buffer) {
-    writeVarInt(buffer, 0); // Unlocked by nothing in particular,
+    writeVarInt(buffer, 0);
     writeBool(buffer, true);
-    writeVarUInt(buffer, 0); // and there is no list of what it would take.
+    writeVarUInt(buffer, 0);
 }
 
 void writeRecipe(io::ByteBuffer& buffer, const BedrockRecipe& recipe, const std::uint32_t at) {
@@ -1424,15 +1315,13 @@ void writeRecipe(io::ByteBuffer& buffer, const BedrockRecipe& recipe, const std:
     for (const BedrockIngredient& ingredient : recipe.ingredients) {
         writeIngredient(buffer, ingredient);
     }
-    writeVarUInt(buffer, 1); // One result, which is all this server makes.
+    writeVarUInt(buffer, 1);
     writeItemInstance(buffer, recipe.result);
-    // Its own name as a number, which nothing here reads back: the string above is what a request
-    // names. It has to be there and it has to differ, so the place in the list serves.
     writeUuid(buffer, 0, static_cast<std::uint64_t>(at) + 1);
     writeString(buffer, recipe.tag.empty() ? kCraftingTableTag : recipe.tag);
-    writeVarInt(buffer, 0); // No priority over any other recipe.
+    writeVarInt(buffer, 0);
     if (recipe.shaped) {
-        writeBool(buffer, true); // Mirrored is the same recipe, which is what vanilla's are.
+        writeBool(buffer, true);
     }
     writeBool(buffer, true);
     writeNoUnlocking(buffer);
@@ -1443,8 +1332,6 @@ void writeRecipe(io::ByteBuffer& buffer, const BedrockRecipe& recipe, const std:
 
 namespace {
 
-/// One item inside a trade. Empty when there is nothing there, which is how a trade with one cost
-/// says so: the tag is present and holds nothing.
 void writeTradeItem(io::ByteBuffer& buffer, const std::string_view name, const BedrockTradeItem& item) {
     nbt::beginNamed(buffer, name);
     if (!item.name.empty() && item.count > 0) {
@@ -1457,8 +1344,7 @@ void writeTradeItem(io::ByteBuffer& buffer, const std::string_view name, const B
 
 } // namespace
 
-/// Every enchantment that edition has, in its own order: the number on the wire is the place in
-/// this list. A protocol fact, the same as the block and item palettes.
+/// Every enchantment that edition has, in its own order: the number on the wire is the place in this list.
 constexpr auto kBedrockEnchantments = std::to_array<std::string_view>({"protection",
                                                                        "fire_protection",
                                                                        "feather_falling",
@@ -1525,7 +1411,6 @@ void writePlayerEnchantOptions(io::ByteBuffer& buffer, const std::span<const Bed
         }
         writeIntLE(buffer, option.primarySlot);
         // Three lists: what a book would take, what this item takes, and what a curse would add.
-        // Only the middle one is filled, which is the one the row is drawn from.
         writeVarUInt(buffer, 0);
         writeVarUInt(buffer, static_cast<std::uint32_t>(option.enchants.size()));
         for (const BedrockEnchant& enchant : option.enchants) {
@@ -1541,18 +1426,17 @@ void writePlayerEnchantOptions(io::ByteBuffer& buffer, const std::span<const Bed
 void writeUpdateTrade(io::ByteBuffer& buffer, const std::int32_t containerId, const std::int32_t tier,
                       const std::int64_t traderId, const std::int64_t playerId, const std::string_view displayName,
                       const std::span<const BedrockTrade> trades) {
-    /// What this edition calls a villager's window.
     constexpr std::uint8_t kTradeContainer = 15;
 
     buffer.writeByte(static_cast<std::uint8_t>(containerId));
     buffer.writeByte(kTradeContainer);
-    writeVarInt(buffer, 0); // No slots of its own: the trades are the window.
+    writeVarInt(buffer, 0);
     writeVarInt(buffer, tier);
     writeVarLong(buffer, traderId);
     writeVarLong(buffer, playerId);
     writeString(buffer, displayName);
-    writeBool(buffer, true); // The newer of the two trading screens,
-    writeBool(buffer, true); // and the one that counts what a trade is worth.
+    writeBool(buffer, true);
+    writeBool(buffer, true);
 
     nbt::beginCompound(buffer);
     nbt::beginCompoundList(buffer, "Recipes", static_cast<std::int32_t>(trades.size()));
@@ -1574,7 +1458,6 @@ void writeUpdateTrade(io::ByteBuffer& buffer, const std::int32_t containerId, co
         nbt::writeByte(buffer, "rewardExp", 1);
         nbt::end(buffer);
     }
-    // What each rank costs, which the client draws the bar from. The numbers are the jar's own.
     constexpr std::array<std::int32_t, 5> kRankCosts{0, 10, 70, 150, 250};
     nbt::beginCompoundList(buffer, "TierExpRequirements", static_cast<std::int32_t>(kRankCosts.size()));
     for (std::size_t rank = 0; rank < kRankCosts.size(); ++rank) {
@@ -1599,8 +1482,7 @@ namespace {
 } // namespace
 
 void writeCraftingData(io::ByteBuffer& buffer, const std::span<const BedrockRecipe> recipes, const int protocol) {
-    // Below 2168 the whole lot is one list with a kind in front of every entry. From there the
-    // packet is eleven lists, one per kind, and this server fills two of them.
+    // From there the packet is eleven lists, one per kind, and this server fills two of them.
     if (!writesNativeShapes(protocol)) {
         constexpr int kKinds = 4;
         for (int at = 0; at < kKinds; ++at) {
@@ -1630,7 +1512,6 @@ void writeCraftingData(io::ByteBuffer& buffer, const std::span<const BedrockReci
             writeRecipe(buffer, recipe, at++);
         }
     }
-    // The cartography table's recipes, which that edition names by these fixed identities.
     constexpr std::array<std::pair<std::uint64_t, std::uint64_t>, kCartographyRecipeCount> kCartography{{
         {0x8b36268c1829483cULL, 0xa0f1993b7156a8f2ULL},
         {0x442d85ed82724543ULL, 0xa6f1418f90ded05dULL},
@@ -1643,13 +1524,11 @@ void writeCraftingData(io::ByteBuffer& buffer, const std::span<const BedrockReci
         writeVarUInt(buffer,
                      static_cast<std::uint32_t>(kFirstCartographyRecipeNetId + static_cast<std::int32_t>(index)));
     }
-    // User shapeless, chemistry shapeless, chemistry shaped, smithing transform, smithing trim,
-    // potion mixes, container mixes and material reducers: none of them yet.
     constexpr int kEmptyKinds = 8;
     for (int empty = 0; empty < kEmptyKinds; ++empty) {
         writeVarUInt(buffer, 0);
     }
-    writeBool(buffer, true); // Replaces whatever the client had rather than adding to it.
+    writeBool(buffer, true);
 }
 
 void writeSetCommandsEnabled(io::ByteBuffer& buffer, const bool enabled) { writeBool(buffer, enabled); }
@@ -1657,12 +1536,12 @@ void writeSetCommandsEnabled(io::ByteBuffer& buffer, const bool enabled) { write
 void writeSpawnParticle(io::ByteBuffer& buffer, const BedrockDimension dimension, const std::string_view particle,
                         const float x, const float y, const float z) {
     buffer.writeByte(static_cast<std::uint8_t>(dimension));
-    writeVarLong(buffer, -1); // Belonging to no entity in particular.
+    writeVarLong(buffer, -1);
     writeFloatLE(buffer, x);
     writeFloatLE(buffer, y);
     writeFloatLE(buffer, z);
     writeString(buffer, particle);
-    writeBool(buffer, false); // No variables of its own to fill in.
+    writeBool(buffer, false);
 }
 
 void writeEntityEvent(io::ByteBuffer& buffer, const std::uint64_t runtimeEntityId, const BedrockEntityEvent event,
@@ -1671,7 +1550,7 @@ void writeEntityEvent(io::ByteBuffer& buffer, const std::uint64_t runtimeEntityI
     buffer.writeByte(static_cast<std::uint8_t>(event));
     writeVarInt(buffer, data);
     if (protocol >= kEntityEventGrewProtocol) {
-        writeBool(buffer, false); // No position of its own, which only a fire event carries.
+        writeBool(buffer, false);
     }
 }
 
@@ -1681,13 +1560,11 @@ void writeSetEntityMotion(io::ByteBuffer& buffer, const std::uint64_t runtimeEnt
     writeFloatLE(buffer, x);
     writeFloatLE(buffer, y);
     writeFloatLE(buffer, z);
-    writeVarULong(buffer, 0); // Which tick it belongs to, which only a replay cares about.
+    writeVarULong(buffer, 0);
 }
 
 namespace {
 
-/// One stack, in the shape the protocol asked for. Everything this server sends is plain: no net
-/// id, no nbt, nothing it may only be placed on or broken with.
 void writeItemStack(io::ByteBuffer& buffer, const BedrockItemStack& named, const int protocol) {
     const BedrockItemStack item = shownTo(named, protocol);
     const bool descriptor = protocol >= kItemDescriptorProtocol;
@@ -1711,7 +1588,7 @@ void writeItemStack(io::ByteBuffer& buffer, const BedrockItemStack& named, const
     }
     writeShortLE(buffer, static_cast<std::uint16_t>(item.count));
     writeVarUInt(buffer, static_cast<std::uint32_t>(item.data));
-    writeBool(buffer, false); // The server does not count stacks, so no net id follows.
+    writeBool(buffer, false);
     if (descriptor) {
         writeVarUInt(buffer, static_cast<std::uint32_t>(item.blockRuntimeId));
     } else {
@@ -1738,11 +1615,8 @@ void writeItemComponent(io::ByteBuffer& buffer, const int protocol) {
             continue; // A name this client lacks is never declared to it: its look-alike goes instead.
         }
         writeString(buffer, palette[at]);
-        writeShortLE(buffer, static_cast<std::uint16_t>(at + 1)); // Zero is air, which is not in the list.
-        writeBool(buffer, false);                                 // Not driven by components of its own,
-        // and the version a plain item the client already knows carries. Saying "none" here is what
-        // a server says about an item it deliberately leaves undefined: the client then has no
-        // number for it, and the creative menu naming that number is the packet it hangs up on.
+        writeShortLE(buffer, static_cast<std::uint16_t>(at + 1));
+        writeBool(buffer, false);
         writeVarInt(buffer, 0);
         writeEmptyCompound(buffer);
     }
@@ -1757,29 +1631,26 @@ void writeInventoryContent(io::ByteBuffer& buffer, const std::uint32_t container
         writeItemStack(buffer, item, protocol);
     }
     buffer.writeByte(static_cast<std::uint8_t>(slot));
-    writeBool(buffer, false);                             // No dynamic id: this window is one the client already knows.
-    writeItemStack(buffer, BedrockItemStack{}, protocol); // Nothing stored beside it.
+    writeBool(buffer, false);
+    writeItemStack(buffer, BedrockItemStack{}, protocol);
 }
 
 BedrockLevelEffect bedrockLevelEffect(const std::int32_t javaEvent, const std::int32_t data) {
-    // parity: the nine `LevelEvent`s this server raises, each one read out of Geyser's own switch
-    // and the codec's event table. The particle numbers are 2000 plus their place in that table.
+    // parity: the nine `LevelEvent`s this server raises, each one read out of Geyser's own switch.
     switch (javaEvent) {
-    case 2001: // A block coming apart: the puff of its own texture, and the sound that goes with
-               // it. Both editions happen to number this one the same, and the number it carries is
-               // a block state, which they do not.
+    case 2001:
         return {.event = 2001, .keepsData = true, .translatesBlock = true};
-    case 1001: // A dispenser with nothing in it: a click and no particles.
+    case 1001:
         return {.sound = "block.dispenser.fail"};
-    case 1050: // A crafter that was asked for something that is not a recipe.
+    case 1050:
         return {.sound = "block.crafter.fail"};
-    case 1500: // A composter: the sparkles always, and which sound depends on whether it filled.
+    case 1500:
         return {.event = 2005, .sound = data != 0 ? "block.composter.fill_success" : "block.composter.fill"};
-    case 1502: // A redstone torch burning out, which that edition draws from the block's corner.
+    case 1502:
         return {.event = 2016, .sound = "block.redstone_torch.burnout", .x = 0.0F, .y = 0.5F, .z = 0.0F};
-    case 1505: // Bone meal: the number is how many sparkles, and it means the same over there.
+    case 1505:
         return {.event = 2005, .keepsData = true};
-    case 3002: // The sparks off a lightning rod. The axis Java sends means nothing over there.
+    case 3002:
         return {.event = 2033};
     case 3003:
         return {.event = 2030, .sound = "item.honeycomb.wax_on"};
@@ -1813,7 +1684,7 @@ void writeContainerOpen(io::ByteBuffer& buffer, const std::int32_t containerId, 
     buffer.writeByte(static_cast<std::uint8_t>(containerId));
     buffer.writeByte(static_cast<std::uint8_t>(type));
     writeBlockPosition(buffer, x, y, z);
-    writeVarLong(buffer, -1); // No entity behind it: every window this server opens is a block's.
+    writeVarLong(buffer, -1);
 }
 
 void writeContainerSetData(io::ByteBuffer& buffer, const std::int32_t containerId, const BedrockContainerData property,
@@ -1833,7 +1704,7 @@ void writeContainerClose(io::ByteBuffer& buffer, const std::int32_t containerId,
 std::optional<BedrockContainerClose> readContainerClose(io::ByteBuffer& buffer) {
     BedrockContainerClose close;
     close.containerId = static_cast<std::int8_t>(buffer.readByte());
-    static_cast<void>(buffer.readByte()); // Which kind it was, which this server already knows.
+    static_cast<void>(buffer.readByte());
     close.serverInitiated = buffer.readByte() != 0;
     if (buffer.failed()) {
         return std::nullopt;
@@ -1864,11 +1735,11 @@ void writeItemStackResponse(io::ByteBuffer& buffer, const std::int32_t requestId
     writeVarUInt(buffer, static_cast<std::uint32_t>(containers.size()));
     for (const BedrockResponseContainer& container : containers) {
         buffer.writeByte(static_cast<std::uint8_t>(container.container));
-        writeBool(buffer, false); // No id of its own: none of these windows is a bundle.
+        writeBool(buffer, false);
         writeVarUInt(buffer, static_cast<std::uint32_t>(container.slots.size()));
         for (const BedrockResponseSlot& slot : container.slots) {
             buffer.writeByte(static_cast<std::uint8_t>(slot.slot));
-            buffer.writeByte(static_cast<std::uint8_t>(slot.slot)); // The same slot, as the hotbar numbers it.
+            buffer.writeByte(static_cast<std::uint8_t>(slot.slot));
             buffer.writeByte(static_cast<std::uint8_t>(slot.count));
             if (native) {
                 if (protocol < kSingleFlagProtocol) {
@@ -1879,13 +1750,13 @@ void writeItemStackResponse(io::ByteBuffer& buffer, const std::int32_t requestId
                     writeVarInt(buffer, slot.stackNetworkId);
                 }
                 writeString(buffer, "");
-                writeBool(buffer, false); // Nothing filtered out of the name,
+                writeBool(buffer, false);
             } else {
                 writeVarInt(buffer, slot.stackNetworkId);
                 writeString(buffer, "");
                 writeString(buffer, "");
             }
-            writeVarInt(buffer, 0); // and nothing worn off it.
+            writeVarInt(buffer, 0);
         }
     }
 }
@@ -1899,7 +1770,7 @@ void writeMobEffect(io::ByteBuffer& buffer, const std::uint64_t runtimeEntityId,
     writeVarInt(buffer, amplifier);
     writeBool(buffer, particles);
     writeVarInt(buffer, durationTicks);
-    writeVarULong(buffer, 0); // Which tick it started on, which only a replay cares about.
+    writeVarULong(buffer, 0);
     writeBool(buffer, ambient);
 }
 
@@ -1912,10 +1783,10 @@ void writePlaySound(io::ByteBuffer& buffer, const std::string_view sound, const 
     writeFloatLE(buffer, volume);
     writeFloatLE(buffer, pitch);
     if (writesNativeShapes(protocol)) {
-        writeVarUInt(buffer, 0); // Played once, not looped.
+        writeVarUInt(buffer, 0);
     }
     if (protocol >= kSoundPlaybackProtocol) {
-        writeBool(buffer, false); // Heard only by those in range.
+        writeBool(buffer, false);
     }
     if (protocol >= kServerSoundHandleProtocol) {
         writeBool(buffer, soundHandle.has_value());
@@ -1924,7 +1795,7 @@ void writePlaySound(io::ByteBuffer& buffer, const std::string_view sound, const 
         }
     }
     if (protocol >= kSoundPlaybackProtocol) {
-        writeBool(buffer, false); // Played from the start.
+        writeBool(buffer, false);
     }
 }
 
@@ -1937,8 +1808,6 @@ void writeRecordStarted(io::ByteBuffer& buffer, const std::int32_t x, const std:
 }
 
 void writeStopSoundHandle(io::ByteBuffer& buffer, const std::int64_t soundHandle) {
-    /// Stop, volume, pitch, fade, seek, pause and resume, each naming its kind; a kind of zero in
-    /// any slot but the first is that slot left unset.
     constexpr int kSlots = 7;
 
     writeLongLE(buffer, soundHandle);
@@ -1951,10 +1820,8 @@ void writeUpdateBlock(io::ByteBuffer& buffer, const std::int32_t x, const std::i
                       const std::int32_t javaState, const int protocol) {
     writeBlockPosition(buffer, x, y, z);
     writeVarUInt(buffer, bedrockBlockId(javaState, protocol));
-    // Tell the neighbours, and say it came over the network: the first is what makes a fence rejoin
-    // its posts, the second what stops the client believing it did this itself.
     writeVarUInt(buffer, 0b11);
-    writeVarUInt(buffer, 0); // The layer of blocks, not the one water sits in.
+    writeVarUInt(buffer, 0);
 }
 
 void writeLevelChunk(io::ByteBuffer& buffer, const std::int32_t chunkX, const std::int32_t chunkZ,
@@ -1966,11 +1833,11 @@ void writeLevelChunk(io::ByteBuffer& buffer, const std::int32_t chunkX, const st
     writeVarInt(buffer, dimension);
     writeVarUInt(buffer, count);
     if (writesNativeShapes(protocol)) {
-        writeBool(buffer, false); // Not asking for subchunks one at a time.
-        writeBool(buffer, false); // No blob cache.
-        writeVarUInt(buffer, 0);  // No blobs.
+        writeBool(buffer, false);
+        writeBool(buffer, false);
+        writeVarUInt(buffer, 0);
     } else {
-        writeBool(buffer, false); // No blob cache.
+        writeBool(buffer, false);
     }
 
     io::ByteBuffer payload{subChunks.size() + biomeSections + biomes.size() + blockEntities.size() + 8};
@@ -1985,9 +1852,7 @@ void writeLevelChunk(io::ByteBuffer& buffer, const std::int32_t chunkX, const st
             payload.writeByte(static_cast<std::uint8_t>((127U << 1U) | 1U));
         }
     }
-    payload.writeByte(0); // No border blocks.
-    // And whatever the column holds that is more than a block: the client reads these until the
-    // payload runs out, so they carry no count of their own.
+    payload.writeByte(0);
     payload.writeBytes(blockEntities);
 
     writeVarUInt(buffer, static_cast<std::uint32_t>(payload.readableBytes()));
@@ -1999,26 +1864,23 @@ void writeEmptyLevelChunk(io::ByteBuffer& buffer, std::int32_t chunkX, std::int3
     writeVarInt(buffer, chunkX);
     writeVarInt(buffer, chunkZ);
     writeVarInt(buffer, dimension);
-    writeVarUInt(buffer, 0); // No block sections: the column is air.
-    // 2168 always writes both the "how many subchunks at a time" question and the blob count; below
-    // it the first is not asked at all and the second only when the cache is on.
+    writeVarUInt(buffer, 0);
     if (writesNativeShapes(protocol)) {
-        writeBool(buffer, false); // Not asking for subchunks one at a time.
-        writeBool(buffer, false); // No blob cache.
-        writeVarUInt(buffer, 0);  // No blobs.
+        writeBool(buffer, false);
+        writeBool(buffer, false);
+        writeVarUInt(buffer, 0);
     } else {
-        writeBool(buffer, false); // No blob cache.
+        writeBool(buffer, false);
     }
 
     io::ByteBuffer payload{static_cast<std::size_t>(subChunkCount) + 4};
-    // One biome section written out, and the rest told to carry the previous one forward. The first
-    // is a palette of a single entry, which is what zero bits per block means.
+    // The first is a palette of a single entry, which is what zero bits per block means.
     payload.writeByte(0x01);
     writeVarInt(payload, kFallbackBedrockBiome);
     for (std::uint32_t section = 1; section < subChunkCount; ++section) {
         payload.writeByte(static_cast<std::uint8_t>((127U << 1U) | 1U));
     }
-    payload.writeByte(0); // No border blocks.
+    payload.writeByte(0);
 
     writeVarUInt(buffer, static_cast<std::uint32_t>(payload.readableBytes()));
     buffer.writeBytes(payload.readable());
@@ -2026,7 +1888,6 @@ void writeEmptyLevelChunk(io::ByteBuffer& buffer, std::int32_t chunkX, std::int3
 
 namespace {
 
-/// An image, as a skin carries one: its size and then the pixels, with nothing in between.
 void writeImage(io::ByteBuffer& buffer, const std::uint32_t width, const std::uint32_t height,
                 const std::span<const std::uint8_t> pixels) {
     writeIntLE(buffer, static_cast<std::int32_t>(width));
@@ -2037,63 +1898,57 @@ void writeImage(io::ByteBuffer& buffer, const std::uint32_t width, const std::ui
 
 void writeSkin(io::ByteBuffer& buffer, const SkinInfo& skin, const int protocol) {
     if (!writesNativeShapes(protocol)) {
-        // The shape below 2168: every count is a little-endian int rather than a varint, the arm
-        // size and the colour are written as words, and there is no "trusted" or profile hash.
         writeString(buffer, skin.skinId);
-        writeString(buffer, ""); // No PlayFab account behind it.
+        writeString(buffer, "");
         writeString(buffer, skin.resourcePatch);
         writeImage(buffer, skin.width, skin.height, skin.image);
-        writeIntLE(buffer, 0); // No animations.
+        writeIntLE(buffer, 0);
         writeImage(buffer, 0, 0, {});
-        writeString(buffer, ""); // The geometry the patch names is one the client already has.
         writeString(buffer, "");
-        writeString(buffer, ""); // Nothing animated.
-        writeString(buffer, ""); // No cape.
+        writeString(buffer, "");
+        writeString(buffer, "");
+        writeString(buffer, "");
         writeString(buffer, skin.skinId);
         writeString(buffer, "wide");
-        writeString(buffer, "#0"); // The colour of a persona, which this is not.
-        writeIntLE(buffer, 0);     // Not a persona, so no pieces
-        writeIntLE(buffer, 0);     // and no tints.
-        writeBool(buffer, false);  // Not bought,
-        writeBool(buffer, false);  // not a persona,
-        writeBool(buffer, false);  // no cape over the old model,
-        writeBool(buffer, true);   // and it is this player's own.
-        writeBool(buffer, false);  // It does not override what the player chose, because there is none.
+        writeString(buffer, "#0");
+        writeIntLE(buffer, 0);
+        writeIntLE(buffer, 0);
+        writeBool(buffer, false);
+        writeBool(buffer, false);
+        writeBool(buffer, false);
+        writeBool(buffer, true);
+        writeBool(buffer, false); // It does not override what the player chose, because there is none.
         return;
     }
 
     writeString(buffer, skin.skinId);
-    writeString(buffer, ""); // No PlayFab account behind it.
+    writeString(buffer, "");
     writeString(buffer, skin.resourcePatch);
     writeImage(buffer, skin.width, skin.height, skin.image);
-    writeVarUInt(buffer, 0); // No animations.
+    writeVarUInt(buffer, 0);
     writeImage(buffer, 0, 0, {});
-    writeString(buffer, ""); // The geometry the patch names is one the client already has.
     writeString(buffer, "");
-    writeString(buffer, ""); // Nothing animated.
-    writeString(buffer, ""); // No cape.
+    writeString(buffer, "");
+    writeString(buffer, "");
+    writeString(buffer, "");
     writeString(buffer, skin.skinId);
-    buffer.writeByte(1); // Arms the wide way round, which is the default body.
+    buffer.writeByte(1);
     writeIntLE(buffer, 0);
-    writeVarUInt(buffer, 0);  // Not a persona, so no pieces
-    writeVarUInt(buffer, 0);  // and no tints.
-    writeBool(buffer, false); // Not bought,
-    writeBool(buffer, false); // not a persona,
-    writeBool(buffer, false); // no cape over the old model,
-    writeBool(buffer, true);  // and it is this player's own.
+    writeVarUInt(buffer, 0);
+    writeVarUInt(buffer, 0);
+    writeBool(buffer, false);
+    writeBool(buffer, false);
+    writeBool(buffer, false);
+    writeBool(buffer, true);
     writeBool(buffer, false); // It does not override what the player chose, because there is none.
     writeString(buffer, "true");
     writeString(buffer, "");
 }
 
-/// A turn as the byte a movement packet has room for: a full circle over the whole range.
 void writeByteAngle(io::ByteBuffer& buffer, const float degrees) {
     buffer.writeByte(static_cast<std::uint8_t>(static_cast<std::int8_t>(degrees / (360.0F / 256.0F))));
 }
 
-/// Nothing in a hand. Below 2168 air is the one item that is only its id, so the count, the damage
-/// and everything after it are not written at all; from there it is the descriptor shape, which
-/// writes every field even for a stack of nothing.
 void writeAirItem(io::ByteBuffer& buffer, const int protocol) {
     if (protocol >= kHeldItemDescriptorProtocol) {
         writeItemStack(buffer, BedrockItemStack{}, protocol);
@@ -2110,7 +1965,6 @@ void writeMetadataHead(io::ByteBuffer& buffer, const EntityDataId id, const Enti
                        const int protocol) {
     writeVarUInt(buffer, static_cast<std::uint32_t>(id));
     writeVarUInt(buffer, static_cast<std::uint32_t>(format));
-    // 2168 says the format twice and refuses a field where the two disagree. Below it, once.
     if (writesNativeShapes(protocol)) {
         buffer.writeByte(static_cast<std::uint8_t>(format));
     }
@@ -2153,7 +2007,6 @@ void writeMetadataVector3i(io::ByteBuffer& buffer, const EntityDataId id, const 
 }
 
 SkinInfo flatSkin(const std::string_view name) {
-    // The colour is the name's own hash, so a player keeps theirs and two players rarely share one.
     std::uint32_t hash = 2166136261U;
     for (const char letter : name) {
         hash = (hash ^ static_cast<std::uint8_t>(letter)) * 16777619U;
@@ -2172,14 +2025,11 @@ SkinInfo flatSkin(const std::string_view name) {
 }
 
 void writePlayerListAdd(io::ByteBuffer& buffer, const std::span<const PlayerListEntry> entries, const int protocol) {
-    // Below 2168 the whole packet is one action, said once and in front: nought is arriving.
     if (!writesNativeShapes(protocol)) {
         buffer.writeByte(0);
     }
     writeVarUInt(buffer, static_cast<std::uint32_t>(entries.size()));
     for (const PlayerListEntry& entry : entries) {
-        // Since 2168 every line says for itself whether it is arriving or leaving, twice: once as
-        // a number the client branches on and once as the action's own place in its list.
         if (writesNativeShapes(protocol)) {
             writeVarUInt(buffer, 1);
             buffer.writeByte(0);
@@ -2188,16 +2038,14 @@ void writePlayerListAdd(io::ByteBuffer& buffer, const std::span<const PlayerList
         writeVarLong(buffer, entry.entityId);
         writeString(buffer, entry.name);
         writeString(buffer, entry.xuid);
-        writeString(buffer, ""); // No platform chat of its own.
-        writeIntLE(buffer, 0);   // Which device they play on, which this server does not ask.
+        writeString(buffer, "");
+        writeIntLE(buffer, 0);
         writeSkin(buffer, entry.skin, protocol);
-        writeBool(buffer, false); // Not a teacher,
-        writeBool(buffer, false); // not the host
-        writeBool(buffer, false); // and not somebody's second player on one console.
-        writeIntLE(buffer, 0);    // What colour their name is drawn in, which 800 added.
+        writeBool(buffer, false);
+        writeBool(buffer, false);
+        writeBool(buffer, false);
+        writeIntLE(buffer, 0);
     }
-    // Below 2168 whether a skin is to be trusted is not part of the line: it is a run of booleans
-    // behind all of them, one each.
     if (!writesNativeShapes(protocol)) {
         for (std::size_t at = 0; at < entries.size(); ++at) {
             writeBool(buffer, true);
@@ -2208,7 +2056,7 @@ void writePlayerListAdd(io::ByteBuffer& buffer, const std::span<const PlayerList
 void writePlayerListRemove(io::ByteBuffer& buffer, const std::span<const std::pair<std::uint64_t, std::uint64_t>> uuids,
                            const int protocol) {
     if (!writesNativeShapes(protocol)) {
-        buffer.writeByte(1); // One is leaving, for the whole packet.
+        buffer.writeByte(1);
     }
     writeVarUInt(buffer, static_cast<std::uint32_t>(uuids.size()));
     for (const auto& [high, low] : uuids) {
@@ -2224,11 +2072,11 @@ void writeAddPlayer(io::ByteBuffer& buffer, const AddPlayerInfo& info, const int
     writeUuid(buffer, info.uuidHigh, info.uuidLow);
     writeString(buffer, info.name);
     writeVarULong(buffer, info.runtimeEntityId);
-    writeString(buffer, ""); // No platform chat of its own.
+    writeString(buffer, "");
     writeFloatLE(buffer, info.x);
     writeFloatLE(buffer, info.y);
     writeFloatLE(buffer, info.z);
-    writeFloatLE(buffer, 0.0F); // Standing still as far as this packet says: the next move says more.
+    writeFloatLE(buffer, 0.0F);
     writeFloatLE(buffer, 0.0F);
     writeFloatLE(buffer, 0.0F);
     writeFloatLE(buffer, info.pitch);
@@ -2237,8 +2085,6 @@ void writeAddPlayer(io::ByteBuffer& buffer, const AddPlayerInfo& info, const int
     writeAirItem(buffer, protocol);
     writeVarInt(buffer, info.gameType);
 
-    // The metadata a player needs before a client will draw one at all: how big they are, what
-    // they are called, and the flags that say they fall, collide and breathe like everything else.
     writeVarUInt(buffer, 5);
     writeMetadataLong(buffer, EntityDataId::Flags,
                       flagBit(EntityFlag::HasCollision) | flagBit(EntityFlag::HasGravity) |
@@ -2249,26 +2095,21 @@ void writeAddPlayer(io::ByteBuffer& buffer, const AddPlayerInfo& info, const int
     writeMetadataFloat(buffer, EntityDataId::Width, 0.6F, protocol);
     writeMetadataFloat(buffer, EntityDataId::Height, 1.8F, protocol);
 
-    writeVarUInt(buffer, 0); // No entity properties, of either kind.
+    writeVarUInt(buffer, 0);
     writeVarUInt(buffer, 0);
 
-    // The abilities a player has here, which is the plain set: no layer, and the permissions of
-    // somebody who is neither an operator nor locked down.
     writeLongLE(buffer, info.entityId);
-    buffer.writeByte(1); // A member, in the client's own order of permissions.
-    buffer.writeByte(0); // With no command permission of its own.
+    buffer.writeByte(1);
+    buffer.writeByte(0);
     writeVarUInt(buffer, 0);
 
-    writeVarUInt(buffer, 0); // Riding nothing and ridden by nobody.
-    writeString(buffer, ""); // No device id.
-    writeIntLE(buffer, 0);   // Nor a device.
+    writeVarUInt(buffer, 0);
+    writeString(buffer, "");
+    writeIntLE(buffer, 0);
 }
 
 void writeUpdateAbilities(io::ByteBuffer& buffer, const std::int64_t entityId, const bool operator_,
                           const bool creative) {
-    // Which of these the layer decides, and which of them it says yes to. A client told nothing at
-    // all cannot mine, build, open a door or hit anything, which looks from the inside like being
-    // stuck in the air with the buttons doing nothing.
     constexpr std::uint32_t kBuild = 1U << 0U;
     constexpr std::uint32_t kMine = 1U << 1U;
     constexpr std::uint32_t kDoorsAndSwitches = 1U << 2U;
@@ -2287,9 +2128,6 @@ void writeUpdateAbilities(io::ByteBuffer& buffer, const std::int64_t entityId, c
                                        kAttackMobs | kOperatorCommands | kTeleport | kFlying | kMayFly | kInstantBuild |
                                        kFlySpeedSet | kWalkSpeedSet;
 
-    // The two speeds are in the layer's list but not switched on: the floats below are what says
-    // how fast somebody moves, and a client that is also told the ability is on walks quicker than
-    // the number it was given.
     std::uint32_t on = kBuild | kMine | kDoorsAndSwitches | kOpenContainers | kAttackPlayers | kAttackMobs;
     if (creative) {
         on |= kMayFly | kInstantBuild;
@@ -2299,15 +2137,14 @@ void writeUpdateAbilities(io::ByteBuffer& buffer, const std::int64_t entityId, c
     }
 
     writeLongLE(buffer, entityId);
-    buffer.writeByte(operator_ ? 2 : 1); // An operator or a member, in the client's own order.
-    buffer.writeByte(operator_ ? 2 : 0); // And what it may run, in the same order.
+    buffer.writeByte(operator_ ? 2 : 1);
+    buffer.writeByte(operator_ ? 2 : 0);
 
-    writeVarUInt(buffer, 1); // One layer,
-    writeShortLE(buffer, 1); // the base one everything else is stacked on.
+    writeVarUInt(buffer, 1);
+    writeShortLE(buffer, 1);
     writeIntLE(buffer, static_cast<std::int32_t>(kDecided));
     writeIntLE(buffer, static_cast<std::int32_t>(on));
-    // The three speeds vanilla gives a player. 776 put the vertical one in the middle, so a layer
-    // written with 534's two leaves the walking speed where the client looks for the climb.
+    // The three speeds vanilla gives a player.
     writeFloatLE(buffer, 0.05F);
     writeFloatLE(buffer, 1.0F);
     writeFloatLE(buffer, 0.1F);
@@ -2329,12 +2166,9 @@ void writeRemoveEntity(io::ByteBuffer& buffer, const std::int64_t entityId) { wr
 
 namespace {
 
-/// What a parameter is, as the symbol that carries it: the type's own number with the bit that says
-/// the number means a type at all rather than an index into the enums.
 constexpr std::int32_t kArgValid = 0x100000;
 
-/// An argument this server does not describe. Not `message`, which swallows the rest of the line
-/// and confuses the client's suggestions while typing.
+/// An argument this server does not describe.
 constexpr std::int32_t kArgString = 56;
 
 } // namespace
@@ -2346,12 +2180,12 @@ void writeChangeDimension(io::ByteBuffer& buffer, const BedrockDimension dimensi
     writeFloatLE(buffer, y);
     writeFloatLE(buffer, z);
     writeBool(buffer, respawn);
-    writeBool(buffer, false); // No loading screen of its own.
+    writeBool(buffer, false);
 }
 
 void writeDeathInfo(io::ByteBuffer& buffer, const std::string_view cause) {
     writeString(buffer, cause);
-    writeVarUInt(buffer, 0); // No further lines: the cause is the whole sentence.
+    writeVarUInt(buffer, 0);
 }
 
 void writeRespawn(io::ByteBuffer& buffer, const float x, const float y, const float z, const RespawnState state,
@@ -2364,7 +2198,7 @@ void writeRespawn(io::ByteBuffer& buffer, const float x, const float y, const fl
 }
 
 std::optional<BedrockPlayerAction> readPlayerAction(io::ByteBuffer& buffer) {
-    static_cast<void>(readVarULong(buffer)); // Whose action it is, which is always the sender's own.
+    static_cast<void>(readVarULong(buffer));
     const std::int32_t action = readVarInt(buffer);
     if (buffer.failed()) {
         return std::nullopt;
@@ -2392,30 +2226,30 @@ std::optional<RespawnState> readRespawn(io::ByteBuffer& buffer) {
 
 void writeAvailableCommands(io::ByteBuffer& buffer, const std::span<const CommandInfo> commands) {
     writeVarUInt(buffer, 0); // No enum values, because there are no enums,
-    writeVarUInt(buffer, 0); // no subcommand words,
-    writeVarUInt(buffer, 0); // no suffixes,
-    writeVarUInt(buffer, 0); // no enums
-    writeVarUInt(buffer, 0); // and no subcommands.
+    writeVarUInt(buffer, 0);
+    writeVarUInt(buffer, 0);
+    writeVarUInt(buffer, 0);
+    writeVarUInt(buffer, 0);
 
     writeVarUInt(buffer, static_cast<std::uint32_t>(commands.size()));
     for (const CommandInfo& command : commands) {
         writeString(buffer, command.name);
         writeString(buffer, command.description);
-        writeShortLE(buffer, 0);    // No flags: it is not a cheat, not a test, not hidden.
-        writeString(buffer, "any"); // Anybody the server told about it may run it.
-        writeIntLE(buffer, -1);     // No aliases,
-        writeVarUInt(buffer, 0);    // and no subcommands.
-        writeVarUInt(buffer, 1);    // One way to call it:
-        writeBool(buffer, false);   // which does not chain,
-        writeVarUInt(buffer, 1);    // and takes one thing.
+        writeShortLE(buffer, 0);
+        writeString(buffer, "any");
+        writeIntLE(buffer, -1);
+        writeVarUInt(buffer, 0);
+        writeVarUInt(buffer, 1);
+        writeBool(buffer, false);
+        writeVarUInt(buffer, 1);
         writeString(buffer, "args");
         writeIntLE(buffer, kArgString | kArgValid);
-        writeBool(buffer, true); // Optional, so the bare command is a complete line.
-        buffer.writeByte(0);     // With none of the options a parameter can carry.
+        writeBool(buffer, true);
+        buffer.writeByte(0);
     }
 
-    writeVarUInt(buffer, 0); // No soft enums to fill in later,
-    writeVarUInt(buffer, 0); // and nothing constraining one.
+    writeVarUInt(buffer, 0);
+    writeVarUInt(buffer, 0);
 }
 
 void writeLevelEvent(io::ByteBuffer& buffer, const LevelEventType type, const float x, const float y, const float z,
@@ -2435,20 +2269,17 @@ void writeUpdateAttributes(io::ByteBuffer& buffer, const std::uint64_t runtimeEn
         writeFloatLE(buffer, attribute.minimum);
         writeFloatLE(buffer, attribute.maximum);
         writeFloatLE(buffer, attribute.value);
-        // The range it started with, which for everything here is the range it still has.
         writeFloatLE(buffer, attribute.minimum);
         writeFloatLE(buffer, attribute.maximum);
         writeFloatLE(buffer, attribute.defaultValue);
         writeString(buffer, attribute.name);
-        writeVarUInt(buffer, 0); // Nothing is modifying it: the server sends the number it wants.
+        writeVarUInt(buffer, 0);
     }
     writeVarULong(buffer, tick);
 }
 
 namespace {
 
-/// The fields every entity needs before a client will draw it where the server put it: with no
-/// gravity and no collision it hangs in the air, and with no box it has no size to be drawn at.
 void writeBodyMetadata(io::ByteBuffer& buffer, const float width, const float height, const std::uint64_t flags,
                        const int protocol) {
     writeVarUInt(buffer, 5);
@@ -2480,7 +2311,7 @@ void writeAddItemEntity(io::ByteBuffer& buffer, const std::int64_t entityId, con
                       flagBit(EntityFlag::HasCollision) | flagBit(EntityFlag::HasGravity) |
                           flagBit(EntityFlag::Breathing) | flagBit(EntityFlag::CanShowName),
                       protocol);
-    writeBool(buffer, false); // Nobody fished it out of anything.
+    writeBool(buffer, false);
 }
 
 void writeAddEntity(io::ByteBuffer& buffer, const std::int64_t entityId, const std::string_view identifier,
@@ -2492,24 +2323,22 @@ void writeAddEntity(io::ByteBuffer& buffer, const std::int64_t entityId, const s
     writeFloatLE(buffer, x);
     writeFloatLE(buffer, y);
     writeFloatLE(buffer, z);
-    writeFloatLE(buffer, 0.0F); // Standing still as far as this packet goes: the moves come after.
+    writeFloatLE(buffer, 0.0F);
     writeFloatLE(buffer, 0.0F);
     writeFloatLE(buffer, 0.0F);
     writeFloatLE(buffer, pitch);
     writeFloatLE(buffer, yaw);
-    writeFloatLE(buffer, yaw); // Head,
-    writeFloatLE(buffer, yaw); // and body, which for a standing mob are the same way.
-    writeVarUInt(buffer, 0);   // No attributes: the client has its own for every vanilla entity.
-    writeBodyMetadata(buffer, width, height, flags, protocol);
-    writeVarUInt(buffer, 0); // No entity properties, of either kind.
+    writeFloatLE(buffer, yaw);
+    writeFloatLE(buffer, yaw);
     writeVarUInt(buffer, 0);
-    writeVarUInt(buffer, 0); // Riding nothing and ridden by nobody.
+    writeBodyMetadata(buffer, width, height, flags, protocol);
+    writeVarUInt(buffer, 0);
+    writeVarUInt(buffer, 0);
+    writeVarUInt(buffer, 0);
 }
 
 void writeAddBorderCollider(io::ByteBuffer& buffer, const std::int64_t entityId, const float x, const float y,
                             const float z, const int protocol) {
-    /// Ten across and twenty-five tall, which is what Geyser settled on: wide enough that a player
-    /// running along the border keeps meeting it, tall enough that jumping does not clear it.
     constexpr float kWidth = 10.0F;
     constexpr float kHeight = 25.0F;
 
@@ -2527,22 +2356,21 @@ void writeAddBorderCollider(io::ByteBuffer& buffer, const std::int64_t entityId,
     writeFloatLE(buffer, 0.0F);
     writeFloatLE(buffer, 0.0F);
     writeFloatLE(buffer, 0.0F);
-    writeVarUInt(buffer, 0); // No attributes.
+    writeVarUInt(buffer, 0);
     writeVarUInt(buffer, 6);
     writeMetadataLong(buffer, EntityDataId::Flags,
                       static_cast<std::int64_t>(flagBit(EntityFlag::Invisible) | flagBit(EntityFlag::Silent) |
                                                 flagBit(EntityFlag::NoAi)),
                       protocol);
-    // Being walked into lives past the sixty-fourth flag, so it travels in the second word.
     writeMetadataLong(buffer, EntityDataId::Flags2, static_cast<std::int64_t>(flagBit2(EntityFlag::Collidable)),
                       protocol);
     writeMetadataShort(buffer, EntityDataId::AirSupplyMax, 300, protocol);
     writeMetadataFloat(buffer, EntityDataId::Width, kWidth, protocol);
     writeMetadataFloat(buffer, EntityDataId::Height, kHeight, protocol);
     writeMetadataFloat(buffer, EntityDataId::Scale, 1.0F, protocol);
-    writeVarUInt(buffer, 0); // No entity properties, of either kind.
     writeVarUInt(buffer, 0);
-    writeVarUInt(buffer, 0); // Riding nothing and ridden by nobody.
+    writeVarUInt(buffer, 0);
+    writeVarUInt(buffer, 0);
 }
 
 void writeTakeItemEntity(io::ByteBuffer& buffer, const std::uint64_t itemRuntimeId,
@@ -2554,8 +2382,8 @@ void writeTakeItemEntity(io::ByteBuffer& buffer, const std::uint64_t itemRuntime
 void writeAnimate(io::ByteBuffer& buffer, const std::uint64_t runtimeEntityId, const BedrockAnimation action) {
     buffer.writeByte(static_cast<std::uint8_t>(action));
     writeVarULong(buffer, runtimeEntityId);
-    writeFloatLE(buffer, 0.0F); // Only a rowing oar carries a number here.
-    writeBool(buffer, false);   // And only a swing made by something else names where it came from.
+    writeFloatLE(buffer, 0.0F);
+    writeBool(buffer, false);
 }
 
 void writeMobEquipment(io::ByteBuffer& buffer, const std::uint64_t runtimeEntityId, const BedrockItemStack& item,
@@ -2564,7 +2392,7 @@ void writeMobEquipment(io::ByteBuffer& buffer, const std::uint64_t runtimeEntity
     writeItemStack(buffer, item, protocol);
     buffer.writeByte(static_cast<std::uint8_t>(hotbarSlot));
     buffer.writeByte(static_cast<std::uint8_t>(hotbarSlot));
-    buffer.writeByte(0); // The bag itself, which is the only place a hand takes from.
+    buffer.writeByte(0);
 }
 
 void writeMobArmorEquipment(io::ByteBuffer& buffer, const std::uint64_t runtimeEntityId, const BedrockItemStack& head,
@@ -2583,15 +2411,14 @@ void writeSetDisplayObjective(io::ByteBuffer& buffer, const std::string_view slo
     writeString(buffer, slot);
     writeString(buffer, objective);
     writeString(buffer, title);
-    writeString(buffer, "dummy"); // What fills it in, which for a server-drawn board is nothing.
-    writeVarInt(buffer, 0);       // Highest first, the way every sidebar is read.
+    writeString(buffer, "dummy");
+    writeVarInt(buffer, 0);
 }
 
 void writeRemoveObjective(io::ByteBuffer& buffer, const std::string_view objective) { writeString(buffer, objective); }
 
 void writeSetScore(io::ByteBuffer& buffer, const std::string_view objective,
                    const std::span<const BedrockScoreLine> lines, const int protocol) {
-    /// A line of plain text is a player who does not exist, which is what this edition calls one.
     constexpr std::uint8_t kFakePlayer = 3;
     constexpr std::uint8_t kSet = 0;
 
@@ -2611,7 +2438,7 @@ void writeSetScore(io::ByteBuffer& buffer, const std::string_view objective,
             continue;
         }
         writeVarUInt(buffer, kFakePlayer);
-        writeString(buffer, "changefakeplayer"); // The kind again, as a word, which the client also reads.
+        writeString(buffer, "changefakeplayer");
         writeVarLong(buffer, line.lineId);
         writeString(buffer, named);
         writeIntLE(buffer, line.score);
@@ -2622,7 +2449,6 @@ void writeSetScore(io::ByteBuffer& buffer, const std::string_view objective,
 void writeRemoveScores(io::ByteBuffer& buffer, const std::string_view objective,
                        const std::span<const std::int64_t> lineIds, const int protocol) {
     constexpr std::uint8_t kRemove = 1;
-    /// A line being taken away is of no kind at all.
     constexpr std::int32_t kGone = 0;
 
     if (protocol < kScoreKindProtocol) {
@@ -2639,8 +2465,6 @@ void writeRemoveScores(io::ByteBuffer& buffer, const std::string_view objective,
         writeVarUInt(buffer, kGone);
         writeString(buffer, "remove");
         writeVarLong(buffer, id);
-        // No objective: 26.44 wraps a present one in a second flag that 26.40 does not, and an
-        // absent one is the same single byte to both.
         writeBool(buffer, false);
     }
 }
@@ -2649,33 +2473,32 @@ void writeBossEvent(io::ByteBuffer& buffer, const std::int64_t bossEntityId, con
                     const std::string_view title, const float progress, const int protocol) {
     writeVarLong(buffer, bossEntityId);
     if (protocol < kBossBarPlayerlessProtocol) {
-        writeVarLong(buffer, 0); // Which player it is for, which a server drawing one for everybody
-                                 // leaves alone.
+        writeVarLong(buffer, 0);
     }
     buffer.writeByte(static_cast<std::uint8_t>(action));
     writeString(buffer, title);
-    writeString(buffer, ""); // The same title again, filtered, which this server does not filter.
+    writeString(buffer, "");
     writeFloatLE(buffer, progress);
-    buffer.writeByte(0); // Purple,
-    buffer.writeByte(0); // and no notches, which is what a plain bar looks like.
+    buffer.writeByte(0);
+    buffer.writeByte(0);
 }
 
 void writeTransfer(io::ByteBuffer& buffer, const std::string_view address, const std::uint16_t port,
                    const int protocol) {
     writeString(buffer, address);
     writeShortLE(buffer, port);
-    writeBool(buffer, true); // Loads the world again on arrival, which a different server needs.
+    writeBool(buffer, true);
     if (writesNativeShapes(protocol)) {
-        writeBool(buffer, false); // Not joining anybody's gathering.
+        writeBool(buffer, false);
     }
 }
 
 void writeUpdateAdventureSettings(io::ByteBuffer& buffer, const bool immutableWorld) {
-    writeBool(buffer, false); // Players may hit mobs,
-    writeBool(buffer, false); // and mobs may hit players.
+    writeBool(buffer, false);
+    writeBool(buffer, false);
     writeBool(buffer, immutableWorld);
-    writeBool(buffer, false); // Name tags are drawn by what the entities carry, not by this.
-    writeBool(buffer, true);  // Stepping up a block without jumping, which is that edition's own.
+    writeBool(buffer, false);
+    writeBool(buffer, true);
 }
 
 void writeSignTag(io::ByteBuffer& buffer, const std::int32_t x, const std::int32_t y, const std::int32_t z,
@@ -2694,7 +2517,7 @@ void writeSignTag(io::ByteBuffer& buffer, const std::int32_t x, const std::int32
         nbt::beginNamed(buffer, name);
         nbt::writeString(buffer, "Text", text);
         nbt::writeString(buffer, "TextOwner", "");
-        nbt::writeInt(buffer, "SignTextColor", -16777216); // Black, which is what an unpainted sign is.
+        nbt::writeInt(buffer, "SignTextColor", -16777216);
         nbt::writeByte(buffer, "IgnoreLighting", 0);
         nbt::writeByte(buffer, "PersistFormatting", 1);
         nbt::writeByte(buffer, "HideGlowOutline", 0);
@@ -2717,7 +2540,7 @@ void writePlayerHotbar(io::ByteBuffer& buffer, const std::int32_t slot) {
 
     writeVarUInt(buffer, static_cast<std::uint32_t>(slot));
     buffer.writeByte(kInventoryContainer);
-    writeBool(buffer, true); // Select it, rather than only redraw the row.
+    writeBool(buffer, true);
 }
 
 void writeLevelSoundEvent(io::ByteBuffer& buffer, const std::int32_t event, const float x, const float y, const float z,
@@ -2730,12 +2553,12 @@ void writeLevelSoundEvent(io::ByteBuffer& buffer, const std::int32_t event, cons
     writeFloatLE(buffer, y);
     writeFloatLE(buffer, z);
     writeVarInt(buffer, kNoExtraData);
-    writeString(buffer, "");  // No entity to name: these are the sounds a place makes.
-    writeBool(buffer, false); // Not a young one's voice,
-    writeBool(buffer, false); // and it gets quieter with distance like everything else.
-    writeLongLE(buffer, 0);   // Nothing it belongs to, which 786 added.
+    writeString(buffer, "");
+    writeBool(buffer, false);
+    writeBool(buffer, false);
+    writeLongLE(buffer, 0);
     if (protocol >= kServerSoundHandleProtocol) {
-        writeBool(buffer, false); // And nowhere for a fire to start, which 975 added.
+        writeBool(buffer, false);
     }
 }
 
@@ -2745,7 +2568,7 @@ void writeItemFrameBlock(io::ByteBuffer& buffer, const std::int32_t x, const std
     writeVarUInt(buffer, itemFrameBlockId(glowing, face, protocol));
     // Tell the neighbours, and say it came over the network rather than from the client itself.
     writeVarUInt(buffer, 0b11);
-    writeVarUInt(buffer, 0); // The layer of blocks, not the one water sits in.
+    writeVarUInt(buffer, 0);
 }
 
 void writeItemFrameData(io::ByteBuffer& buffer, const std::int32_t x, const std::int32_t y, const std::int32_t z,
@@ -2754,7 +2577,6 @@ void writeItemFrameData(io::ByteBuffer& buffer, const std::int32_t x, const std:
     /// parity: the client looks a frame's data up by these two names and no other.
     constexpr std::string_view kPlain = "ItemFrame";
     constexpr std::string_view kGlowing = "GlowItemFrame";
-    /// An eighth of a turn, which is what one step of the other edition's rotation comes to.
     constexpr float kStepDegrees = 45.0F;
 
     writeBlockPosition(buffer, x, y, z);
@@ -2781,7 +2603,6 @@ void writeBannerTag(io::ByteBuffer& buffer, const std::int32_t x, const std::int
                     const std::string_view customName) {
     // What the client calls a banner's own data, which it looks up by this name and no other.
     constexpr std::string_view kId = "Banner";
-    // The one banner that edition draws itself rather than from layers.
     constexpr std::int32_t kOminous = 1;
 
     nbt::beginCompound(buffer);
@@ -2855,8 +2676,7 @@ std::optional<BedrockBlockPick> readBlockPickRequest(io::ByteBuffer& buffer) {
     pick.x = readVarInt(buffer);
     pick.y = readVarInt(buffer);
     pick.z = readVarInt(buffer);
-    static_cast<void>(buffer.readByte()); // Whether the block's own data comes with it, which only
-                                          // a creative client asks for and this server always gives.
+    static_cast<void>(buffer.readByte());
     pick.hotbarSlot = std::int32_t{buffer.readByte()};
     return buffer.failed() ? std::nullopt : std::optional{pick};
 }
@@ -2870,7 +2690,7 @@ std::optional<BedrockEntityPick> readEntityPickRequest(io::ByteBuffer& buffer) {
 
 void writeSetSpawnPosition(io::ByteBuffer& buffer, const BedrockDimension dimension, const std::int32_t x,
                            const std::int32_t y, const std::int32_t z) {
-    /// parity: `SetSpawnPositionPacket.Type.WORLD_SPAWN`, the one a server sets.
+    /// parity: `SetSpawnPositionPacket.Type.WORLD_SPAWN`.
     constexpr std::int32_t kWorldSpawn = 1;
 
     writeVarInt(buffer, kWorldSpawn);
@@ -2882,7 +2702,7 @@ void writeSetSpawnPosition(io::ByteBuffer& buffer, const BedrockDimension dimens
 void writeStopSound(io::ByteBuffer& buffer, const std::string_view sound, const bool stopAll) {
     writeString(buffer, sound);
     writeBool(buffer, stopAll);
-    writeBool(buffer, false); // Not the legacy music channel.
+    writeBool(buffer, false);
 }
 
 void writePlayerStartItemCooldown(io::ByteBuffer& buffer, const std::string_view category,
@@ -2892,7 +2712,7 @@ void writePlayerStartItemCooldown(io::ByteBuffer& buffer, const std::string_view
 }
 
 std::optional<BedrockCredits> readShowCredits(io::ByteBuffer& buffer) {
-    static_cast<void>(readVarULong(buffer)); // Whose poem it is, which is always the reader's own.
+    static_cast<void>(readVarULong(buffer));
     const std::int32_t status = readVarInt(buffer);
     if (buffer.failed() || status < 0 || status > static_cast<std::int32_t>(BedrockCredits::Finished)) {
         return std::nullopt;
@@ -2921,7 +2741,7 @@ std::optional<BedrockBookEdit> readBookEdit(io::ByteBuffer& buffer) {
     case BedrockBookEdit::Action::AddPage:
         edit.page = readVarInt(buffer);
         edit.text = readString(buffer);
-        static_cast<void>(readString(buffer)); // The photo on the page, which that edition dropped.
+        static_cast<void>(readString(buffer));
         break;
     case BedrockBookEdit::Action::DeletePage:
         edit.page = readVarInt(buffer);
@@ -2933,7 +2753,7 @@ std::optional<BedrockBookEdit> readBookEdit(io::ByteBuffer& buffer) {
     case BedrockBookEdit::Action::Sign:
         edit.title = readString(buffer);
         edit.author = readString(buffer);
-        static_cast<void>(readString(buffer)); // The signer's own account number, which nothing here reads.
+        static_cast<void>(readString(buffer));
         break;
     }
     return buffer.failed() ? std::nullopt : std::optional{std::move(edit)};
@@ -2941,7 +2761,7 @@ std::optional<BedrockBookEdit> readBookEdit(io::ByteBuffer& buffer) {
 
 std::optional<std::string> readFilterText(io::ByteBuffer& buffer) {
     std::string text = readString(buffer);
-    static_cast<void>(buffer.readByte()); // Whether it came from the server, which on the way in it did not.
+    static_cast<void>(buffer.readByte());
     if (buffer.failed()) {
         return std::nullopt;
     }
@@ -2950,17 +2770,15 @@ std::optional<std::string> readFilterText(io::ByteBuffer& buffer) {
 
 void writeFilterText(io::ByteBuffer& buffer, const std::string_view text) {
     writeString(buffer, text);
-    buffer.writeByte(1); // From the server, which is what marks it as looked over.
+    buffer.writeByte(1);
 }
 
 std::optional<BedrockLecternPage> readLecternUpdate(io::ByteBuffer& buffer, const int protocol) {
-    /// Where the flag that said the book was being taken went away: that edition drops it on the
-    /// ground itself and tells the server through the block instead.
     constexpr int kNoDropFlagProtocol = 662;
 
     BedrockLecternPage update;
     update.page = std::int32_t{buffer.readByte()};
-    static_cast<void>(buffer.readByte()); // How many pages the client thinks it has.
+    static_cast<void>(buffer.readByte());
     update.x = readVarInt(buffer);
     update.y = static_cast<std::int32_t>(readVarUInt(buffer));
     update.z = readVarInt(buffer);
@@ -2973,7 +2791,7 @@ std::optional<BedrockLecternPage> readLecternUpdate(io::ByteBuffer& buffer, cons
 std::optional<BedrockCommandBlock> readCommandBlockUpdate(io::ByteBuffer& buffer) {
     BedrockCommandBlock update;
     if (buffer.readByte() == 0) {
-        return std::nullopt; // A minecart's, which this server has none of.
+        return std::nullopt;
     }
     update.x = readVarInt(buffer);
     update.y = static_cast<std::int32_t>(readVarUInt(buffer));
@@ -2982,12 +2800,12 @@ std::optional<BedrockCommandBlock> readCommandBlockUpdate(io::ByteBuffer& buffer
     update.needsRedstone = buffer.readByte() != 0;
     update.conditional = buffer.readByte() != 0;
     update.command = readString(buffer);
-    static_cast<void>(readString(buffer)); // What it last printed, which the client keeps its own copy of,
-    static_cast<void>(readString(buffer)); // the name over it,
-    static_cast<void>(readString(buffer)); // and that name once a filter has been over it.
+    static_cast<void>(readString(buffer));
+    static_cast<void>(readString(buffer));
+    static_cast<void>(readString(buffer));
     update.trackOutput = buffer.readByte() != 0;
     update.tickDelay = readIntLE(buffer);
-    static_cast<void>(buffer.readByte()); // Whether it runs on the first tick, which only a chain uses.
+    static_cast<void>(buffer.readByte());
     return buffer.failed() ? std::nullopt : std::optional{update};
 }
 
@@ -3001,7 +2819,6 @@ std::optional<BedrockCrafterSlot> readCrafterSlotToggle(io::ByteBuffer& buffer) 
     return buffer.failed() ? std::nullopt : std::optional{toggle};
 }
 
-/// Where an emote grew the three fields that follow its name.
 constexpr int kEmoteGrewProtocol = 729;
 
 std::optional<BedrockEmote> readEmote(io::ByteBuffer& buffer, const int protocol) {
@@ -3010,8 +2827,8 @@ std::optional<BedrockEmote> readEmote(io::ByteBuffer& buffer, const int protocol
     emote.emoteId = readString(buffer);
     if (protocol >= kEmoteGrewProtocol) {
         emote.duration = static_cast<std::int32_t>(readVarUInt(buffer));
-        static_cast<void>(readString(buffer)); // Whose account made it,
-        static_cast<void>(readString(buffer)); // and on what.
+        static_cast<void>(readString(buffer));
+        static_cast<void>(readString(buffer));
     }
     emote.flags = buffer.readByte();
     return buffer.failed() ? std::nullopt : std::optional{emote};
@@ -3040,10 +2857,9 @@ void writeSetEntityLink(io::ByteBuffer& buffer, const std::int64_t vehicleId, co
     writeVarLong(buffer, vehicleId);
     writeVarLong(buffer, riderId);
     buffer.writeByte(static_cast<std::uint8_t>(how));
-    // Immediate is what a player sitting down themselves gets: no little animation in between.
     writeBool(buffer, immediate);
-    writeBool(buffer, false);   // Not the rider's own doing as far as the client is concerned.
-    writeFloatLE(buffer, 0.0F); // How fast the vehicle is turning, which only a boat's oars use.
+    writeBool(buffer, false);
+    writeFloatLE(buffer, 0.0F);
 }
 
 void writeSetDifficulty(io::ByteBuffer& buffer, const std::int32_t difficulty) {
@@ -3080,12 +2896,12 @@ void writeSyncEntityProperty(io::ByteBuffer& buffer, const std::string_view enti
 void writeEntityIntProperty(io::ByteBuffer& buffer, const std::uint64_t runtimeEntityId, const std::uint32_t index,
                             const std::int32_t value) {
     writeVarULong(buffer, runtimeEntityId);
-    writeVarUInt(buffer, 0); // Nothing in the metadata itself: the property is the message.
+    writeVarUInt(buffer, 0);
     writeVarUInt(buffer, 1);
     writeVarUInt(buffer, index);
     writeVarInt(buffer, value);
-    writeVarUInt(buffer, 0);  // No properties that are a fraction.
-    writeVarULong(buffer, 0); // Which tick it belongs to, which only a replay cares about.
+    writeVarUInt(buffer, 0);
+    writeVarULong(buffer, 0);
 }
 
 bool hasAnything(const BedrockLook& look) {
@@ -3129,9 +2945,9 @@ void writeEntityLook(io::ByteBuffer& buffer, const std::uint64_t runtimeEntityId
     if (look.strength.has_value()) {
         writeMetadataInt(buffer, EntityDataId::Strength, *look.strength, protocol);
     }
-    writeVarUInt(buffer, 0); // No entity properties, of either kind.
     writeVarUInt(buffer, 0);
-    writeVarULong(buffer, 0); // Which tick it belongs to, which only a replay cares about.
+    writeVarUInt(buffer, 0);
+    writeVarULong(buffer, 0);
 }
 
 void writeEntityFlags(io::ByteBuffer& buffer, const std::uint64_t runtimeEntityId, const std::uint64_t flags,
@@ -3139,9 +2955,9 @@ void writeEntityFlags(io::ByteBuffer& buffer, const std::uint64_t runtimeEntityI
     writeVarULong(buffer, runtimeEntityId);
     writeVarUInt(buffer, 1);
     writeMetadataLong(buffer, EntityDataId::Flags, static_cast<std::int64_t>(flags), protocol);
-    writeVarUInt(buffer, 0); // No entity properties, of either kind.
     writeVarUInt(buffer, 0);
-    writeVarULong(buffer, 0); // Which tick it belongs to, which only a replay cares about.
+    writeVarUInt(buffer, 0);
+    writeVarULong(buffer, 0);
 }
 
 void writeNameTag(io::ByteBuffer& buffer, const std::uint64_t runtimeEntityId, const std::string_view nameTag,
@@ -3149,13 +2965,11 @@ void writeNameTag(io::ByteBuffer& buffer, const std::uint64_t runtimeEntityId, c
     writeVarULong(buffer, runtimeEntityId);
     writeVarUInt(buffer, 2);
     writeMetadataString(buffer, EntityDataId::Name, nameTag, protocol);
-    // parity: a name is drawn through walls and at any distance only while this is set, which is
-    // what `never` and `hideForOtherTeams` come to once the line itself has been worked out.
     writeMetadataHead(buffer, EntityDataId::NametagAlwaysShow, EntityDataFormat::Byte, protocol);
     buffer.writeByte(always ? 1 : 0);
-    writeVarUInt(buffer, 0); // No entity properties, of either kind.
     writeVarUInt(buffer, 0);
-    writeVarULong(buffer, 0); // Which tick it belongs to, which only a replay cares about.
+    writeVarUInt(buffer, 0);
+    writeVarULong(buffer, 0);
 }
 
 void writeSleeping(io::ByteBuffer& buffer, const std::uint64_t runtimeEntityId, const std::uint64_t moreFlags,
@@ -3164,18 +2978,14 @@ void writeSleeping(io::ByteBuffer& buffer, const std::uint64_t runtimeEntityId, 
     writeVarUInt(buffer, 2);
     writeMetadataLong(buffer, EntityDataId::Flags2, static_cast<std::int64_t>(moreFlags), protocol);
     writeMetadataVector3i(buffer, EntityDataId::BedPosition, bedX, bedY, bedZ, protocol);
-    writeVarUInt(buffer, 0); // No entity properties, of either kind.
     writeVarUInt(buffer, 0);
-    writeVarULong(buffer, 0); // Which tick it belongs to, which only a replay cares about.
+    writeVarUInt(buffer, 0);
+    writeVarULong(buffer, 0);
 }
 
 namespace {
 
-/// The head every transaction carries: the legacy request, the slots it names and the client's own
-/// idea of what moved in its bags. Answers which kind of transaction follows.
 [[nodiscard]] std::uint32_t readTransactionHead(io::ByteBuffer& buffer, const int protocol) {
-    // 1001 announced the old slots, the kind and the list each with a flag, and 26.50 kept only the
-    // first. Before 1001 there were none.
     const bool flagged = protocol >= kTransactionFlagsProtocol;
     const bool single = protocol >= kSingleFlagProtocol;
     const std::int32_t legacyRequestId = readVarInt(buffer);
@@ -3190,11 +3000,11 @@ namespace {
         }
     }
     if (flagged && !single) {
-        static_cast<void>(buffer.readByte()); // The kind is there,
+        static_cast<void>(buffer.readByte());
     }
     const std::uint32_t kind = readVarUInt(buffer);
     if (flagged && !single) {
-        static_cast<void>(buffer.readByte()); // and so is the list.
+        static_cast<void>(buffer.readByte());
     }
     // This server decides for itself what moved in a bag, so the client's list is read and dropped.
     const std::uint32_t actions = readVarUInt(buffer);
@@ -3210,8 +3020,7 @@ namespace {
 } // namespace
 
 BedrockTransaction readTransaction(io::ByteBuffer& buffer, const int protocol) {
-    /// The five kinds: a plain move, a mismatch, a use, a use on an entity and a release. Only the
-    /// last two are acted on here.
+    /// Only the last two are acted on here.
     constexpr std::uint32_t kUseOnEntity = 3;
     constexpr std::uint32_t kItemRelease = 4;
 
@@ -3225,9 +3034,9 @@ BedrockTransaction readTransaction(io::ByteBuffer& buffer, const int protocol) {
         use.runtimeEntityId = readVarULong(buffer);
         use.action = readVarInt(buffer);
         use.hotbarSlot = readVarInt(buffer);
-        static_cast<void>(readItem(buffer, protocol)); // What they are holding, which this server knows.
+        static_cast<void>(readItem(buffer, protocol));
         for (int at = 0; at < 6; ++at) {
-            static_cast<void>(readFloatLE(buffer)); // Where they were, and where on it they clicked.
+            static_cast<void>(readFloatLE(buffer));
         }
         if (!buffer.failed()) {
             transaction.entityUse = use;
@@ -3238,9 +3047,9 @@ BedrockTransaction readTransaction(io::ByteBuffer& buffer, const int protocol) {
         BedrockItemRelease release;
         release.action = static_cast<std::int32_t>(readVarUInt(buffer));
         release.hotbarSlot = readVarInt(buffer);
-        static_cast<void>(readItem(buffer, protocol)); // What they were holding, which this server knows.
+        static_cast<void>(readItem(buffer, protocol));
         for (int at = 0; at < 3; ++at) {
-            static_cast<void>(readFloatLE(buffer)); // Where they were looking from.
+            static_cast<void>(readFloatLE(buffer));
         }
         if (!buffer.failed()) {
             transaction.itemRelease = release;
@@ -3263,19 +3072,17 @@ std::optional<BedrockInteract> readInteract(io::ByteBuffer& buffer) {
 }
 
 std::optional<std::int32_t> readHeldSlot(io::ByteBuffer& buffer, const int protocol) {
-    static_cast<void>(readVarULong(buffer));                         // Whose hand it is, which is always the sender's.
-    static_cast<void>(readItem(buffer, protocol));                   // What is in it, which this server already knows.
-    static_cast<void>(buffer.readByte());                            // Where it sits in the bag,
-    const std::int32_t hotbarSlot = std::int32_t{buffer.readByte()}; // and which of the nine it is.
-    static_cast<void>(buffer.readByte()); // Out of which container, which for a hand is the bag.
+    static_cast<void>(readVarULong(buffer));
+    static_cast<void>(readItem(buffer, protocol));
+    static_cast<void>(buffer.readByte());
+    const std::int32_t hotbarSlot = std::int32_t{buffer.readByte()};
+    static_cast<void>(buffer.readByte());
     return buffer.failed() ? std::nullopt : std::optional{hotbarSlot};
 }
 
 void writeSelfMetadata(io::ByteBuffer& buffer, const std::uint64_t runtimeEntityId, const std::int16_t airSupply,
                        const std::int16_t maxAirSupply, const std::uint64_t flags, const std::uint64_t moreFlags,
                        const int protocol) {
-    // A player's box and scale, which do not change but are sent with the rest for the same reason:
-    // the client has never been told them, and its own default for all three is zero.
     constexpr float kPlayerWidth = 0.6F;
     constexpr float kPlayerHeight = 1.8F;
 
@@ -3288,9 +3095,9 @@ void writeSelfMetadata(io::ByteBuffer& buffer, const std::uint64_t runtimeEntity
     writeMetadataFloat(buffer, EntityDataId::Width, kPlayerWidth, protocol);
     writeMetadataFloat(buffer, EntityDataId::Height, kPlayerHeight, protocol);
     writeMetadataFloat(buffer, EntityDataId::Scale, 1.0F, protocol);
-    writeVarUInt(buffer, 0); // No entity properties, of either kind.
     writeVarUInt(buffer, 0);
-    writeVarULong(buffer, 0); // Which tick it belongs to, which only a replay cares about.
+    writeVarUInt(buffer, 0);
+    writeVarULong(buffer, 0);
 }
 
 std::string_view bannerPatternOf(const std::string_view code) {
@@ -3358,7 +3165,6 @@ constexpr std::array<std::string_view, 4> kWaypointDots{
     "textures/ui/locator_bar_dot_3",
 };
 
-/// Which of the four a dot that far away is drawn with.
 [[nodiscard]] std::size_t waypointDot(const float distance) {
     if (distance < kWaypointNear) {
         return 0;
@@ -3370,8 +3176,6 @@ constexpr std::array<std::string_view, 4> kWaypointDots{
     return 1 + static_cast<std::size_t>(std::floor(along * 2.0F));
 }
 
-/// And how big it is drawn: full size for the first two, a little over half for the rest, a fifth
-/// once it is as far away as the bar goes.
 [[nodiscard]] float waypointIconSize(const float distance) {
     if (distance >= kWaypointFar) {
         return 0.2F;
@@ -3379,8 +3183,6 @@ constexpr std::array<std::string_view, 4> kWaypointDots{
     return waypointDot(distance) <= 1 ? 1.0F : 0.6F;
 }
 
-/// The same choice on 944, which numbers its dots instead and interpolates by the square of the
-/// distance rather than the distance.
 [[nodiscard]] std::int32_t waypointDotId(const float distance) {
     constexpr float kNearSquared = kWaypointNear * kWaypointNear;
     constexpr float kFarSquared = kWaypointFar * kWaypointFar;
@@ -3394,8 +3196,6 @@ constexpr std::array<std::string_view, 4> kWaypointDots{
     return 3 + static_cast<std::int32_t>(std::floor((squared - kNearSquared) / (kFarSquared - kNearSquared) * 2.0F));
 }
 
-/// Which of the waypoint's fields the line carries. parity: the client reads a field only when
-/// its bit is set, so a line that sets none moves nothing.
 constexpr std::int32_t kWaypointWorldPos = 1;
 constexpr std::int32_t kWaypointVisible = 1 << 1;
 constexpr std::int32_t kWaypointTexture = 1 << 2;
@@ -3408,7 +3208,7 @@ constexpr std::int32_t kWaypointAuthority = 1 << 5;
 void writeLocatorBar(io::ByteBuffer& buffer, const BedrockWaypoint& waypoint, const BedrockWaypointAction action,
                      const int protocol) {
     const bool byPath = protocol >= kWaypointTextureProtocol;
-    writeVarUInt(buffer, 1); // One line, which is all this server ever has to say at once.
+    writeVarUInt(buffer, 1);
     writeUuid(buffer, waypoint.groupHigh, waypoint.groupLow);
 
     // Taking a line off the bar names it and nothing else: the client already has the rest.
@@ -3419,7 +3219,7 @@ void writeLocatorBar(io::ByteBuffer& buffer, const BedrockWaypoint& waypoint, co
     writeIntLE(buffer, fields);
 
     writeBool(buffer, true);
-    writeBool(buffer, true); // Drawn, since a line that is not is a line not sent.
+    writeBool(buffer, true);
 
     writeBool(buffer, true);
     writeFloatLE(buffer, waypoint.x);
@@ -3435,7 +3235,6 @@ void writeLocatorBar(io::ByteBuffer& buffer, const BedrockWaypoint& waypoint, co
         writeFloatLE(buffer, size);
         writeFloatLE(buffer, size);
     } else {
-        // 944 has no textures of its own: the dot is a number, and its four run from 2 to 5.
         writeBool(buffer, true);
         writeIntLE(buffer, waypointDotId(waypoint.distance));
     }
@@ -3456,7 +3255,6 @@ void writeLocatorBar(io::ByteBuffer& buffer, const BedrockWaypoint& waypoint, co
 
 void writePlayerLocation(io::ByteBuffer& buffer, const std::int64_t entityId,
                          const std::optional<std::array<float, 3>> position, const int protocol) {
-    // Pointed at, or taken off the bar again.
     const std::int32_t type = position.has_value() ? 0 : 1;
     if (writesNativeShapes(protocol)) {
         writeVarLong(buffer, entityId);
@@ -3477,9 +3275,9 @@ void writeGameRuleFlag(io::ByteBuffer& buffer, const std::string_view name, cons
     writeVarUInt(buffer, 1);
     writeString(buffer, name);
     if (writesNativeShapes(protocol)) {
-        writeBool(buffer, false); // Not the player's to change.
+        writeBool(buffer, false);
     }
-    writeVarUInt(buffer, 1); // A flag, rather than a whole number or a fraction.
+    writeVarUInt(buffer, 1);
     writeBool(buffer, value);
 }
 
@@ -3497,8 +3295,6 @@ std::optional<BedrockPacketViolation> readPacketViolationWarning(io::ByteBuffer&
 
 namespace {
 
-/// Every field of a camera preset past its two names is optional, and this server sets none of
-/// them: the four it sends are the client's own, and their behaviour comes with them.
 constexpr int kCameraPresetOptionals = 20;
 
 /// The four, in the order their numbers are read back.
@@ -3509,7 +3305,6 @@ constexpr std::array<std::string_view, 4> kCameraPresets{
     "minecraft:third_person_front",
 };
 
-/// A field that is not there, which is a flag of its own and nothing after it.
 void writeAbsent(io::ByteBuffer& buffer) { writeBool(buffer, false); }
 
 } // namespace
@@ -3518,77 +3313,73 @@ void writeCameraPresets(io::ByteBuffer& buffer, const int protocol) {
     writeVarUInt(buffer, static_cast<std::uint32_t>(kCameraPresets.size()));
     for (const std::string_view named : kCameraPresets) {
         writeString(buffer, named);
-        writeString(buffer, ""); // Inherits from nothing: these are the client's own.
+        writeString(buffer, "");
         for (int at = 0; at < kCameraPresetOptionals; ++at) {
             writeAbsent(buffer);
         }
         if (protocol >= kCameraStartRotationProtocol) {
-            writeBool(buffer, false); // Not the parent's starting rotation,
-            writeAbsent(buffer);      // nor one of its own.
+            writeBool(buffer, false);
+            writeAbsent(buffer);
         }
     }
 }
 
 namespace {
 
-/// Everything after the set instruction, which this server never sends: a fade, a target, a field
-/// of view, a spline, and an entity to hang the camera on.
 void writeCameraRest(io::ByteBuffer& buffer) {
-    writeAbsent(buffer); // No fade,
-    writeAbsent(buffer); // nothing to keep in frame,
-    writeAbsent(buffer); // and nothing to stop keeping in frame.
-    writeAbsent(buffer); // No field of view of its own,
-    writeAbsent(buffer); // no path to follow,
-    writeAbsent(buffer); // nothing to hang it on,
-    writeAbsent(buffer); // and nothing to take it off.
+    writeAbsent(buffer);
+    writeAbsent(buffer);
+    writeAbsent(buffer);
+    writeAbsent(buffer);
+    writeAbsent(buffer);
+    writeAbsent(buffer);
+    writeAbsent(buffer);
 }
 
 } // namespace
 
 void writeCameraSet(io::ByteBuffer& buffer, const BedrockCamera& camera) {
-    writeBool(buffer, true); // There is an instruction,
+    writeBool(buffer, true);
     writeIntLE(buffer, static_cast<std::int32_t>(camera.preset));
-    writeBool(buffer, true); // it slides rather than jumps,
-    buffer.writeByte(0);     // at an even pace,
+    writeBool(buffer, true);
+    buffer.writeByte(0);
     writeFloatLE(buffer, camera.easeSeconds);
-    writeBool(buffer, true); // to here,
+    writeBool(buffer, true);
     writeFloatLE(buffer, camera.x);
     writeFloatLE(buffer, camera.y);
     writeFloatLE(buffer, camera.z);
-    writeBool(buffer, true); // looking this way.
+    writeBool(buffer, true);
     writeFloatLE(buffer, camera.pitch);
     writeFloatLE(buffer, camera.yaw);
-    writeAbsent(buffer);      // Nothing to face,
-    writeAbsent(buffer);      // no offset on the screen,
-    writeAbsent(buffer);      // none on the entity either,
-    writeAbsent(buffer);      // and it is not the default camera.
-    writeBool(buffer, false); // Where it starts from is its own business.
-    writeAbsent(buffer);      // Not a clear.
+    writeAbsent(buffer);
+    writeAbsent(buffer);
+    writeAbsent(buffer);
+    writeAbsent(buffer);
+    writeBool(buffer, false);
+    writeAbsent(buffer);
     writeCameraRest(buffer);
 }
 
 void writeCameraClear(io::ByteBuffer& buffer, const bool asDefault) {
     if (asDefault) {
-        // Handing the first person preset back as the default is what gives the client its own
-        // camera key again; a clear on its own is ignored while a set is still on its way.
         writeBool(buffer, true);
         writeIntLE(buffer, static_cast<std::int32_t>(BedrockCameraPreset::FirstPerson));
-        writeAbsent(buffer); // No slide,
-        writeAbsent(buffer); // no place,
-        writeAbsent(buffer); // no direction,
-        writeAbsent(buffer); // nothing to face,
-        writeAbsent(buffer); // no offset on the screen,
-        writeAbsent(buffer); // none on the entity,
+        writeAbsent(buffer);
+        writeAbsent(buffer);
+        writeAbsent(buffer);
+        writeAbsent(buffer);
+        writeAbsent(buffer);
+        writeAbsent(buffer);
         writeBool(buffer, true);
-        writeBool(buffer, true); // This one is the default.
+        writeBool(buffer, true);
         writeBool(buffer, false);
-        writeAbsent(buffer); // Not a clear: that is the packet after this one.
+        writeAbsent(buffer);
         writeCameraRest(buffer);
         return;
     }
-    writeAbsent(buffer); // No instruction,
+    writeAbsent(buffer);
     writeBool(buffer, true);
-    writeBool(buffer, true); // only take the camera away.
+    writeBool(buffer, true);
     writeCameraRest(buffer);
 }
 

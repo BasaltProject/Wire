@@ -11,23 +11,20 @@
 #include <string>
 #include <vector>
 
-/// Secure chat: the chat session, signed messages and commands, their acknowledgements, and the
-/// two ways a server relays a message.
 namespace basalt::wire::protocol::play {
 
-/// parity: `MessageSignature.BYTES`, an RSA-2048 signature, always this long on the wire.
+/// parity: `MessageSignature.BYTES`.
 inline constexpr std::size_t kMessageSignatureBytes = 256;
 
 using MessageSignature = std::array<std::uint8_t, kMessageSignatureBytes>;
 
-/// parity: `LastSeenMessages.Update`, the acknowledgement window a signed message carries.
+/// parity: `LastSeenMessages.Update`.
 struct LastSeenUpdate {
     /// parity: `LastSeenMessages.LAST_SEEN_MESSAGES_MAX_LENGTH`.
     static constexpr std::size_t kWindow = 20;
     static constexpr std::size_t kBytes = (kWindow + 7) / 8;
 
     std::int32_t offset = 0;
-    /// A `BitSet` written fixed-width, little-endian by bit as `BitSet.toByteArray` lays it out.
     std::array<std::uint8_t, kBytes> acknowledged{};
     /// Zero means the client asked for no check.
     std::int8_t checksum = 0;
@@ -40,7 +37,6 @@ struct LastSeenUpdate {
         acknowledged[index / 8] = static_cast<std::uint8_t>(acknowledged[index / 8] | (1U << (index % 8)));
     }
 
-    /// `BitSet.length()`: one past the highest bit set, which may lie past the window.
     [[nodiscard]] std::size_t bitLength() const noexcept;
 
     void write(io::ByteBuffer& buffer) const;
@@ -49,16 +45,13 @@ struct LastSeenUpdate {
     friend bool operator==(const LastSeenUpdate&, const LastSeenUpdate&) = default;
 };
 
-/// parity: `RemoteChatSession.Data`: the session id and the profile key Mojang signed for it.
 struct RemoteChatSessionData {
     /// parity: `ByteBufCodecs.MAX_PUBLIC_KEY_LENGTH` and `ProfilePublicKey.Data.MAX_KEY_SIGNATURE_SIZE`.
     static constexpr std::int32_t kMaxPublicKeyBytes = 512;
     static constexpr std::int32_t kMaxKeySignatureBytes = 4096;
 
     common::Uuid sessionId;
-    /// Epoch milliseconds, `ByteBufCodecs.INSTANT`.
     std::int64_t expiresAt = 0;
-    /// X.509 SubjectPublicKeyInfo DER.
     std::vector<std::uint8_t> publicKey;
     std::vector<std::uint8_t> keySignature;
 
@@ -97,7 +90,7 @@ struct ChatMessagePacket {
     friend bool operator==(const ChatMessagePacket&, const ChatMessagePacket&) = default;
 };
 
-/// parity: `ArgumentSignatures.Entry`, one signed argument of a command, by its node name.
+/// parity: `ArgumentSignatures.Entry`.
 struct ArgumentSignature {
     static constexpr std::int32_t kMaxNameLength = 16;
 
@@ -107,8 +100,6 @@ struct ArgumentSignature {
     friend bool operator==(const ArgumentSignature&, const ArgumentSignature&) = default;
 };
 
-/// Serverbound, id 0x08: a command with message arguments, which the client signs one by one when it
-/// has a chat session and sends with no signatures when it has none.
 struct SignedChatCommandPacket {
     static constexpr std::int32_t kId = 0x08;
     /// parity: `ArgumentSignatures.MAX_ARGUMENT_COUNT`.
@@ -138,8 +129,7 @@ struct ChatSessionUpdatePacket {
     friend bool operator==(const ChatSessionUpdatePacket&, const ChatSessionUpdatePacket&) = default;
 };
 
-/// parity: `MessageSignature.Packed`: an index into the receiver's signature cache, or the whole
-/// signature when the cache does not hold it.
+/// parity: `MessageSignature.Packed`: an index into the receiver's signature cache, or the whole.
 struct PackedSignature {
     /// parity: `Packed.FULL_SIGNATURE`.
     static constexpr std::int32_t kFullSignature = -1;
@@ -150,18 +140,16 @@ struct PackedSignature {
     friend bool operator==(const PackedSignature&, const PackedSignature&) = default;
 };
 
-/// parity: `FilterMask`, by its three types. Only a partial mask carries bits.
+/// parity: `FilterMask`.
 struct FilterMask {
     enum class Type : std::uint8_t { PassThrough, FullyFiltered, PartiallyFiltered };
 
     Type type = Type::PassThrough;
-    /// `BitSet.toByteArray`, for a partial mask.
     std::vector<std::uint8_t> mask;
 
     friend bool operator==(const FilterMask&, const FilterMask&) = default;
 };
 
-/// parity: `ChatType.Bound`: which chat type, and the names its decoration is filled in with.
 struct ChatTypeBound {
     /// The index into the `minecraft:chat_type` registry the client was sent.
     std::int32_t chatType = 0;
@@ -196,8 +184,6 @@ struct PlayerChatPacket {
     friend bool operator==(const PlayerChatPacket&, const PlayerChatPacket&) = default;
 };
 
-/// Clientbound, id 0x21: a message that looks like chat but carries no sender to verify, which is
-/// what a command run by anything other than a signing player says.
 struct DisguisedChatPacket {
     static constexpr std::int32_t kId = 0x21;
 

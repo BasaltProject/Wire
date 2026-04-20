@@ -14,8 +14,7 @@ struct Document {
     bool generated = false;
 };
 
-/// Creates a missing file from commented defaults; never overwrites an existing file.
-/// All failures name the file. Reads stop at the byte ceiling, including growing files.
+/// Never overwrites an existing file; reads stop at the byte ceiling, including growing files.
 [[nodiscard]] std::expected<Document, std::string> loadToml(std::string_view root, std::string_view fileName,
                                                             std::string_view defaults,
                                                             std::size_t maxBytes = 256 * 1024);

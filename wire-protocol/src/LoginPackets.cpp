@@ -92,7 +92,6 @@ std::optional<LoginFinishedPacket> LoginFinishedPacket::read(io::ByteBuffer& buf
 }
 
 void LoginDisconnectPacket::write(io::ByteBuffer& buffer) const {
-    // Login-state disconnects still carry JSON, not the NBT the play state moved to.
     writeString(buffer, common::writeJson(text::componentJson::serialize(reason)));
 }
 

@@ -22,7 +22,7 @@ enum class ClientIntent : std::int32_t {
     return std::nullopt;
 }
 
-/// parity: ClientIntentionPacket, the only packet in the handshake state, always id 0x00.
+/// parity: ClientIntentionPacket.
 struct HandshakePacket {
     static constexpr std::int32_t kId = 0;
     static constexpr std::int32_t kMaxHostLength = 255;

@@ -8,7 +8,6 @@
 
 namespace basalt::wire::common {
 
-/// A 128-bit UUID, held as the two halves the protocol writes them in.
 class Uuid {
 public:
     constexpr Uuid() = default;
@@ -21,24 +20,19 @@ public:
 
     [[nodiscard]] constexpr bool isNil() const noexcept { return high_ == 0 && low_ == 0; }
 
-    /// The canonical `8-4-4-4-12` hyphenated form.
     [[nodiscard]] std::string toString() const;
 
-    /// The same 32 hex digits with no hyphens, which is how Mojang's session server writes them.
     [[nodiscard]] std::string toUndashedString() const;
 
-    /// Accepts both the hyphenated and the undashed form.
     [[nodiscard]] static std::optional<Uuid> parse(std::string_view text);
 
-    /// parity: the offline-mode UUID vanilla derives for a name, `UUID.nameUUIDFromBytes` over
-    /// `OfflinePlayer:<name>`, which is a version 3 (MD5) UUID.
+    /// parity: UUID.nameUUIDFromBytes over `OfflinePlayer:<name>`, a version 3 (MD5) UUID.
     [[nodiscard]] static Uuid offlinePlayer(std::string_view name);
 
     /// parity: java.util.UUID.nameUUIDFromBytes, an MD5 digest stamped with version 3 and variant 2.
     [[nodiscard]] static Uuid nameBased(std::string_view input);
 
-    /// parity: java.util.UUID.randomUUID, sixteen random bytes stamped with version 4 and variant
-    /// 2. For the identities the server invents for itself: a generated mob, a session token.
+    /// parity: java.util.UUID.randomUUID, random bytes stamped version 4 and variant 2.
     [[nodiscard]] static Uuid random();
 
     friend constexpr bool operator==(const Uuid&, const Uuid&) = default;

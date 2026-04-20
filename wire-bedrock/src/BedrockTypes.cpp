@@ -5,8 +5,6 @@
 namespace basalt::wire::bedrock {
 namespace {
 
-/// Five bytes for a 32-bit varint, ten for a 64-bit one. A longer one is a peer lying about a
-/// number, and the buffer's failure flag is where that is recorded.
 constexpr int kMaxVarUIntBytes = 5;
 constexpr int kMaxVarULongBytes = 10;
 

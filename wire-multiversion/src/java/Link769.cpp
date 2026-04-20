@@ -12,7 +12,6 @@ namespace {
 namespace play = protocol::play;
 using protocol::ProtocolState;
 
-/// The heightmaps as 1.21.4 wants them: a compound keyed by the name of each one.
 [[nodiscard]] nbt::NbtCompound namedHeightmaps(std::span<const play::Heightmap> heightmaps) {
     nbt::NbtCompound tag;
     for (const play::Heightmap& heightmap : heightmaps) {
@@ -27,15 +26,11 @@ Link769::Link769(const VersionTables& tables)
     : RenumberingLink(tables), olderChunks_(IdMap::identity(), ChunkRewriter::Options{
                                                                    .olderDirectBits = tables.blockStateDirectBits,
                                                                    .lengthPrefixedData = true,
-                                                                   // The fluid count is long gone by here: 26.1 to
-                                                                   // 1.21.11 took it out.
                                                                    .fluidCount = false,
                                                                    .readsFluidCount = false,
                                                                }) {}
 
 bool Link769::clientbound(ProtocolState state, MutablePacket& packet) {
-    // Not the base first here: this link replaces the chunk rewriting the base class does rather
-    // than adding to it, so it reads the packet as it arrives and writes the older form itself.
     if (state != ProtocolState::Play) {
         return RenumberingLink::clientbound(state, packet);
     }

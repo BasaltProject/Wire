@@ -9,19 +9,18 @@
 
 namespace basalt::wire::protocol::play {
 
-/// One marker on a map. parity: `MapDecoration.STREAM_CODEC`; the type is a `map_decoration_type` id.
+/// parity: `MapDecoration.STREAM_CODEC`; the type is a `map_decoration_type` id.
 struct MapDecorationEntry {
     std::int32_t type = 0;
     std::int8_t x = 0;
     std::int8_t y = 0;
-    /// Sixteenths of a turn, 0 to 15.
     std::int8_t rotation = 0;
     std::optional<text::Component> name;
 
     friend bool operator==(const MapDecorationEntry&, const MapDecorationEntry&) = default;
 };
 
-/// A rectangle of colours, row by row. parity: `MapItemSavedData.MapPatch`.
+/// parity: `MapItemSavedData.MapPatch`.
 struct MapColorPatch {
     std::uint8_t startX = 0;
     std::uint8_t startY = 0;
@@ -32,7 +31,6 @@ struct MapColorPatch {
     friend bool operator==(const MapColorPatch&, const MapColorPatch&) = default;
 };
 
-/// Clientbound, id 0x34: a map's decorations, the dirty part of its colours, or both.
 struct MapItemDataPacket {
     static constexpr std::int32_t kId = 0x34;
 

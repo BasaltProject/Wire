@@ -10,8 +10,7 @@ namespace basalt::wire::io {
 
 enum class TaskQueueError { Full, Closed, InvalidTask };
 
-/// Bounded multi-producer mailbox. Tasks are popped, then executed outside its lock by their owner.
-/// wakeup/worker notification belongs to the consumer; this class does not execute user callbacks.
+/// Tasks run outside the lock on their owner; this class never runs user callbacks.
 class TaskQueue {
 public:
     using Task = std::function<void()>;

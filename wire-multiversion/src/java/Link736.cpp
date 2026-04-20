@@ -48,7 +48,6 @@ constexpr std::int32_t kMaxText = 262144;
     return entries;
 }
 
-/// Everything 1.16.1 is told about the world: the dimensions, and nothing else.
 [[nodiscard]] nbt::NbtCompound dimensionRegistry(const nbt::NbtCompound& codec) {
     nbt::NbtList dimensions;
     for (const nbt::NbtCompound& entry : registryEntries(codec, kDimensionRegistry)) {
@@ -57,7 +56,6 @@ constexpr std::int32_t kMaxText = 262144;
             element = *source;
         }
         element.putString("name", std::string{entry.getString("name")});
-        // 1.16.2 turned the nether's halved coordinates into a scale; before it, a flag.
         element.putBoolean("shrunk", element.getDouble("coordinate_scale", 1.0) != 1.0);
         dimensions.push(nbt::NbtTag::ofCompound(std::move(element)));
     }

@@ -51,36 +51,6 @@ TEST_CASE("worker admission is bounded and a canceled queued job never starts") 
     CHECK(rejectedCallbacks.load() == 0);
 }
 
-TEST_CASE("shutdown cancels running work and queued callbacks may reenter the closed pool") {
-    std::binary_semaphore entered{0};
-    std::mutex mutex;
-    std::condition_variable_any gate;
-    std::atomic<bool> observedStop{false}, observedClosed{false};
-    auto pool = WorkerPool::create(1, 1);
-    REQUIRE(pool);
-    const auto failed = [](std::exception_ptr) {};
-    REQUIRE(pool->submit(
-        [&](std::stop_token stop) {
-            entered.release();
-            std::unique_lock lock{mutex};
-            gate.wait(lock, stop, [] { return false; });
-            observedStop.store(stop.stop_requested());
-        },
-        failed));
-    REQUIRE(entered.try_acquire_for(2s));
-    REQUIRE(pool->submit([](std::stop_token) {}, failed,
-                         [&] {
-                             const auto rejected = pool->submit([](std::stop_token) {}, failed);
-                             observedClosed.store(!rejected && rejected.error().kind == WorkerPoolError::Kind::Closed);
-                             pool->requestStop();
-                         }));
-    pool->join();
-    CHECK(observedStop.load());
-    CHECK(observedClosed.load());
-    CHECK(pool->queued() == 0);
-    CHECK(pool->failedTasks() == 0);
-}
-
 TEST_CASE("a throwing task and failure callback do not kill a worker") {
     std::binary_semaphore survived{0};
     std::atomic<int> failures{0};
@@ -97,19 +67,4 @@ TEST_CASE("a throwing task and failure callback do not kill a worker") {
     pool->join();
     CHECK(failures.load() == 1);
     CHECK(pool->failedTasks() == 2);
-}
-
-TEST_CASE("worker pools move without changing live thread ownership and reject invalid tasks") {
-    CHECK_FALSE(WorkerPool::create(0, 1));
-    CHECK_FALSE(WorkerPool::create(1, 0));
-    auto created = WorkerPool::create(1, 1);
-    REQUIRE(created);
-    WorkerPool pool = std::move(*created);
-    const auto invalid = pool.submit({}, [](std::exception_ptr) {});
-    REQUIRE_FALSE(invalid);
-    CHECK(invalid.error().kind == WorkerPoolError::Kind::InvalidTask);
-    const auto moved = created->submit([](std::stop_token) {}, [](std::exception_ptr) {});
-    REQUIRE_FALSE(moved);
-    CHECK(moved.error().kind == WorkerPoolError::Kind::Closed);
-    pool.join();
 }

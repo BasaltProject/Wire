@@ -6,13 +6,6 @@
 
 namespace basalt::wire::multiversion::java {
 
-/// 1.18 to 1.17.1, where a chunk is a different packet.
-///
-/// Before 1.18 the biomes are one flat list for the whole column, only the sections with something
-/// in them are sent, and a bitmask at the front says which.
-///
-/// The block entities are left out: 1.17.1 wants each as a tag naming itself and what travels here
-/// is a number, so a chest is still a chest but its name does not arrive.
 class Link756 final : public RenumberingLink {
 public:
     using RenumberingLink::RenumberingLink;

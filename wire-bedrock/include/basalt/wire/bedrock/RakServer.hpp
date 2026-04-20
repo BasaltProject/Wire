@@ -17,20 +17,16 @@ namespace basalt::wire::bedrock {
 struct RakServerConfig {
     std::uint16_t port = 19132;
 
-    /// The server's own identity, which the client checks across the handshake. Zero asks for a
-    /// random one, which is what a server wants: two servers with the same guid confuse a client
-    /// that has both in its list.
+    /// The server's own identity, which the client checks across the handshake.
     std::uint64_t guid = 0;
 
     std::size_t maxSessions = 512;
 };
 
-/// The RakNet server: one UDP socket, the unconnected handshake, and a session per peer. It owns no
-/// thread and knows nothing about Bedrock; poll() is called from whoever does.
+/// The RakNet server: one UDP socket, the unconnected handshake, and a session per peer.
 class RakServer {
 public:
-    /// The line a client reads in its server list. Asked for on every ping because the player count
-    /// moves.
+    /// The line a client reads in its server list.
     using Advertiser = std::function<std::string()>;
 
     using MessageHandler = std::function<void(RakSession&, std::span<const std::uint8_t>)>;
@@ -58,12 +54,10 @@ public:
 
     void onDisconnect(SessionHandler handler) { onDisconnect_ = std::move(handler); }
 
-    /// Reads whatever has arrived, answers it, and flushes every session. Blocks up to timeoutMs
-    /// waiting for the first datagram, so a caller can use it as its own tick.
+    /// Blocks up to timeoutMs waiting for the first datagram, so a caller can use it as its own tick.
     void poll(std::uint64_t nowMs, int timeoutMs);
 
-    /// Queues a game payload to one peer, for a caller on another thread. The bytes go out on the
-    /// next poll.
+    /// Queues a game payload to one peer, for a caller on another thread.
     [[nodiscard]] RakSession* session(const io::UdpEndpoint& peer);
 
 private:

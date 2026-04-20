@@ -15,8 +15,6 @@ struct PeekedVarInt {
     std::size_t byteLength = 0;
 };
 
-/// Reads the frame-length varint without consuming it, so a partial frame can be left alone until
-/// the rest of it arrives.
 std::expected<std::optional<PeekedVarInt>, FramingError> peekVarInt(std::span<const std::uint8_t> bytes,
                                                                     std::size_t maxBytes) {
     std::uint32_t result = 0;
@@ -115,9 +113,7 @@ std::expected<void, FramingError> writeCompressed(io::ByteBuffer& output, std::s
         return {};
     }
 
-    // The frame length is not known until the body is compressed, and the body goes straight into
-    // the output buffer. Reserve the widest varint, write the body after it, then fill the reserved
-    // bytes in: no staging buffer, no second copy of the packet.
+    // The frame length is not known until the body is compressed, and the body goes straight into the output buffer.
     const std::size_t lengthAt = output.writerIndex();
     for (int i = 0; i < varInt::kMaxBytes; ++i) {
         output.writeByte(0);
@@ -147,8 +143,6 @@ std::expected<void, FramingError> writeCompressed(io::ByteBuffer& output, std::s
     } while (remaining != 0);
     const std::span<const std::uint8_t> headerBytes{header.data(), headerLength};
 
-    // The reserved run is five bytes wide and the real length may be shorter, so the body slides
-    // back over the unused slack.
     std::span<std::uint8_t> frame = output.mutableSpan(lengthAt);
     std::memmove(frame.data() + headerBytes.size(), frame.data() + varInt::kMaxBytes, output.writerIndex() - bodyAt);
     std::memcpy(frame.data(), headerBytes.data(), headerBytes.size());
@@ -175,7 +169,6 @@ std::expected<bool, FramingError> tryReadFrame(io::ByteBuffer& input, bool compr
         return false;
     }
 
-    // Limit every read to this frame. A truncated compression header must never borrow the next one.
     const auto body = input.readable().subspan(header.byteLength, frameLength);
     into.clear();
     if (!compressionEnabled) {

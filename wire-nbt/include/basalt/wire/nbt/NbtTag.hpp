@@ -13,14 +13,10 @@ namespace basalt::wire::nbt {
 
 class NbtTag;
 
-/// A homogeneous sequence of tags, as vanilla's TAG_List. An empty list keeps element type End,
-/// which is what vanilla writes for it.
 class NbtList {
 public:
     NbtList();
     explicit NbtList(NbtType elementType);
-    // No defaulted vector argument: instantiating it here would need NbtTag complete, and it is not
-    // complete until further down this header.
     NbtList(NbtType elementType, std::vector<NbtTag> elements);
     NbtList(const NbtList&);
     NbtList(NbtList&&) noexcept;
@@ -40,11 +36,8 @@ public:
 
     [[nodiscard]] const std::vector<NbtTag>& elements() const noexcept { return elements_; }
 
-    /// Appends a tag. The list adopts the element type of its first entry.
     bool push(NbtTag tag);
 
-    // Out of line on purpose: the body would otherwise touch std::vector<NbtTag> while NbtTag is
-    // still incomplete, which libc++ refuses.
     [[nodiscard]] std::vector<NbtTag>::const_iterator begin() const;
 
     [[nodiscard]] std::vector<NbtTag>::const_iterator end() const;
@@ -56,11 +49,7 @@ private:
     std::vector<NbtTag> elements_;
 };
 
-/// A named set of tags in insertion order, as vanilla's TAG_Compound.
-///
-/// Names and values live in separate contiguous vectors rather than one map: a compound holds a
-/// handful of entries, a lookup is a scan of the names alone, and the order has to survive because
-/// it is the order the tag is written back out in.
+/// Insertion order is kept because it is the order the tag is written back out in.
 class NbtCompound {
 public:
     NbtCompound();
@@ -123,8 +112,6 @@ private:
     std::vector<NbtTag> values_;
 };
 
-/// Any NBT value. The alternatives are declared in tag id order, so the variant's index is the
-/// wire type and no separate tag byte has to be kept in sync with the payload.
 class NbtTag {
 public:
     using Storage = std::variant<std::monostate, std::int8_t, std::int16_t, std::int32_t, std::int64_t, float, double,

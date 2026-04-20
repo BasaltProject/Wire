@@ -8,11 +8,9 @@ namespace {
 
 constexpr char kSeparator = '\0';
 
-/// Floodgate marks its own chunk in the split; the element after this one is not ours to read.
 constexpr std::string_view kFloodgateV1 = "Geyser-Floodgate";
 constexpr std::string_view kFloodgateV2 = "^Floodgate^";
 
-/// The split, minus the chunks Floodgate inserts for the Bedrock players coming through Geyser.
 std::vector<std::string_view> split(std::string_view host) {
     std::vector<std::string_view> raw;
     std::size_t start = 0;
@@ -27,7 +25,6 @@ std::vector<std::string_view> split(std::string_view host) {
     parts.reserve(raw.size());
     for (std::size_t i = 0; i < raw.size(); ++i) {
         if (raw[i] == kFloodgateV1) {
-            // The one that follows is Floodgate's own data, and skipping it keeps the indices right.
             ++i;
         } else if (!raw[i].starts_with(kFloodgateV2)) {
             parts.push_back(raw[i]);
@@ -67,8 +64,6 @@ std::optional<std::vector<SessionProfileProperty>> parseProperties(std::string_v
         if (!name || !value) {
             return std::nullopt;
         }
-        // Bungee writes an empty string rather than leaving it out, and an empty signature is no
-        // signature at all.
         std::optional<std::string> signature = text("signature");
         if (signature && signature->empty()) {
             signature.reset();
@@ -109,7 +104,6 @@ TokenCheck checkToken(std::vector<SessionProfileProperty> properties, const Prox
         }
     }
 
-    // Exactly one: two of them is somebody trying one token per attempt inside a single login.
     if (carried.size() != 1) {
         const std::string reason = carried.empty()
                                        ? "the forwarded profile carries no \"" + std::string{property} + "\" property"

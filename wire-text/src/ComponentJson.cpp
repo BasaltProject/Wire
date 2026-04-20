@@ -210,7 +210,6 @@ Component deserializeObject(const JsonObject& object) {
     return Component{std::move(payload), readStyle(object), deserializeAll(object, "extra")};
 }
 
-/// A bare array is vanilla's shorthand for "the first entry, with the rest appended to it".
 Component deserializeSiblingChain(const std::vector<JsonValue>& array) {
     if (array.empty()) {
         return Component::empty();

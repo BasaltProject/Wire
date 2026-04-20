@@ -14,7 +14,6 @@
 
 namespace basalt::wire::protocol::play {
 
-/// The header and footer of the player list.
 struct TabListPacket {
     static constexpr std::int32_t kId = 0x7d;
 
@@ -28,16 +27,12 @@ struct TabListPacket {
 };
 
 /// How a score's number is drawn, vanilla's NumberFormat registry.
-///
-/// Blank hides a sidebar's red numbers. Type ids follow NumberFormatTypes.bootstrap order.
 class NumberFormat {
 public:
     struct Blank {
         friend bool operator==(const Blank&, const Blank&) = default;
     };
 
-    /// The number drawn as usual but with this style, which travels as the style half of a
-    /// component.
     struct Styled {
         nbt::NbtCompound style;
 
@@ -72,23 +67,19 @@ private:
     Payload payload_ = Blank{};
 };
 
-/// parity: DisplaySlot, by its own numeric id.
+/// parity: DisplaySlot.
 enum class DisplaySlot : std::int32_t {
     List = 0,
     Sidebar = 1,
     BelowName = 2,
 };
 
-/// parity: ObjectiveCriteria.RenderType, written as an enum ordinal.
+/// parity: ObjectiveCriteria.RenderType.
 enum class ObjectiveRenderType : std::uint8_t {
     Integer,
     Hearts,
 };
 
-/// Creates, changes or removes a scoreboard objective.
-///
-/// The display name and render type are only on the wire for add and change, which is why they are
-/// optional here: a remove that wrote them would be a different length than the client expects.
 struct SetObjectivePacket {
     static constexpr std::int32_t kId = 0x6c;
     static constexpr std::uint8_t kMethodAdd = 0;
@@ -107,7 +98,6 @@ struct SetObjectivePacket {
     friend bool operator==(const SetObjectivePacket&, const SetObjectivePacket&) = default;
 };
 
-/// Puts an objective in a slot, or clears the slot with an empty name.
 struct SetDisplayObjectivePacket {
     static constexpr std::int32_t kId = 0x64;
 
@@ -120,10 +110,6 @@ struct SetDisplayObjectivePacket {
     friend bool operator==(const SetDisplayObjectivePacket&, const SetDisplayObjectivePacket&) = default;
 };
 
-/// One line of a scoreboard.
-///
-/// The display carries the line's text on the score itself, with no team prefix and suffix around
-/// a fake player name.
 struct SetScorePacket {
     static constexpr std::int32_t kId = 0x70;
 
@@ -139,7 +125,6 @@ struct SetScorePacket {
     friend bool operator==(const SetScorePacket&, const SetScorePacket&) = default;
 };
 
-/// Removes one line. An absent objective removes that owner from every objective at once.
 struct ResetScorePacket {
     static constexpr std::int32_t kId = 0x50;
 
@@ -152,7 +137,7 @@ struct ResetScorePacket {
     friend bool operator==(const ResetScorePacket&, const ResetScorePacket&) = default;
 };
 
-/// parity: BossEvent.BossBarColor, written as an enum ordinal.
+/// parity: BossEvent.BossBarColor.
 enum class BossBarColor : std::uint8_t {
     Pink,
     Blue,
@@ -172,13 +157,9 @@ enum class BossBarOverlay : std::uint8_t {
     Notched20,
 };
 
-/// What `/bossbar set <id> style` takes, which is BossBarOverlay.getSerializedName.
 [[nodiscard]] std::string_view bossBarOverlayName(BossBarOverlay overlay) noexcept;
 
-/// The bar across the top of the screen.
-///
-/// One packet carrying an operation, as on the wire. A bar is added once and then updated:
-/// re-adding it restarts the client's fade animation, which flickers.
+/// A bar is added once and then updated: re-adding it restarts the client's fade animation, which flickers.
 struct BossEventPacket {
     static constexpr std::int32_t kId = 0x09;
 
@@ -237,7 +218,7 @@ struct BossEventPacket {
     friend bool operator==(const BossEventPacket&, const BossEventPacket&) = default;
 };
 
-/// parity: Team.Visibility, whose ordinals are what the wire carries.
+/// parity: Team.Visibility.
 enum class NameTagVisibility : std::uint8_t {
     Always,
     Never,
@@ -261,7 +242,7 @@ enum class CollisionRule : std::uint8_t {
 
 [[nodiscard]] std::optional<CollisionRule> collisionRuleByName(std::string_view name) noexcept;
 
-/// parity: TeamColor, which is the sixteen chat colours in their own order.
+/// parity: TeamColor.
 enum class TeamColor : std::uint8_t {
     Black,
     DarkBlue,
@@ -286,10 +267,6 @@ enum class TeamColor : std::uint8_t {
 
 [[nodiscard]] std::optional<TeamColor> teamColorByName(std::string_view name) noexcept;
 
-/// Creates, changes, removes or populates a team.
-///
-/// The method decides what follows the name: parameters for add and change, a member list for add,
-/// join and leave, and nothing at all for remove.
 struct SetPlayerTeamPacket {
     static constexpr std::int32_t kId = 0x6f;
     static constexpr std::uint8_t kMethodAdd = 0;
@@ -308,7 +285,7 @@ struct SetPlayerTeamPacket {
         bool friendlyFire = true;
         bool seeFriendlyInvisibles = true;
 
-        /// parity: PlayerTeam.packOptions, bit 0 friendly fire and bit 1 seeing friendly invisibles.
+        /// parity: PlayerTeam.packOptions.
         [[nodiscard]] std::uint8_t options() const noexcept;
 
         void write(io::ByteBuffer& buffer) const;
@@ -328,10 +305,7 @@ struct SetPlayerTeamPacket {
     friend bool operator==(const SetPlayerTeamPacket&, const SetPlayerTeamPacket&) = default;
 };
 
-/// Clientbound, id 0x8f: opens a dialog screen.
-///
-/// parity: Dialog.STREAM_CODEC is ByteBufCodecs.holder, not holderRegistry, so the id really does
-/// carry a plus one on the wire: zero is reserved for an inline dialog.
+/// parity: Dialog.STREAM_CODEC is ByteBufCodecs.holder, not holderRegistry, so the id really does.
 struct ShowDialogPacket {
     static constexpr std::int32_t kId = 0x8f;
 
@@ -343,7 +317,6 @@ struct ShowDialogPacket {
     friend bool operator==(const ShowDialogPacket&, const ShowDialogPacket&) = default;
 };
 
-/// Clientbound, id 0x8e: closes whatever dialog is open. Nothing follows the id.
 inline constexpr std::int32_t kClearDialogId = 0x8e;
 
 } // namespace basalt::wire::protocol::play

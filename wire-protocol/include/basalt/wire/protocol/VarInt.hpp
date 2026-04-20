@@ -6,12 +6,7 @@
 
 namespace basalt::wire::protocol {
 
-/// parity: net.minecraft.network.VarInt and VarLong. LEB128-style, seven data bits per byte with
-/// the top bit as the continuation flag, and no zigzag, so a negative value always takes the full
-/// width.
-///
-/// A malformed value raises the buffer's failure flag instead of throwing: this is the first thing
-/// that touches bytes off the network, and it must not be able to unwind out of a packet handler.
+/// parity: net.minecraft.network.VarInt and VarLong.
 namespace varInt {
 
 inline constexpr int kMaxBytes = 5;

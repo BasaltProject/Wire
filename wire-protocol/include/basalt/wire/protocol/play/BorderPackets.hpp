@@ -11,7 +11,7 @@ namespace basalt::wire::protocol::play {
 /// Clientbound, id 0x2c: the whole world border at once, which is what a joining client needs.
 struct InitializeBorderPacket {
     static constexpr std::int32_t kId = 0x2c;
-    /// parity: WorldBorder.ABSOLUTE_MAX_SIZE, which is what vanilla always sends here.
+    /// parity: WorldBorder.ABSOLUTE_MAX_SIZE.
     static constexpr std::int32_t kAbsoluteMaxSize = 29999984;
 
     double centerX = 0.0;
@@ -29,7 +29,6 @@ struct InitializeBorderPacket {
     friend bool operator==(const InitializeBorderPacket&, const InitializeBorderPacket&) = default;
 };
 
-/// Clientbound, id 0x5a: where the border is centred.
 struct SetBorderCenterPacket {
     static constexpr std::int32_t kId = 0x5a;
 
@@ -42,7 +41,6 @@ struct SetBorderCenterPacket {
     friend bool operator==(const SetBorderCenterPacket&, const SetBorderCenterPacket&) = default;
 };
 
-/// Clientbound, id 0x5c: the border's size, changed at once.
 struct SetBorderSizePacket {
     static constexpr std::int32_t kId = 0x5c;
 
@@ -54,7 +52,6 @@ struct SetBorderSizePacket {
     friend bool operator==(const SetBorderSizePacket&, const SetBorderSizePacket&) = default;
 };
 
-/// Clientbound, id 0x5b: the border's size, moved to over a span of ticks.
 struct SetBorderLerpSizePacket {
     static constexpr std::int32_t kId = 0x5b;
 
@@ -80,7 +77,6 @@ struct SetBorderWarningDelayPacket {
     friend bool operator==(const SetBorderWarningDelayPacket&, const SetBorderWarningDelayPacket&) = default;
 };
 
-/// Clientbound, id 0x5e: how close to the border the warning appears.
 struct SetBorderWarningDistancePacket {
     static constexpr std::int32_t kId = 0x5e;
 
@@ -92,7 +88,7 @@ struct SetBorderWarningDistancePacket {
     friend bool operator==(const SetBorderWarningDistancePacket&, const SetBorderWarningDistancePacket&) = default;
 };
 
-/// Clientbound, id 0x5f: whose eyes the client is looking through. Its own id puts it back.
+/// Clientbound, id 0x5f: whose eyes the client is looking through.
 struct SetCameraPacket {
     static constexpr std::int32_t kId = 0x5f;
 

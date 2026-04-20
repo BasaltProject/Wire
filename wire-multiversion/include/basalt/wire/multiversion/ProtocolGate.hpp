@@ -21,11 +21,8 @@ enum class UnknownProtocolPolicy : std::uint8_t {
 [[nodiscard]] std::optional<UnknownProtocolPolicy> parseUnknownProtocolPolicy(std::string_view name);
 
 /// The answer to "may this client in", and why.
-///
-/// Translated and Unknown both let someone in, and the difference matters to whoever reads the log:
-/// one is a version this build was built to speak, the other is a bet.
 struct ProtocolVerdict {
-    /// Speaks what the server speaks. Nothing is translated.
+    /// Speaks what the server speaks.
     struct Native {
         friend bool operator==(const Native&, const Native&) = default;
     };
@@ -44,7 +41,6 @@ struct ProtocolVerdict {
         friend bool operator==(const Unknown&, const Unknown&) = default;
     };
 
-    /// Kicked at the handshake, with what the player reads.
     struct Refused {
         enum class Reason : std::uint8_t {
             TooOld,
@@ -64,11 +60,6 @@ struct ProtocolVerdict {
     friend bool operator==(const ProtocolVerdict&, const ProtocolVerdict&) = default;
 };
 
-/// The door. It knows which protocols this build can translate and what the operator decided about
-/// the ones it cannot, and it answers before a player exists.
-///
-/// It deliberately has no idea how translation works: the supported set is a set of numbers handed
-/// to it, so the day a link is added the gate changes by itself.
 class ProtocolGate {
 public:
     ProtocolGate(std::set<std::int32_t> supported, UnknownProtocolPolicy futurePolicy,

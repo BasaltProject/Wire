@@ -7,7 +7,6 @@
 
 namespace basalt::wire::text {
 
-/// What happens when a player clicks a piece of text. Mirrors Adventure's ClickEvent model.
 struct ClickEvent {
     enum class Action : std::uint8_t {
         OpenUrl,

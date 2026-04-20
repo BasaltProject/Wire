@@ -10,10 +10,8 @@
 namespace basalt::wire::multiversion::java {
 namespace {
 
-/// The sound with a name of its own, as 1.10.2 numbers it.
 constexpr std::int32_t kNamedSound = 0x19;
 
-/// parity: `ClientboundSoundPacket` wrote the pitch as sixty three steps of one.
 constexpr float kPitchSteps = 63.0F;
 
 } // namespace

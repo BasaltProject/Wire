@@ -12,43 +12,28 @@
 
 namespace basalt::wire::protocol::play {
 
-/// One stack on the wire: item, count and its components as a `DataComponentPatch`, so a stack a
-/// client echoes back comes out as the one that went in. An unknown component is kept as bytes only
-/// in the delimited form; elsewhere it is refused, since skipping it blindly would desynchronise.
 struct WireItemStack {
     std::int32_t itemId = 0;
     std::int32_t count = 0;
     /// What this stack adds to its item's defaults, in the order it was written.
     std::vector<ItemComponent> components;
-    /// Component ids this stack removes from its item's defaults.
     std::vector<std::int32_t> removedComponents;
 
-    /// The `minecraft:enchantments` levels, or empty: by far the most asked-for component.
     [[nodiscard]] std::vector<std::pair<std::int32_t, std::int32_t>> enchantments() const;
 
-    /// The `minecraft:damage` this stack has taken, or zero when it carries none.
     [[nodiscard]] std::int32_t damage() const;
 
     void write(io::ByteBuffer& buffer) const;
 
-    /// A count of zero is how vanilla writes "this slot is empty", and the rest of the stack follows
-    /// only when it is not.
     static void writeOptional(io::ByteBuffer& buffer, const std::optional<WireItemStack>& stack);
 
     [[nodiscard]] static std::optional<WireItemStack> read(io::ByteBuffer& buffer);
 
-    /// The same stack in the length-prefixed form `set_creative_slot` uses, so unknown components are
-    /// kept: a creative client echoes its slots whenever the inventory opens.
     [[nodiscard]] static std::optional<WireItemStack> readDelimited(io::ByteBuffer& buffer);
 
     friend bool operator==(const WireItemStack&, const WireItemStack&) = default;
 };
 
-/// Every slot of an open container at once.
-///
-/// Container 0 is the player's own inventory. The state id is vanilla's optimistic-locking counter:
-/// the client echoes it back with every click, so the server can tell a click made against the
-/// current contents from one made against contents it has since replaced.
 struct ContainerSetContentPacket {
     static constexpr std::int32_t kId = 0x12;
     static constexpr std::int32_t kPlayerInventory = 0;
@@ -64,7 +49,6 @@ struct ContainerSetContentPacket {
     friend bool operator==(const ContainerSetContentPacket&, const ContainerSetContentPacket&) = default;
 };
 
-/// One slot of one container, for when a single thing changed.
 struct ContainerSetSlotPacket {
     static constexpr std::int32_t kId = 0x14;
 
@@ -105,15 +89,10 @@ struct ServerboundSetCarriedItemPacket {
     friend bool operator==(const ServerboundSetCarriedItemPacket&, const ServerboundSetCarriedItemPacket&) = default;
 };
 
-/// Serverbound, id 0x12: a click inside an open container. The changed slots and carried item are the
-/// client's own prediction, sent as component hashes; this build does not verify them, since the
-/// click is re-derived against the server's own inventory, which is authoritative anyway.
-///
-/// They are still parsed exactly, because a stack skipped wrong desynchronises every packet after it.
 struct ServerboundContainerClickPacket {
     static constexpr std::int32_t kId = 0x12;
 
-    /// parity: ContainerInput, by its own numeric ids.
+    /// parity: ContainerInput.
     enum class Mode : std::uint8_t {
         Pickup,
         QuickMove,
@@ -129,10 +108,7 @@ struct ServerboundContainerClickPacket {
     std::int16_t slot = 0;
     std::int8_t button = 0;
     Mode mode = Mode::Pickup;
-    /// Whether the client believes it is holding something after this click. Its full predicted
-    /// stack is hashed and not reconstructible here, but the flag alone is enough to notice that the
-    /// two sides disagree about whether a stack is in hand at all, which is the shape a click
-    /// desynchronisation takes.
+    /// Whether the client believes it is holding something after this click.
     bool clientHasCarriedItem = false;
 
     [[nodiscard]] static std::optional<ServerboundContainerClickPacket> read(io::ByteBuffer& buffer);
@@ -140,11 +116,7 @@ struct ServerboundContainerClickPacket {
     friend bool operator==(const ServerboundContainerClickPacket&, const ServerboundContainerClickPacket&) = default;
 };
 
-/// Serverbound, id 0x39: creative-mode inventory editing.
-///
-/// This is the only way a creative client's dragged item reaches the server, whether it came from
-/// the creative menu into a slot or from a slot into the void, which arrives as slot -1. Creative
-/// item movement never goes through a window-click packet.
+/// Creative item movement never goes through a window-click packet.
 struct ServerboundSetCreativeModeSlotPacket {
     static constexpr std::int32_t kId = 0x39;
 
@@ -158,8 +130,6 @@ struct ServerboundSetCreativeModeSlotPacket {
                            const ServerboundSetCreativeModeSlotPacket&) = default;
 };
 
-/// The numeric ids of the `minecraft:menu` registry. The client picks the screen *and the slot
-/// layout* from this, so the server's own idea of the layout has to agree with what is sent.
 namespace menuType {
 inline constexpr std::int32_t kGeneric9x3 = 2;
 inline constexpr std::int32_t kGeneric9x6 = 5;
@@ -194,8 +164,6 @@ struct OpenScreenPacket {
     friend bool operator==(const OpenScreenPacket&, const OpenScreenPacket&) = default;
 };
 
-/// The container was closed. Both directions carry the same body and both exist: the client says so
-/// when the player presses escape, and the server says so when it closes one on their behalf.
 struct ContainerClosePacket {
     static constexpr std::int32_t kClientboundId = 0x11;
     static constexpr std::int32_t kServerboundId = 0x13;
@@ -208,15 +176,10 @@ struct ContainerClosePacket {
     friend bool operator==(const ContainerClosePacket&, const ContainerClosePacket&) = default;
 };
 
-/// Clientbound, id 0x13: one number of an open window, which is how a furnace draws its two bars.
-///
-/// What the id means is the window's own business: for a furnace, 0 is the fire left, 1 is how long
-/// that fuel lasts, 2 is the progress and 3 the total.
 struct ContainerSetDataPacket {
     static constexpr std::int32_t kId = 0x13;
 
-    /// parity: `BeaconMenu`'s three: the pyramid, then the two effects as registry ids shifted up
-    /// one so that zero can mean "none".
+    /// parity: `BeaconMenu`'s three: the pyramid, then the two effects as registry ids shifted up.
     static constexpr std::int16_t kBeaconLevels = 0;
     static constexpr std::int16_t kBeaconPrimary = 1;
     static constexpr std::int16_t kBeaconSecondary = 2;
@@ -224,11 +187,8 @@ struct ContainerSetDataPacket {
     /// parity: `LoomMenu`'s one data slot, which row of patterns is picked. -1 is none.
     static constexpr std::int16_t kLoomPattern = 0;
 
-    /// parity: `AnvilMenu`'s one data slot, the levels it is asking for.
     static constexpr std::int16_t kAnvilCost = 0;
 
-    /// parity: `EnchantmentMenu`'s ten: three costs, the seed, then the three enchantments it is
-    /// hinting at and the three levels they would come at.
     static constexpr std::int16_t kEnchantmentCost = 0;
     static constexpr std::int16_t kEnchantmentSeed = 3;
     static constexpr std::int16_t kEnchantmentClue = 4;
@@ -250,7 +210,6 @@ struct ContainerSetDataPacket {
     friend bool operator==(const ContainerSetDataPacket&, const ContainerSetDataPacket&) = default;
 };
 
-/// One thing a merchant asks for: an item and how many.
 struct MerchantCost {
     std::int32_t itemId = 0;
     std::int32_t count = 1;
@@ -261,7 +220,6 @@ struct MerchantCost {
     friend bool operator==(const MerchantCost&, const MerchantCost&) = default;
 };
 
-/// One offer as the client draws it.
 struct MerchantOffer {
     MerchantCost costA;
     WireItemStack result;
@@ -280,10 +238,6 @@ struct MerchantOffer {
     friend bool operator==(const MerchantOffer&, const MerchantOffer&) = default;
 };
 
-/// Clientbound, id 0x35: the trades a merchant is offering.
-///
-/// Sent right after the merchant window opens, and again whenever a trade is taken: the client draws
-/// the list it was last sent and nothing else.
 struct MerchantOffersPacket {
     static constexpr std::int32_t kId = 0x35;
 
@@ -300,7 +254,6 @@ struct MerchantOffersPacket {
     friend bool operator==(const MerchantOffersPacket&, const MerchantOffersPacket&) = default;
 };
 
-/// Serverbound, id 0x34: which of the offers the player picked.
 struct SelectTradePacket {
     static constexpr std::int32_t kId = 0x34;
 
@@ -312,12 +265,10 @@ struct SelectTradePacket {
     friend bool operator==(const SelectTradePacket&, const SelectTradePacket&) = default;
 };
 
-/// Serverbound, id 0x31: what the player typed into an anvil's name box. It arrives on every
-/// keystroke, and the result is worked out again each time.
 struct ServerboundRenameItemPacket {
     static constexpr std::int32_t kId = 0x31;
 
-    /// parity: `AnvilMenu.MAX_NAME_LENGTH`, past which the jar ignores the name outright.
+    /// parity: `AnvilMenu.MAX_NAME_LENGTH`.
     static constexpr std::size_t kMaxLength = 50;
 
     std::string name;
@@ -328,21 +279,16 @@ struct ServerboundRenameItemPacket {
     friend bool operator==(const ServerboundRenameItemPacket&, const ServerboundRenameItemPacket&) = default;
 };
 
-/// Serverbound, id 0x18: the pages a player typed into a book, and the title when they signed it.
-///
-/// parity: `ServerboundEditBookPacket`, whose slot is the player's own inventory numbering: the
-/// hotbar is nought to eight and forty is the off hand.
+/// parity: `ServerboundEditBookPacket`.
 struct ServerboundEditBookPacket {
     static constexpr std::int32_t kId = 0x18;
 
-    /// parity: the codec's own limits, which a packet past them is refused for.
     static constexpr std::size_t kMaxPages = 100;
     static constexpr std::int32_t kMaxPageLength = 1024;
     static constexpr std::int32_t kMaxTitleLength = 32;
 
     std::int32_t slot = 0;
     std::vector<std::string> pages;
-    /// Set only when they signed it, which is what turns the book into a written one.
     std::optional<std::string> title;
 
     void write(io::ByteBuffer& buffer) const;
@@ -351,9 +297,6 @@ struct ServerboundEditBookPacket {
     friend bool operator==(const ServerboundEditBookPacket&, const ServerboundEditBookPacket&) = default;
 };
 
-/// Serverbound, id 0x35: the two effects picked in a beacon's window, each of them a mob effect's
-/// registry id. parity: `ServerboundSetBeaconPacket`, whose two fields are both optional because
-/// "none" is a choice the window can make.
 struct ServerboundSetBeaconPacket {
     static constexpr std::int32_t kId = 0x35;
 
@@ -366,10 +309,6 @@ struct ServerboundSetBeaconPacket {
     friend bool operator==(const ServerboundSetBeaconPacket&, const ServerboundSetBeaconPacket&) = default;
 };
 
-/// Serverbound, id 0x11: a button inside an open window.
-///
-/// The lectern is what makes this worth having: its pages are buttons, one back, two forward, three
-/// to take the book, and a hundred plus the page to jump straight to one.
 struct ContainerButtonClickPacket {
     static constexpr std::int32_t kId = 0x11;
 
@@ -388,10 +327,6 @@ struct ContainerButtonClickPacket {
     friend bool operator==(const ContainerButtonClickPacket&, const ContainerButtonClickPacket&) = default;
 };
 
-/// Serverbound, id 0x14: a slot of the open window switched on or off.
-///
-/// Only the crafter has such slots: a switched-off slot takes nothing and a comparator counts it as
-/// full, so this is how a player picks which shape the crafter builds.
 struct ContainerSlotStateChangedPacket {
     static constexpr std::int32_t kId = 0x14;
 

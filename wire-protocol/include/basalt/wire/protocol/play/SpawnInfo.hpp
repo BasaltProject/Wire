@@ -16,8 +16,6 @@ enum class Gamemode : std::uint8_t {
     Spectator,
 };
 
-/// A position that names its dimension, which is what a death point has to be: the client shows the
-/// compass needle in the overworld for somebody who died in the nether.
 struct GlobalPos {
     std::string dimensionName;
     BlockPos location;
@@ -34,7 +32,6 @@ struct SpawnInfo {
     std::string dimensionName;
     std::int64_t hashedSeed = 0;
     Gamemode gamemode = Gamemode::Survival;
-    /// -1 when there was none, which is what a fresh join sends.
     std::int32_t previousGamemode = -1;
     bool isDebug = false;
     bool isFlat = false;

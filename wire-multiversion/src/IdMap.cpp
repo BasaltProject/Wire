@@ -56,7 +56,6 @@ std::int32_t IdMap::map(std::int32_t id) const {
     if (!parsed_) {
         parse();
     }
-    // The runs are sorted, so the right one is a binary search rather than a scan of fifty-five.
     std::size_t low = 0;
     std::size_t high = starts_.size();
     while (low < high) {
@@ -89,7 +88,6 @@ std::int32_t IdMap::unmap(std::int32_t id) const {
     if (!parsed_) {
         parse();
     }
-    // Backwards the runs are not sorted by their destination, so this one is a scan.
     for (std::size_t i = 0; i < starts_.size(); ++i) {
         const std::int32_t from = starts_[i] + deltas_[i];
         if (id >= from && id < from + lengths_[i]) {
@@ -106,7 +104,6 @@ const IdMap& IdMap::identity() {
 
 void NameIdMap::parse() const {
     for (const std::string_view entry : split(encoded_, ';')) {
-        // A name has colons of its own, so the id is what follows the last one.
         const std::size_t colon = entry.rfind(':');
         names_.emplace_back(entry.substr(0, colon));
         ids_.push_back(toInt(entry.substr(colon + 1)));
@@ -153,7 +150,6 @@ void NameSet::parse() const {
     for (const std::string_view name : split(encoded_, ';')) {
         names_.emplace_back(name);
     }
-    // Sorted so membership is a binary search: these are asked about once per registry entry.
     std::ranges::sort(names_);
     parsed_ = true;
 }

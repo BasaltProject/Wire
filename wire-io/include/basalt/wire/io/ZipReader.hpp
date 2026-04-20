@@ -18,10 +18,6 @@ enum class ZipError : std::uint8_t {
     DecompressionFailed,
 };
 
-/// Enough of a ZIP reader to pull named entries out of a jar, not a general-purpose archive
-/// library. The central directory is read once from the end of the file, per the format, and
-/// entries are extracted on demand. Handles the two compression methods every real Minecraft jar
-/// entry uses: stored and deflate.
 class ZipReader {
 public:
     [[nodiscard]] static std::expected<ZipReader, ZipError> open(std::vector<std::uint8_t> data);

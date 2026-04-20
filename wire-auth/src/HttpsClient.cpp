@@ -26,17 +26,13 @@ extern "C" {
 namespace basalt::wire::auth {
 namespace {
 
-/// Where each platform keeps the certificates it trusts. The first one that reads is used.
-///
-/// A bundle rather than a directory: mbedTLS parses a concatenated PEM file in one call, and every
-/// system that ships a directory also ships the bundle beside it.
 constexpr std::array<const char*, 6> kTrustStores{
-    "/etc/ssl/cert.pem",                      // macOS, and OpenSSL's own default
-    "/etc/ssl/certs/ca-certificates.crt",     // Debian, Ubuntu, Alpine
-    "/etc/pki/tls/certs/ca-bundle.crt",       // Fedora, RHEL
-    "/etc/ssl/ca-bundle.pem",                 // openSUSE
-    "/etc/pki/tls/cacert.pem",                // older RHEL
-    "/usr/local/share/certs/ca-root-nss.crt", // FreeBSD
+    "/etc/ssl/cert.pem",
+    "/etc/ssl/certs/ca-certificates.crt",
+    "/etc/pki/tls/certs/ca-bundle.crt",
+    "/etc/ssl/ca-bundle.pem",
+    "/etc/pki/tls/cacert.pem",
+    "/usr/local/share/certs/ca-root-nss.crt",
 };
 
 struct Url {
@@ -46,8 +42,6 @@ struct Url {
     std::string authority;
 };
 
-/// Splits `https://host[:port]/path`. Nothing for anything else, `http://` included: this fetches
-/// jars and profiles, and neither is worth doing in the clear.
 [[nodiscard]] std::optional<Url> parse(std::string_view url) {
     constexpr std::string_view kScheme = "https://";
     if (!url.starts_with(kScheme) || std::ranges::any_of(url, [](unsigned char c) { return c <= 32 || c == 127; })) {
@@ -104,7 +98,6 @@ struct Url {
     return std::string{written.data()};
 }
 
-/// Everything one request needs, freed in reverse whatever happens.
 class Session {
 public:
     explicit Session(const HttpsOptions& options) : options_(options) {
@@ -160,8 +153,6 @@ public:
             }
         }
         if (!anyTrusted) {
-            // Refused rather than proceeding unverified: an unauthenticated fetch of a jar is how a
-            // supply chain gets compromised.
             return HttpsError{"no certificate store was found, so the server could not be verified"};
         }
         if (const auto failed = connectSocket(url)) {
@@ -179,7 +170,6 @@ public:
         if (code != 0) {
             return HttpsError{"could not set up TLS: " + describe(code)};
         }
-        // The name goes out in SNI and is what the certificate is checked against.
         code = mbedtls_ssl_set_hostname(&ssl_, url.host.c_str());
         if (code != 0) {
             return HttpsError{"could not set the TLS host name: " + describe(code)};
@@ -225,7 +215,6 @@ public:
         return std::nullopt;
     }
 
-    /// Reads until the peer closes or the ceiling is reached. Answers what came back.
     [[nodiscard]] std::expected<std::vector<std::uint8_t>, HttpsError> readAll(std::size_t maxBytes,
                                                                                const HttpsProgress& onProgress) {
         std::vector<std::uint8_t> answered;
@@ -234,7 +223,6 @@ public:
             if (const auto failed = check()) {
                 return std::unexpected{*failed};
             }
-            // Probe one byte at the ceiling to distinguish EOF from a silently truncated response.
             const std::size_t room = maxBytes - answered.size();
             const std::size_t requested = room == 0 ? 1 : std::min(chunk.size(), room);
             const int read = mbedtls_ssl_read(&ssl_, chunk.data(), requested);
@@ -556,7 +544,6 @@ std::expected<HttpsResponse, HttpsError> httpsGet(std::string_view url, std::siz
     if (const std::optional<HttpsError> failed = session.connect(*target); failed.has_value()) {
         return std::unexpected(*failed);
     }
-    // `Connection: close` so the body ends at the socket, which is what makes reading it this simple.
     const std::string request = "GET " + target->path + " HTTP/1.1\r\nHost: " + target->authority +
                                 "\r\nUser-Agent: Basalt\r\nAccept: */*\r\nConnection: close\r\n\r\n";
     if (const std::optional<HttpsError> failed = session.write(request); failed.has_value()) {

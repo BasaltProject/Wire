@@ -10,7 +10,7 @@
 
 namespace basalt::wire::protocol::configuration {
 
-/// Serverbound, id 0x00: client settings. parity: ServerboundClientInformationPacket.
+/// parity: ServerboundClientInformationPacket.
 struct ClientInformationPacket {
     static constexpr std::int32_t kId = 0;
 
@@ -30,7 +30,6 @@ struct ClientInformationPacket {
     friend bool operator==(const ClientInformationPacket&, const ClientInformationPacket&) = default;
 };
 
-/// One data pack identity: namespace, id and version.
 struct KnownPack {
     std::string namespaceName;
     std::string id;
@@ -42,8 +41,6 @@ struct KnownPack {
     friend bool operator==(const KnownPack&, const KnownPack&) = default;
 };
 
-/// Clientbound id 0x0f and serverbound id 0x07: negotiates which data packs both ends already know,
-/// so the registry data can leave out what the client has bundled.
 struct SelectKnownPacksPacket {
     static constexpr std::int32_t kClientboundId = 0x0f;
     static constexpr std::int32_t kServerboundId = 0x07;
@@ -67,7 +64,6 @@ struct RegistryEntry {
     friend bool operator==(const RegistryEntry&, const RegistryEntry&) = default;
 };
 
-/// Clientbound, id 0x07: one registry's worth of entries.
 struct RegistryDataPacket {
     static constexpr std::int32_t kId = 7;
 
@@ -80,7 +76,6 @@ struct RegistryDataPacket {
     friend bool operator==(const RegistryDataPacket&, const RegistryDataPacket&) = default;
 };
 
-/// One named tag: the ids are numeric registry entries, not names.
 struct TagEntry {
     std::string name;
     std::vector<std::int32_t> ids;
@@ -91,7 +86,6 @@ struct TagEntry {
     friend bool operator==(const TagEntry&, const TagEntry&) = default;
 };
 
-/// Every tag defined for one registry.
 struct TagGroup {
     std::string registryId;
     std::vector<TagEntry> tags;
@@ -114,10 +108,8 @@ struct TagsPacket {
     friend bool operator==(const TagsPacket&, const TagsPacket&) = default;
 };
 
-/// Both directions, id 0x03: ends configuration. No payload.
 inline constexpr std::int32_t kFinishConfigurationId = 3;
 
-/// Both directions, id 0x04 in configuration.
 struct KeepAlivePacket {
     static constexpr std::int32_t kId = 4;
 
@@ -133,10 +125,7 @@ struct KeepAlivePacket {
     friend bool operator==(const KeepAlivePacket&, const KeepAlivePacket&) = default;
 };
 
-/// Clientbound id 0x01 in configuration: a custom payload carrying `minecraft:brand`.
-///
-/// What the client shows in F3 as `"<brand>" server`. Without it that line reads `"null"`, because
-/// the client has nothing to name the server with.
+/// What the client shows in F3 as `"<brand>" server`.
 struct BrandPacket {
     static constexpr std::int32_t kId = 1;
     static constexpr std::string_view kChannel = "minecraft:brand";
@@ -149,9 +138,7 @@ struct BrandPacket {
     friend bool operator==(const BrandPacket&, const BrandPacket&) = default;
 };
 
-/// Clientbound in configuration and in play: the post-processing shaders the client should run.
-///
-/// parity: `ClientboundPostEffectsPacket`, a list of identifiers, empty to clear them.
+/// parity: `ClientboundPostEffectsPacket`.
 struct PostEffectsPacket {
     static constexpr std::int32_t kConfigurationId = 0x0a;
     static constexpr std::int32_t kPlayId = 0x53;
@@ -164,8 +151,7 @@ struct PostEffectsPacket {
     friend bool operator==(const PostEffectsPacket&, const PostEffectsPacket&) = default;
 };
 
-/// parity: `ClientboundUpdateEnabledFeaturesPacket`, the feature flags the world runs with. A client
-/// told nothing assumes only `minecraft:vanilla`.
+/// parity: `ClientboundUpdateEnabledFeaturesPacket`.
 struct UpdateEnabledFeaturesPacket {
     static constexpr std::int32_t kId = 0x0d;
 

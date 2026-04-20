@@ -14,7 +14,7 @@ namespace {
 namespace play = protocol::play;
 using protocol::ProtocolState;
 
-/// parity: `ServerboundClientInformationPacket`, which sits in both phases.
+/// parity: `ServerboundClientInformationPacket`.
 constexpr std::int32_t kClientInformationConfiguration = 0x00;
 constexpr std::int32_t kClientInformationPlay = 14;
 
@@ -37,9 +37,6 @@ void setBit(std::vector<std::int64_t>& mask, std::size_t index) {
 }
 
 /// Copies one container across without decoding it, length prefix and all.
-///
-/// The exception is a container of a single value, which is 1.18's and which a client below it reads
-/// as a four-bit palette of one entry: written as one, since that is the same section.
 void copyContainer(io::ByteBuffer& input, io::ByteBuffer& output, std::size_t size, int maxIndirectBits) {
     const int bits = input.readByte();
     if (bits == 0) {
@@ -70,12 +67,11 @@ void copyContainer(io::ByteBuffer& input, io::ByteBuffer& output, std::size_t si
     }
 }
 
-/// The values of one container, which is what the biomes have to become.
 [[nodiscard]] std::vector<std::int32_t> readContainer(io::ByteBuffer& input, std::size_t size, int maxIndirectBits) {
     const int bits = input.readByte();
     if (bits == 0) {
         const std::int32_t value = protocol::varInt::read(input);
-        static_cast<void>(protocol::varInt::read(input)); // The length, zero for a container of one value.
+        static_cast<void>(protocol::varInt::read(input));
         return std::vector<std::int32_t>(size, value);
     }
     std::vector<std::int32_t> palette;

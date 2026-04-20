@@ -10,8 +10,7 @@ namespace {
 
 void writeString(ByteWriter& writer, std::string_view value) {
     const std::size_t length = modifiedUtf8::encodedLength(value);
-    // The length field is 16 bits wide, so an over-long string cannot be represented at all. Callers
-    // build these, never the network, so truncating is worse than writing what fits and moving on.
+    // A 16-bit length cannot represent an over-long string; callers build these, so write what fits.
     writer.writeShort(static_cast<std::int16_t>(static_cast<std::uint16_t>(length)));
     modifiedUtf8::encode(value, writer);
 }
@@ -111,8 +110,6 @@ std::expected<std::size_t, NbtError> readSize(ByteReader& reader) {
     if (*size < 0) {
         return std::unexpected{NbtError::NegativeSize};
     }
-    // A crafted length can claim billions of elements. Refusing anything the input cannot possibly
-    // hold keeps the reader from reserving memory for data that is not there.
     if (static_cast<std::size_t>(*size) > reader.remaining()) {
         return std::unexpected{NbtError::UnexpectedEnd};
     }

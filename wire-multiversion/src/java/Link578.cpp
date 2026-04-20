@@ -32,7 +32,6 @@ constexpr std::size_t kHeightmapEntries = 256;
 constexpr std::int32_t kSlotMask = 0x7F;
 constexpr std::int32_t kMoreSlots = 0x80;
 
-/// A uuid, an amount and an operation, which do not change shape here.
 constexpr std::size_t kModifierBytes = 16 + 8 + 1;
 
 /// parity: the keys of `Attributes` before 1.16 gave them a namespace and snake case.
@@ -102,7 +101,6 @@ void repackContainer(io::ByteBuffer& input, io::ByteBuffer& output) {
     }
 }
 
-/// The same repacking for the heightmaps, which are nine bits of height per column.
 [[nodiscard]] nbt::NbtTag compactHeightmaps(const nbt::NbtTag& heightmaps) {
     const nbt::NbtCompound* compound = heightmaps.get<nbt::NbtCompound>();
     if (compound == nullptr) {
@@ -132,7 +130,6 @@ void repackContainer(io::ByteBuffer& input, io::ByteBuffer& output) {
     return nbt::NbtTag::ofCompound(std::move(rewritten));
 }
 
-/// A stack as everything below 1.20.5 writes it: present, and then what it is.
 [[nodiscard]] std::vector<std::uint8_t> itemBytes(io::ByteBuffer& input) {
     io::ByteBuffer output;
     const std::uint8_t present = input.readByte();
@@ -186,14 +183,12 @@ bool Link578::serverbound(ProtocolState state, MutablePacket& packet) {
     }
     switch (packet.nativeId()) {
     case play::InteractPacket::kId:
-        // 1.16 asked whether the player was sneaking when they clicked. This one does not say.
         encode(packet, [&](io::ByteBuffer& output) {
             output.writeBytes(packet.body);
             output.writeByte(0);
         });
         break;
     case play::ServerboundPlayerAbilitiesPacket::kId: {
-        // Two speeds the client had no business sending, and 1.16 stopped asking for.
         io::ByteBuffer input = io::ByteBuffer::wrap(packet.body);
         const std::uint8_t flags = input.readByte();
         encode(packet, [&](io::ByteBuffer& out) { out.writeByte(flags); });
@@ -281,7 +276,6 @@ void Link578::repackChunk(MutablePacket& packet) {
     static_cast<void>(input.readByte());
     const std::int32_t mask = protocol::varInt::read(input);
     const nbt::NbtTag heightmaps = protocol::readAnonymousNbt(input);
-    // 1.16 writes the biomes as a fixed thousand and twenty four, and so does this one.
     std::vector<std::int32_t> biomes;
     biomes.reserve(kBiomesInChunk);
     for (std::int32_t i = 0; i < kBiomesInChunk && !input.failed(); ++i) {
