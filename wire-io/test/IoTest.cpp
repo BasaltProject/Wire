@@ -5,6 +5,7 @@
 #include <basalt/wire/io/Platform.hpp>
 #include <basalt/wire/io/TcpSocket.hpp>
 #include <basalt/wire/io/ZipReader.hpp>
+#include <basalt/wire/io/ZipWriter.hpp>
 
 #include <doctest.h>
 
@@ -239,4 +240,23 @@ TEST_CASE("nonblocking connections report readiness and distinguish would-block 
     ready = loop.wait(0);
     REQUIRE(ready);
     CHECK(ready->empty());
+}
+
+TEST_CASE("a written zip reads back, deflating what shrinks and storing what does not") {
+    const std::string text(2000, 'a');
+    ZipWriter writer;
+    writer.add("src/main.lua",
+               std::span<const std::uint8_t>(reinterpret_cast<const std::uint8_t*>(text.data()), text.size()));
+    const std::vector<std::uint8_t> tiny{1, 2, 3};
+    writer.add("plugin.toml", tiny);
+    const std::vector<std::uint8_t> archive = writer.finish();
+    CHECK(archive == writer.finish());
+    const auto reader = ZipReader::open(archive);
+    REQUIRE(reader.has_value());
+    CHECK(reader->entryNames() == std::vector<std::string>{"src/main.lua", "plugin.toml"});
+    const auto big = reader->read("src/main.lua");
+    REQUIRE(big.has_value());
+    CHECK(std::string(big->begin(), big->end()) == text);
+    CHECK(*reader->read("plugin.toml") == tiny);
+    CHECK(archive.size() < text.size());
 }
