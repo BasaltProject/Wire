@@ -8,6 +8,8 @@ namespace {
 
 /// parity: the index of `minecraft:block` in the position_source_type registry.
 constexpr std::int32_t kBlockPositionSource = 0;
+/// parity: the index of `minecraft:entity` in the position_source_type registry.
+constexpr std::int32_t kEntityPositionSource = 1;
 
 } // namespace
 
@@ -52,8 +54,14 @@ void ParticleOptions::write(io::ByteBuffer& buffer) const {
         buffer.writeInt(base->waterBlocks);
         buffer.writeFloat(base->burstImpulseBase);
     } else if (const auto* vibration = as<Vibration>()) {
-        varInt::write(buffer, kBlockPositionSource);
-        buffer.writeLong(vibration->target.pack());
+        if (const auto* entity = std::get_if<Vibration::EntityTarget>(&vibration->target)) {
+            varInt::write(buffer, kEntityPositionSource);
+            varInt::write(buffer, entity->entityId);
+            buffer.writeFloat(entity->yOffset);
+        } else {
+            varInt::write(buffer, kBlockPositionSource);
+            buffer.writeLong(std::get<BlockPos>(vibration->target).pack());
+        }
         varInt::write(buffer, vibration->arrivalTicks);
     }
 }
@@ -120,7 +128,12 @@ std::optional<ParticleOptions> ParticleOptions::read(io::ByteBuffer& buffer, Par
         return ParticleOptions{GeyserBase{blocks, buffer.readFloat()}};
     }
     case ParticleOptionShape::Vibration: {
-        static_cast<void>(varInt::read(buffer));
+        const std::int32_t source = varInt::read(buffer);
+        if (source == kEntityPositionSource) {
+            const std::int32_t entityId = varInt::read(buffer);
+            const float yOffset = buffer.readFloat();
+            return ParticleOptions{Vibration{Vibration::EntityTarget{entityId, yOffset}, varInt::read(buffer)}};
+        }
         const BlockPos target = BlockPos::unpack(buffer.readLong());
         return ParticleOptions{Vibration{target, varInt::read(buffer)}};
     }

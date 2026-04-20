@@ -89,8 +89,11 @@ std::optional<std::string> ProxyForwarding::misconfiguration() const {
         return secret.empty() ? std::optional<std::string>{"velocity forwarding needs the proxy's forwarding.secret"}
                               : std::nullopt;
     case ForwardingMode::Basalt:
-        return trustedKeys.empty() ? std::optional<std::string>{"basalt forwarding needs at least one trusted-keys entry"}
-                                   : std::nullopt;
+        if (trustedKeys.empty())
+            return std::string{"basalt forwarding needs at least one trusted-keys entry"};
+        if (backendId.empty() || backendId.size() > 64)
+            return std::string{"basalt forwarding needs a backend-id of 1 to 64 bytes"};
+        return std::nullopt;
     }
     return std::nullopt;
 }

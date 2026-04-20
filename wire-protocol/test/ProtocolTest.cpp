@@ -425,6 +425,8 @@ TEST_CASE("particle options round trip through every shape") {
     roundTrip(ParticleOptions{ParticleOptions::Geyser{3}}, ParticleOptionShape::Geyser);
     roundTrip(ParticleOptions{ParticleOptions::GeyserBase{3, 0.25F}}, ParticleOptionShape::GeyserBase);
     roundTrip(ParticleOptions{ParticleOptions::Vibration{BlockPos{1, -2, 3}, 20}}, ParticleOptionShape::Vibration);
+    roundTrip(ParticleOptions{ParticleOptions::Vibration{ParticleOptions::Vibration::EntityTarget{77, 1.62F}, 12}},
+              ParticleOptionShape::Vibration);
 
     ParticleOptions::Item item;
     item.itemId = 5;

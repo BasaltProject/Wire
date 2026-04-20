@@ -109,7 +109,16 @@ public:
     };
 
     struct Vibration {
-        BlockPos target;
+        /// parity: `EntityPositionSource`, the target of a warden's or an allay's vibration.
+        struct EntityTarget {
+            std::int32_t entityId = 0;
+            float yOffset = 0.0F;
+
+            friend bool operator==(const EntityTarget&, const EntityTarget&) = default;
+        };
+
+        /// parity: `PositionSource`, a block or an entity with a y offset.
+        std::variant<BlockPos, EntityTarget> target;
         std::int32_t arrivalTicks = 0;
 
         friend bool operator==(const Vibration&, const Vibration&) = default;
