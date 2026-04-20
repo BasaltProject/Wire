@@ -28,9 +28,9 @@ namespace basalt::wire::io {
 namespace {
 #if defined(POLLRDHUP)
 // Reported even when reads are paused, like EPOLLRDHUP; WSAPoll has no equivalent.
-constexpr short kPeerClosedEvent = POLLRDHUP;
+[[maybe_unused]] constexpr short kPeerClosedEvent = POLLRDHUP;
 #else
-constexpr short kPeerClosedEvent = 0;
+[[maybe_unused]] constexpr short kPeerClosedEvent = 0;
 #endif
 } // namespace
 
