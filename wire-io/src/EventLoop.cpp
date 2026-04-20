@@ -26,6 +26,14 @@ using pollfd_type = pollfd;
 
 namespace basalt::wire::io {
 namespace {
+#if defined(POLLRDHUP)
+// Reported even when reads are paused, like EPOLLRDHUP; WSAPoll has no equivalent.
+constexpr short kPeerClosedEvent = POLLRDHUP;
+#else
+constexpr short kPeerClosedEvent = 0;
+#endif
+} // namespace
+namespace {
 int lastError() {
 #if defined(_WIN32)
     return WSAGetLastError();
@@ -339,8 +347,8 @@ std::expected<std::span<const IoReady>, int> EventLoop::wait(std::optional<int> 
         const auto append = [&](const Impl::Registration& item) {
             pollfd_type entry{};
             entry.fd = static_cast<decltype(entry.fd)>(item.handle);
-            entry.events =
-                static_cast<short>((item.interest.readable ? POLLIN : 0) | (item.interest.writable ? POLLOUT : 0));
+            entry.events = static_cast<short>((item.interest.readable ? POLLIN : 0) |
+                                              (item.interest.writable ? POLLOUT : 0) | kPeerClosedEvent);
             impl_->pollEntries.push_back(entry);
             impl_->pollSerials.push_back(item.serial);
         };
@@ -359,7 +367,7 @@ std::expected<std::span<const IoReady>, int> EventLoop::wait(std::optional<int> 
                 const short flags = impl_->pollEntries[i].revents;
                 if (flags != 0) {
                     impl_->emit(impl_->pollSerials[i], (flags & POLLIN) != 0, (flags & POLLOUT) != 0,
-                                (flags & (POLLHUP | POLLERR | POLLNVAL)) != 0);
+                                (flags & (POLLHUP | POLLERR | POLLNVAL | kPeerClosedEvent)) != 0);
                 }
             }
             break;

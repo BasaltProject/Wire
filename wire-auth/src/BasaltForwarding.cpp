@@ -73,6 +73,7 @@ void writeBody(io::ByteBuffer& out, std::uint8_t version, const std::string& id,
     protocol::writeString(out, identity.proxyId);
     protocol::varInt::write(out, static_cast<std::int32_t>(identity.origin));
     protocol::writeString(out, identity.originId);
+    protocol::varInt::write(out, static_cast<std::int32_t>(identity.capabilities));
     protocol::varInt::write(out, 0);
 }
 
@@ -99,6 +100,7 @@ bool readIdentity(io::ByteBuffer& in, Identity& identity) {
     identity.proxyId = protocol::readString(in, kMaxIdLength);
     const std::int32_t origin = protocol::varInt::read(in);
     identity.originId = protocol::readString(in, kMaxIdLength);
+    identity.capabilities = static_cast<std::uint32_t>(protocol::varInt::read(in));
     const std::int32_t extras = protocol::varInt::read(in);
     if (in.failed() || origin < 0 || origin > kMaxOrigin || extras != 0 || in.readableBytes() != 0)
         return false;
@@ -167,6 +169,7 @@ std::vector<std::uint8_t> encodeRequest(const Request& request) {
     out.writeByte(request.versionMax);
     out.writeBytes(request.challenge);
     protocol::writeString(out, request.backendId);
+    protocol::varInt::write(out, static_cast<std::int32_t>(request.capabilities));
     return out.toVector();
 }
 
@@ -177,9 +180,11 @@ std::optional<Request> decodeRequest(std::span<const std::uint8_t> data) {
     request.versionMax = in.readByte();
     const std::span<const std::uint8_t> challenge = in.readSpan(kChallengeSize);
     request.backendId = protocol::readString(in, static_cast<std::int32_t>(kMaxIdLength));
+    request.capabilities = static_cast<std::uint32_t>(protocol::varInt::read(in));
     if (in.failed() || in.readableBytes() != 0 || request.versionMin > request.versionMax ||
         request.backendId.empty())
         return std::nullopt;
+    request.capabilities &= kKnownCapabilities;
     std::copy(challenge.begin(), challenge.end(), request.challenge.begin());
     return request;
 }
@@ -187,7 +192,8 @@ std::optional<Request> decodeRequest(std::span<const std::uint8_t> data) {
 std::vector<std::uint8_t> sign(const SigningKey& key, const Request& request, std::uint8_t version,
                                const Identity& identity) {
     if (version < request.versionMin || version > request.versionMax || version != kVersion1 ||
-        request.backendId.empty() || !withinLimits(identity))
+        request.backendId.empty() || !withinLimits(identity) ||
+        (identity.capabilities & ~request.capabilities) != 0)
         return {};
     const std::string id = keyId(key.publicKey());
     if (id.empty())
@@ -230,6 +236,9 @@ VerifyResult verify(std::span<const std::uint8_t> response, const Request& issue
     verified.keyId = id;
     if (!readIdentity(in, verified.identity))
         return std::string{"the forwarded identity is malformed"};
+    if ((verified.identity.capabilities & ~issued.capabilities) != 0 ||
+        (verified.identity.capabilities & ~kKnownCapabilities) != 0)
+        return std::string{"the proxy selected capabilities that were not offered"};
     return verified;
 }
 

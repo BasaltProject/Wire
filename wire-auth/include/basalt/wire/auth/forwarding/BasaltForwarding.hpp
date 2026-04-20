@@ -24,6 +24,9 @@ inline constexpr std::size_t kPublicKeySize = 32;
 inline constexpr std::size_t kSignatureSize = 64;
 inline constexpr std::size_t kMaxResponseSize = 128 * 1024;
 
+/// No capability is defined in version 1: the field is signed and subset-checked so later bits cannot be forged.
+inline constexpr std::uint32_t kKnownCapabilities = 0;
+
 using PublicKey = std::array<std::uint8_t, kPublicKeySize>;
 using Challenge = std::array<std::uint8_t, kChallengeSize>;
 
@@ -57,6 +60,7 @@ struct Request {
     std::uint8_t versionMax = kVersion1;
     Challenge challenge{};
     std::string backendId;
+    std::uint32_t capabilities = 0;
 
     friend bool operator==(const Request&, const Request&) = default;
 };
@@ -75,6 +79,7 @@ struct Identity {
     std::string proxyId;
     Origin origin = Origin::Java;
     std::string originId;
+    std::uint32_t capabilities = 0;
 
     friend bool operator==(const Identity&, const Identity&) = default;
 };

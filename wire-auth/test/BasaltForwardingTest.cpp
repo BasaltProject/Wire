@@ -62,4 +62,8 @@ TEST_CASE("native forwarding signs per connection and backend, and rejects alter
     CHECK(std::holds_alternative<std::string>(verify(response, request, others)));
 
     CHECK(sign(key, request, 2, sampleIdentity()).empty());
+
+    Identity greedy = sampleIdentity();
+    greedy.capabilities = 1;
+    CHECK(sign(key, request, kVersion1, greedy).empty());
 }
