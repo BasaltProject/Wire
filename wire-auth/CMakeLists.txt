@@ -5,6 +5,7 @@ basalt_module(wire-auth
         src/MojangSessionService.cpp
         src/LoginAuthentication.cpp
         src/LegacyForwarding.cpp
+        src/LegacyForwardingEncoder.cpp
         src/ProxyForwarding.cpp
         src/SessionKeyPair.cpp
         src/SignatureValidator.cpp

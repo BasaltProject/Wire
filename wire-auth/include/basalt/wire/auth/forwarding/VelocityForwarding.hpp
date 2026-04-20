@@ -3,9 +3,14 @@
 #include <basalt/wire/auth/forwarding/ProxyForwarding.hpp>
 
 #include <cstdint>
+#include <expected>
 #include <span>
 #include <string_view>
 #include <vector>
+
+namespace basalt::wire::io {
+class ByteBuffer;
+}
 
 namespace basalt::wire::auth::forwarding::velocity {
 
@@ -23,6 +28,12 @@ inline constexpr std::int32_t kVersionLazySession = 4;
 
 /// The newest forwarding this server understands, which is what the query asks for.
 inline constexpr std::int32_t kMaxSupportedVersion = kVersionLazySession;
+
+enum class EncodeError { kInvalidIdentity, kUnsupportedVersion, kCryptoFailed };
+/// Appends signature and identity to caller-reserved storage. Native modern profiles use v1/v4.
+[[nodiscard]] std::expected<void, EncodeError>
+signInto(io::ByteBuffer& output, std::string_view secret, std::string_view address, const common::Uuid& profileId,
+         std::string_view name, const std::vector<SessionProfileProperty>& properties, std::int32_t version);
 
 /// What goes in the login query: one byte naming the newest version this server can read.
 [[nodiscard]] std::vector<std::uint8_t> request();
