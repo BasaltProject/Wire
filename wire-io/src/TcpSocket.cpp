@@ -252,7 +252,7 @@ std::string TcpAddress::host() const {
 }
 
 TcpConnection::TcpConnection(TcpConnection&& other) noexcept
-    : handle_(other.handle_), remoteAddress_(std::move(other.remoteAddress_)) {
+    : handle_(other.handle_), remoteAddress_(std::move(other.remoteAddress_)), remotePort_(other.remotePort_) {
     other.handle_ = -1;
 }
 
@@ -261,6 +261,7 @@ TcpConnection& TcpConnection::operator=(TcpConnection&& other) noexcept {
         close();
         handle_ = other.handle_;
         remoteAddress_ = std::move(other.remoteAddress_);
+        remotePort_ = other.remotePort_;
         other.handle_ = -1;
     }
     return *this;
@@ -496,13 +497,17 @@ std::expected<TcpConnection, SocketError> TcpListener::accept() {
 #endif
         if (clientHandle >= 0) {
             std::array<char, NI_MAXHOST> host{};
+            std::array<char, NI_MAXSERV> service{};
             const int code = ::getnameinfo(reinterpret_cast<const sockaddr*>(&peer), length, host.data(),
-                                           static_cast<namelen_type>(host.size()), nullptr, 0, NI_NUMERICHOST);
+                                           static_cast<namelen_type>(host.size()), service.data(),
+                                           static_cast<namelen_type>(service.size()), NI_NUMERICHOST | NI_NUMERICSERV);
             if (code != 0) {
                 closeHandle(clientHandle);
                 return std::unexpected{SocketError{SocketError::Kind::AcceptFailed, code}};
             }
-            return TcpConnection{clientHandle, std::string{host.data()}};
+            TcpConnection accepted{clientHandle, std::string{host.data()}};
+            std::from_chars(service.data(), service.data() + std::strlen(service.data()), accepted.remotePort_);
+            return accepted;
         }
         const int error = lastSocketError();
         if (errorIsInterrupt(error)) {

@@ -8,12 +8,13 @@
 namespace basalt::wire::auth::forwarding {
 namespace {
 
-constexpr std::array<std::pair<std::string_view, ForwardingMode>, 10> kNames = {{
+constexpr std::array<std::pair<std::string_view, ForwardingMode>, 11> kNames = {{
     {"none", ForwardingMode::None},
     {"bungeecord", ForwardingMode::BungeeCord},
     {"bungeeguard", ForwardingMode::BungeeGuard},
     {"safenet", ForwardingMode::SafeNet},
     {"velocity", ForwardingMode::Velocity},
+    {"basalt", ForwardingMode::Basalt},
     {"legacy", ForwardingMode::BungeeCord},
     {"bungee", ForwardingMode::BungeeCord},
     {"modern", ForwardingMode::Velocity},
@@ -35,6 +36,8 @@ std::string_view forwardingModeName(ForwardingMode mode) noexcept {
         return "safenet";
     case ForwardingMode::Velocity:
         return "velocity";
+    case ForwardingMode::Basalt:
+        return "basalt";
     }
     return "none";
 }
@@ -65,6 +68,8 @@ bool ProxyForwarding::authenticated() const noexcept {
         return !tokens.empty();
     case ForwardingMode::Velocity:
         return !secret.empty();
+    case ForwardingMode::Basalt:
+        return !trustedKeys.empty();
     }
     return false;
 }
@@ -83,6 +88,9 @@ std::optional<std::string> ProxyForwarding::misconfiguration() const {
     case ForwardingMode::Velocity:
         return secret.empty() ? std::optional<std::string>{"velocity forwarding needs the proxy's forwarding.secret"}
                               : std::nullopt;
+    case ForwardingMode::Basalt:
+        return trustedKeys.empty() ? std::optional<std::string>{"basalt forwarding needs at least one trusted-keys entry"}
+                                   : std::nullopt;
     }
     return std::nullopt;
 }

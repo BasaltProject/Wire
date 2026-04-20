@@ -75,6 +75,9 @@ public:
 
     [[nodiscard]] const std::string& remoteAddress() const noexcept { return remoteAddress_; }
 
+    /// Zero unless the connection was accepted.
+    [[nodiscard]] std::uint16_t remotePort() const noexcept { return remotePort_; }
+
     [[nodiscard]] std::int64_t nativeHandle() const noexcept { return handle_; }
 
     [[nodiscard]] bool isClosed() const noexcept { return handle_ < 0; }
@@ -98,6 +101,7 @@ private:
 
     std::int64_t handle_ = -1;
     std::string remoteAddress_;
+    std::uint16_t remotePort_ = 0;
 };
 
 class TcpListener {

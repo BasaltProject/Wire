@@ -1,6 +1,7 @@
 #pragma once
 
 #include <basalt/wire/auth/SessionProfile.hpp>
+#include <basalt/wire/auth/forwarding/BasaltForwarding.hpp>
 #include <basalt/wire/common/Uuid.hpp>
 
 #include <cstdint>
@@ -18,6 +19,7 @@ enum class ForwardingMode : std::uint8_t {
     BungeeGuard,
     SafeNet,
     Velocity,
+    Basalt,
 };
 
 [[nodiscard]] std::string_view forwardingModeName(ForwardingMode mode) noexcept;
@@ -53,6 +55,7 @@ struct ProxyForwarding {
     std::string secret;
     std::vector<std::string> tokens;
     std::string propertyName{kSafeNetProperty};
+    std::vector<native::PublicKey> trustedKeys;
 
     [[nodiscard]] bool enabled() const noexcept { return mode != ForwardingMode::None; }
 
