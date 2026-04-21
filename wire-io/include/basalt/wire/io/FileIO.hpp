@@ -26,6 +26,9 @@ public:
 
     void seek(std::int64_t offset);
 
+    /// Pushes what was written to the disk; false if that did not work.
+    [[nodiscard]] bool sync() noexcept;
+
     void close() noexcept;
 
 private:

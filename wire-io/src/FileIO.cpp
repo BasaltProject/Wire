@@ -62,6 +62,10 @@ void FileWriter::seek(std::int64_t offset) {
     }
 }
 
+bool FileWriter::sync() noexcept {
+    return handle_ != nullptr && std::fflush(asFile(handle_)) == 0 && flushToDisk(asFile(handle_));
+}
+
 void FileWriter::close() noexcept {
     if (handle_ != nullptr) {
         std::fclose(asFile(handle_));
