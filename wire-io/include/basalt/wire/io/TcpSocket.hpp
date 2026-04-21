@@ -91,6 +91,9 @@ public:
 
     void close() noexcept;
 
+    /// Wakes a thread blocked in `read` with an end of stream, from any thread; writing still works.
+    void shutdownRead() noexcept;
+
 private:
     friend class TcpListener;
     [[nodiscard]] static std::expected<TcpConnection, SocketError> connectAddress(const TcpAddress& address,

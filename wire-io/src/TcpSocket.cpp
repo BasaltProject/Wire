@@ -269,6 +269,18 @@ TcpConnection& TcpConnection::operator=(TcpConnection&& other) noexcept {
 
 TcpConnection::~TcpConnection() { close(); }
 
+void TcpConnection::shutdownRead() noexcept {
+    const std::int64_t handle = handle_;
+    if (handle < 0) {
+        return;
+    }
+#if defined(_WIN32)
+    ::shutdown(static_cast<SOCKET>(handle), SD_RECEIVE);
+#else
+    ::shutdown(static_cast<int>(handle), SHUT_RD);
+#endif
+}
+
 void TcpConnection::close() noexcept {
     closeHandle(handle_);
     handle_ = -1;
