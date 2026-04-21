@@ -5,12 +5,26 @@
 #include <filesystem>
 #include <system_error>
 
+#ifdef _WIN32
+#include <io.h>
+#else
+#include <unistd.h>
+#endif
+
 namespace basalt::wire::io {
 namespace {
 
 std::FILE* asFile(void* handle) noexcept { return static_cast<std::FILE*>(handle); }
 
 std::filesystem::path toPath(const std::string& path) { return std::filesystem::path{path}; }
+
+bool flushToDisk(std::FILE* handle) noexcept {
+#ifdef _WIN32
+    return _commit(_fileno(handle)) == 0;
+#else
+    return ::fsync(::fileno(handle)) == 0;
+#endif
+}
 
 } // namespace
 
@@ -122,13 +136,24 @@ std::optional<std::string> readText(const std::string& path) {
 }
 
 bool writeBytes(const std::string& path, std::span<const std::uint8_t> bytes) {
-    std::FILE* handle = std::fopen(path.c_str(), "wb");
+    // Written beside the target and moved over it, so a crash leaves the old file or the new one, never half.
+    const std::string temporary = path + ".tmp";
+    std::FILE* handle = std::fopen(temporary.c_str(), "wb");
     if (handle == nullptr) {
         return false;
     }
-    const bool written = bytes.empty() || std::fwrite(bytes.data(), 1, bytes.size(), handle) == bytes.size();
-    std::fclose(handle);
-    return written;
+    bool written = bytes.empty() || std::fwrite(bytes.data(), 1, bytes.size(), handle) == bytes.size();
+    written = written && std::fflush(handle) == 0 && flushToDisk(handle);
+    written = std::fclose(handle) == 0 && written;
+    std::error_code error;
+    if (written) {
+        std::filesystem::rename(toPath(temporary), toPath(path), error);
+    }
+    if (!written || error) {
+        std::filesystem::remove(toPath(temporary), error);
+        return false;
+    }
+    return true;
 }
 
 bool writeText(const std::string& path, std::string_view content) {

@@ -2,6 +2,7 @@
 #include <basalt/wire/io/ByteBuffer.hpp>
 #include <basalt/wire/io/Compression.hpp>
 #include <basalt/wire/io/EventLoop.hpp>
+#include <basalt/wire/io/FileIO.hpp>
 #include <basalt/wire/io/Platform.hpp>
 #include <basalt/wire/io/TcpSocket.hpp>
 #include <basalt/wire/io/ZipReader.hpp>
@@ -11,6 +12,7 @@
 
 #include <atomic>
 #include <cstdint>
+#include <filesystem>
 #include <numeric>
 #include <string>
 #include <thread>
@@ -259,4 +261,16 @@ TEST_CASE("a written zip reads back, deflating what shrinks and storing what doe
     CHECK(std::string(big->begin(), big->end()) == text);
     CHECK(*reader->read("plugin.toml") == tiny);
     CHECK(archive.size() < text.size());
+}
+
+TEST_CASE("writing a file replaces it whole and leaves no temporary behind") {
+    const std::string path = (std::filesystem::temp_directory_path() / "basalt-atomic-write-test").string();
+    const std::vector<std::uint8_t> first{1, 2, 3, 4};
+    const std::vector<std::uint8_t> second{9};
+    REQUIRE(fileIO::writeBytes(path, first));
+    REQUIRE(fileIO::writeBytes(path, second));
+    CHECK(*fileIO::readBytes(path) == second);
+    CHECK_FALSE(std::filesystem::exists(path + ".tmp"));
+    CHECK_FALSE(fileIO::writeBytes("/nonexistent-folder-for-basalt/file", first));
+    std::filesystem::remove(path);
 }
