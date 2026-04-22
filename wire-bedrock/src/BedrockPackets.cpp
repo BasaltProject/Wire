@@ -458,6 +458,55 @@ std::string simpleFormJson(const std::string_view title, const std::string_view 
     return common::writeJson(common::JsonValue::ofObject(std::move(form)));
 }
 
+std::string customFormJson(const std::string_view title, const std::span<const FormControl> controls) {
+    common::JsonObject form;
+    form.set("type", common::JsonValue::of(std::string{"custom_form"}));
+    form.set("title", common::JsonValue::of(std::string{title}));
+    std::vector<common::JsonValue> content;
+    content.reserve(controls.size());
+    for (const FormControl& control : controls) {
+        common::JsonObject entry;
+        entry.set("text", common::JsonValue::of(control.text));
+        switch (control.kind) {
+        case FormControl::Kind::Label:
+            entry.set("type", common::JsonValue::of(std::string{"label"}));
+            break;
+        case FormControl::Kind::Input:
+            entry.set("type", common::JsonValue::of(std::string{"input"}));
+            entry.set("placeholder", common::JsonValue::of(control.placeholder));
+            entry.set("default", common::JsonValue::of(control.initialText));
+            break;
+        case FormControl::Kind::Toggle:
+            entry.set("type", common::JsonValue::of(std::string{"toggle"}));
+            entry.set("default", common::JsonValue::of(control.initialToggle));
+            break;
+        case FormControl::Kind::Slider:
+            entry.set("type", common::JsonValue::of(std::string{"slider"}));
+            entry.set("min", common::JsonValue::of(control.min));
+            entry.set("max", common::JsonValue::of(control.max));
+            if (control.step > 0.0) {
+                entry.set("step", common::JsonValue::of(control.step));
+            }
+            entry.set("default", common::JsonValue::of(control.initialNumber));
+            break;
+        case FormControl::Kind::Dropdown: {
+            entry.set("type", common::JsonValue::of(std::string{"dropdown"}));
+            std::vector<common::JsonValue> options;
+            options.reserve(control.options.size());
+            for (const std::string& option : control.options) {
+                options.push_back(common::JsonValue::of(option));
+            }
+            entry.set("options", common::JsonValue::ofArray(std::move(options)));
+            entry.set("default", common::JsonValue::of(static_cast<std::int64_t>(control.initialIndex)));
+            break;
+        }
+        }
+        content.push_back(common::JsonValue::ofObject(std::move(entry)));
+    }
+    form.set("content", common::JsonValue::ofArray(std::move(content)));
+    return common::writeJson(common::JsonValue::ofObject(std::move(form)));
+}
+
 namespace {
 
 constexpr std::int32_t kFlagSneaking = 8;
