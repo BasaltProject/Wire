@@ -430,11 +430,58 @@ std::optional<SetPlayerTeamPacket> SetPlayerTeamPacket::read(io::ByteBuffer& buf
     return buffer.failed() ? std::nullopt : std::optional{std::move(packet)};
 }
 
-void ShowDialogPacket::write(io::ByteBuffer& buffer) const { varInt::write(buffer, dialogId + 1); }
+void ShowDialogPacket::write(io::ByteBuffer& buffer) const {
+    if (inlineDialog.has_value()) {
+        varInt::write(buffer, 0);
+        writeAnonymousNbt(buffer, nbt::NbtTag::ofCompound(*inlineDialog));
+        return;
+    }
+    varInt::write(buffer, dialogId + 1);
+}
 
 std::optional<ShowDialogPacket> ShowDialogPacket::read(io::ByteBuffer& buffer) {
-    ShowDialogPacket packet{varInt::read(buffer) - 1};
-    return buffer.failed() ? std::nullopt : std::optional{packet};
+    ShowDialogPacket packet;
+    const std::int32_t held = varInt::read(buffer);
+    if (held == 0) {
+        const nbt::NbtTag tag = readAnonymousNbt(buffer);
+        if (const auto* compound = tag.get<nbt::NbtCompound>(); compound != nullptr) {
+            packet.inlineDialog = *compound;
+        } else {
+            buffer.markFailed();
+        }
+    } else {
+        packet.dialogId = held - 1;
+    }
+    return buffer.failed() ? std::nullopt : std::optional{std::move(packet)};
+}
+
+void ServerboundCustomClickActionPacket::write(io::ByteBuffer& buffer) const {
+    writeString(buffer, id);
+    io::ByteBuffer inner;
+    if (payload.has_value()) {
+        writeAnonymousNbt(inner, *payload);
+    } else {
+        inner.writeByte(0);
+    }
+    varInt::write(buffer, static_cast<std::int32_t>(inner.readableBytes()));
+    buffer.writeBytes(inner.readable());
+}
+
+std::optional<ServerboundCustomClickActionPacket> ServerboundCustomClickActionPacket::read(io::ByteBuffer& buffer) {
+    ServerboundCustomClickActionPacket packet;
+    packet.id = readString(buffer);
+    const std::int32_t length = varInt::read(buffer);
+    if (length < 0 || static_cast<std::size_t>(length) > buffer.readableBytes() || length > 65536) {
+        return std::nullopt;
+    }
+    const std::size_t end = buffer.readerIndex() + static_cast<std::size_t>(length);
+    if (length > 0 && buffer.peekByte() != 0) {
+        packet.payload = readAnonymousNbt(buffer);
+    }
+    if (buffer.readerIndex() < end) {
+        buffer.skip(end - buffer.readerIndex());
+    }
+    return buffer.failed() ? std::nullopt : std::optional{std::move(packet)};
 }
 
 } // namespace basalt::wire::protocol::play

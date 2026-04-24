@@ -903,3 +903,27 @@ TEST_CASE("frame inspection bounds declarations before body buffering or inflati
     CHECK_FALSE((**incomplete).packetBytes);
     CHECK_FALSE((**incomplete).complete);
 }
+
+TEST_CASE("an inline dialog and a custom click action survive the wire") {
+    using namespace basalt::wire::protocol::play;
+    namespace nbt = basalt::wire::nbt;
+    nbt::NbtCompound dialog;
+    dialog.putString("type", "minecraft:multi_action");
+    ShowDialogPacket shown;
+    shown.inlineDialog = dialog;
+    basalt::wire::io::ByteBuffer out;
+    shown.write(out);
+    CHECK(ShowDialogPacket::read(out) == shown);
+
+    nbt::NbtCompound payload;
+    payload.putString("name", "Steve");
+    ServerboundCustomClickActionPacket click{"basalt:form/3", nbt::NbtTag::ofCompound(payload)};
+    basalt::wire::io::ByteBuffer clicked;
+    click.write(clicked);
+    CHECK(ServerboundCustomClickActionPacket::read(clicked) == click);
+    basalt::wire::io::ByteBuffer bare;
+    ServerboundCustomClickActionPacket{"basalt:form/4", std::nullopt}.write(bare);
+    const auto none = ServerboundCustomClickActionPacket::read(bare);
+    REQUIRE(none.has_value());
+    CHECK_FALSE(none->payload.has_value());
+}
