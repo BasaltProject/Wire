@@ -2,6 +2,7 @@
 #include <basalt/wire/common/Base64.hpp>
 #include <basalt/wire/protocol/PacketFraming.hpp>
 #include <basalt/wire/protocol/ProtocolBuffer.hpp>
+#include <basalt/wire/protocol/SessionEnvelope.hpp>
 #include <basalt/wire/protocol/VarInt.hpp>
 #include <basalt/wire/protocol/configuration/ConfigurationPackets.hpp>
 #include <basalt/wire/protocol/handshake/HandshakePacket.hpp>
@@ -926,4 +927,38 @@ TEST_CASE("an inline dialog and a custom click action survive the wire") {
     const auto none = ServerboundCustomClickActionPacket::read(bare);
     REQUIRE(none.has_value());
     CHECK_FALSE(none->payload.has_value());
+}
+
+TEST_CASE("session envelope frames round trip and malformed ones are refused") {
+    namespace envelope = basalt::wire::protocol::sessionEnvelope;
+    const std::vector<std::uint8_t> original{0x21, 0x00, 0xff, 0x7f};
+    const auto data = envelope::encodeData(original);
+    const auto decodedData = envelope::decode(data);
+    REQUIRE(decodedData);
+    REQUIRE(std::holds_alternative<envelope::Data>(*decodedData));
+    CHECK(std::ranges::equal(std::get<envelope::Data>(*decodedData).packet, original));
+
+    for (const envelope::Control control :
+         {envelope::Control{envelope::Open{envelope::kVersion1, envelope::Edition::Bedrock, 2193}},
+          envelope::Control{envelope::Opened{envelope::kVersion1}},
+          envelope::Control{envelope::Close{envelope::CloseReason::Superseded}}}) {
+        const auto bytes = envelope::encodeControl(control);
+        const auto back = envelope::decode(bytes);
+        REQUIRE(back);
+        REQUIRE(std::holds_alternative<envelope::Control>(*back));
+        CHECK(std::get<envelope::Control>(*back) == control);
+    }
+
+    CHECK(envelope::decode({}).error() == envelope::DecodeError::kEmpty);
+    const std::vector<std::uint8_t> unknownKind{7, 0};
+    CHECK(envelope::decode(unknownKind).error() == envelope::DecodeError::kUnknownKind);
+    const std::vector<std::uint8_t> unknownControl{1, 9};
+    CHECK(envelope::decode(unknownControl).error() == envelope::DecodeError::kUnknownControl);
+    const std::vector<std::uint8_t> trailing{1, 2, 0, 0};
+    CHECK(envelope::decode(trailing).error() == envelope::DecodeError::kMalformed);
+    const std::vector<std::uint8_t> badEdition{1, 0, 1, 5, 0};
+    CHECK(envelope::decode(badEdition).error() == envelope::DecodeError::kMalformed);
+    std::vector<std::uint8_t> oversized(envelope::kMaxControlBytes + 1, 0);
+    oversized[0] = 1;
+    CHECK(envelope::decode(oversized).error() == envelope::DecodeError::kTooLarge);
 }

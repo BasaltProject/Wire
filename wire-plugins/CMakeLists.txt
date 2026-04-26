@@ -1,5 +1,6 @@
 basalt_module(wire-plugins
     SOURCES
+        src/CommandSpec.cpp
         src/PluginFolder.cpp
         src/PluginManifest.cpp
         src/PluginOrder.cpp
@@ -26,5 +27,11 @@ basalt_test(wire-plugins-order-test
 basalt_test(wire-plugins-manifest-test
     SOURCES
         test/PluginManifestTest.cpp
+    DEPENDS basalt::wire-plugins
+)
+
+basalt_test(wire-plugins-command-spec-test
+    SOURCES
+        test/CommandSpecTest.cpp
     DEPENDS basalt::wire-plugins
 )

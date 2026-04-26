@@ -2,6 +2,7 @@
 #include <basalt/wire/multiversion/java/Link765.hpp>
 #include <basalt/wire/protocol/ProtocolBuffer.hpp>
 #include <basalt/wire/protocol/VarInt.hpp>
+#include <basalt/wire/protocol/login/LoginPackets.hpp>
 #include <basalt/wire/protocol/play/EntityPackets.hpp>
 #include <basalt/wire/protocol/play/InventoryPackets.hpp>
 
@@ -20,6 +21,13 @@ constexpr std::int32_t kContinues = 0x80;
 } // namespace
 
 bool Link765::clientbound(ProtocolState state, MutablePacket& packet) {
+    if (state == ProtocolState::Login && packet.nativeId() == protocol::login::LoginFinishedPacket::kId) {
+        // The strict-errors flag the 1.20.5 link appended is not there yet in 1.20.4.
+        if (!packet.body.empty()) {
+            packet.body.pop_back();
+        }
+        return true;
+    }
     if (state != ProtocolState::Play) {
         return true;
     }

@@ -73,6 +73,16 @@ std::int32_t PacketIdTables::toNative(protocol::ProtocolState state, std::int32_
     return found == serverbound_.end() ? id : found->second.unmap(id);
 }
 
+std::int32_t PacketIdTables::clientboundToNative(protocol::ProtocolState state, std::int32_t id) const {
+    const auto found = clientbound_.find(state);
+    return found == clientbound_.end() ? id : found->second.unmap(id);
+}
+
+std::int32_t PacketIdTables::serverboundToOlder(protocol::ProtocolState state, std::int32_t id) const {
+    const auto found = serverbound_.find(state);
+    return found == serverbound_.end() ? id : found->second.map(id);
+}
+
 bool PacketIdTables::hasClientbound(protocol::ProtocolState state) const { return clientbound_.contains(state); }
 
 bool PacketIdTables::hasServerbound(protocol::ProtocolState state) const { return serverbound_.contains(state); }

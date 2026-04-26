@@ -44,6 +44,10 @@ public:
 
     [[nodiscard]] std::int32_t toNative(protocol::ProtocolState state, std::int32_t id) const;
 
+    [[nodiscard]] std::int32_t clientboundToNative(protocol::ProtocolState state, std::int32_t id) const;
+
+    [[nodiscard]] std::int32_t serverboundToOlder(protocol::ProtocolState state, std::int32_t id) const;
+
     [[nodiscard]] bool hasClientbound(protocol::ProtocolState state) const;
 
     [[nodiscard]] bool hasServerbound(protocol::ProtocolState state) const;

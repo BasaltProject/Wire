@@ -16,6 +16,12 @@ extern "C" {
 #include <mbedtls/x509_crt.h>
 }
 
+#if defined(_WIN32)
+#include <wincrypt.h>
+#include <windows.h>
+#include <winsock2.h>
+#endif
+
 #include <algorithm>
 #include <array>
 #include <charconv>
@@ -34,6 +40,25 @@ constexpr std::array<const char*, 6> kTrustStores{
     "/etc/pki/tls/cacert.pem",
     "/usr/local/share/certs/ca-root-nss.crt",
 };
+
+#if defined(_WIN32)
+/// Windows keeps its roots in the system store, not in a file, so each certificate is handed to mbedTLS as DER.
+[[nodiscard]] bool loadWindowsRoots(mbedtls_x509_crt& into) {
+    HCERTSTORE store = CertOpenSystemStoreA(0, "ROOT");
+    if (store == nullptr) {
+        return false;
+    }
+    bool any = false;
+    for (PCCERT_CONTEXT certificate = CertEnumCertificatesInStore(store, nullptr); certificate != nullptr;
+         certificate = CertEnumCertificatesInStore(store, certificate)) {
+        if (mbedtls_x509_crt_parse_der(&into, certificate->pbCertEncoded, certificate->cbCertEncoded) == 0) {
+            any = true;
+        }
+    }
+    CertCloseStore(store, 0);
+    return any;
+}
+#endif
 
 struct Url {
     std::string host;
@@ -143,8 +168,13 @@ public:
             anyTrusted = mbedtls_x509_crt_parse(&trusted_, reinterpret_cast<const unsigned char*>(pem.c_str()),
                                                 pem.size() + 1) == 0;
         }
+#if defined(_WIN32)
+        if (options_.trustPem.empty()) {
+            anyTrusted = loadWindowsRoots(trusted_);
+        }
+#endif
         for (const char* store : kTrustStores) {
-            if (!options_.trustPem.empty()) {
+            if (!options_.trustPem.empty() || anyTrusted) {
                 break;
             }
             if (mbedtls_x509_crt_parse_file(&trusted_, store) == 0) {

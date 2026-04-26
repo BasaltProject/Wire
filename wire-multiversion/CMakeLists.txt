@@ -4,6 +4,7 @@ basalt_module(wire-multiversion
         src/ChunkRewriter.cpp
         src/ComposedTables.cpp
         src/IdMap.cpp
+        src/LoginShapes.cpp
         src/ProtocolChain.cpp
         src/ProtocolGate.cpp
         src/ProtocolVersions.cpp
@@ -107,5 +108,11 @@ basalt_module(wire-multiversion
 basalt_test(wire-multiversion-test
     SOURCES
         test/MultiversionTest.cpp
+    DEPENDS basalt::wire-multiversion
+)
+
+basalt_test(wire-multiversion-login-test
+    SOURCES
+        test/LoginShapesTest.cpp
     DEPENDS basalt::wire-multiversion
 )

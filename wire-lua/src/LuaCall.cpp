@@ -15,6 +15,7 @@ constexpr const char* kCallsKey = "basalt.calls";
 struct HostBody {
     std::function<std::int32_t(LuaArgs&)> immediate;
     LuaCall::Arrange arrange;
+    LuaCall::ArrangeWith arrangeWith;
     std::string name;
 };
 
@@ -68,7 +69,8 @@ struct CallAccess {
 
     static int immediate(lua_State* state) {
         LuaArgs args{state};
-        return bodyOf(state)->immediate(args);
+        const int results = bodyOf(state)->immediate(args);
+        return results == LuaArgs::kFailed ? lua_error(state) : results;
     }
 
     static int afterWait(lua_State*, int, lua_KContext) { return 0; }
@@ -83,12 +85,18 @@ struct CallAccess {
             return luaL_error(thread, "'%s' cannot be used from here: it needs to be able to wait", body->name.c_str());
         }
         call->arranged_ = true;
-        body->arrange([held = call->shared_from_this()] {
+        LuaCall::Resume resume = [held = call->shared_from_this()] {
             if (!held->finished_) {
                 held->arranged_ = false;
                 held->step(0);
             }
-        });
+        };
+        if (body->arrangeWith) {
+            LuaArgs args{thread};
+            body->arrangeWith(args, std::move(resume));
+        } else {
+            body->arrange(std::move(resume));
+        }
         return lua_yieldk(thread, 0, 0, &afterWait);
     }
 };
@@ -165,17 +173,24 @@ void installBody(LuaSandbox& sandbox, const std::string& name, HostBody built, l
 void pushHostFunction(LuaArgs& lua, const std::string& name, std::function<std::int32_t(LuaArgs&)> body) {
     lua_State* state = lua.state();
     HostBody* held = newBody(state);
-    *held = HostBody{.immediate = std::move(body), .arrange = {}, .name = name};
+    *held = HostBody{.immediate = std::move(body), .arrange = {}, .arrangeWith = {}, .name = name};
     lua_pushcclosure(state, &CallAccess::immediate, 1);
 }
 
 void installHostFunction(LuaSandbox& sandbox, const std::string& name, std::function<std::int32_t(LuaArgs&)> body) {
-    installBody(sandbox, name, HostBody{.immediate = std::move(body), .arrange = {}, .name = name},
+    installBody(sandbox, name, HostBody{.immediate = std::move(body), .arrange = {}, .arrangeWith = {}, .name = name},
                 &CallAccess::immediate);
 }
 
 void installWaitingFunction(LuaSandbox& sandbox, const std::string& name, LuaCall::Arrange arrange) {
-    installBody(sandbox, name, HostBody{.immediate = {}, .arrange = std::move(arrange), .name = name},
+    installBody(sandbox, name,
+                HostBody{.immediate = {}, .arrange = std::move(arrange), .arrangeWith = {}, .name = name},
+                &CallAccess::waiting);
+}
+
+void installWaitingFunction(LuaSandbox& sandbox, const std::string& name, LuaCall::ArrangeWith arrange) {
+    installBody(sandbox, name,
+                HostBody{.immediate = {}, .arrange = {}, .arrangeWith = std::move(arrange), .name = name},
                 &CallAccess::waiting);
 }
 
