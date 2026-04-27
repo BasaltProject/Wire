@@ -250,6 +250,12 @@ void ProtocolChain::clientbound(protocol::ProtocolState state, std::int32_t id, 
         }
     }
 
+    if (!dropped && tail_ != nullptr) {
+        packet.id = current;
+        dropped = !tail_->clientbound(state, packet);
+        current = packet.id;
+    }
+
     if (!dropped) {
         emit(current, packet.body);
     }
@@ -260,6 +266,17 @@ void ProtocolChain::clientbound(protocol::ProtocolState state, std::int32_t id, 
 
 void ProtocolChain::serverbound(protocol::ProtocolState state, std::int32_t id, std::span<const std::uint8_t> body,
                                 const Emit& emit) const {
+    std::vector<std::uint8_t> shaped;
+    if (tail_ != nullptr) {
+        MutablePacket first;
+        first.reset(id, id, std::vector<std::uint8_t>{body.begin(), body.end()});
+        if (!tail_->serverbound(state, first)) {
+            return;
+        }
+        shaped = std::move(first.body);
+        id = first.id;
+        body = shaped;
+    }
     std::int32_t current = id;
     for (auto link = links_.rbegin(); link != links_.rend(); ++link) {
         const std::int32_t mapped = link->get().packets().toNative(state, current);
