@@ -744,3 +744,40 @@ TEST_CASE("a recipe list reads back the way a client walks it") {
     CHECK_FALSE(body.failed());
     CHECK(body.readableBytes() == 0);
 }
+
+TEST_CASE("a peer that keeps splits open or holds ordered frames back without end is cut off") {
+    const auto datagramOf = [](const RakFrame& frame, std::uint32_t sequence) {
+        io::ByteBuffer out;
+        out.writeByte(0x84);
+        out.writeByte(static_cast<std::uint8_t>(sequence & 0xff));
+        out.writeByte(static_cast<std::uint8_t>((sequence >> 8) & 0xff));
+        out.writeByte(static_cast<std::uint8_t>((sequence >> 16) & 0xff));
+        frame.encode(out);
+        return out.toVector();
+    };
+    std::vector<std::vector<std::uint8_t>> messages;
+
+    RakSession splitting{io::UdpEndpoint{0x0100007fU, 1}, 1400, 1, 0};
+    for (std::uint16_t id = 0; id < 64 && !splitting.closed(); ++id) {
+        RakFrame frame;
+        frame.reliability = Reliability::Unreliable;
+        frame.split = true;
+        frame.partCount = 4;
+        frame.partId = id;
+        frame.partIndex = 0;
+        frame.body.assign(100, 1);
+        splitting.receiveDatagram(datagramOf(frame, id), 0, messages);
+    }
+    CHECK(splitting.closed());
+
+    RakSession holding{io::UdpEndpoint{0x0100007fU, 2}, 1400, 2, 0};
+    for (std::uint32_t index = 1; index < 600 && !holding.closed(); ++index) {
+        RakFrame frame;
+        frame.reliability = Reliability::ReliableOrdered;
+        frame.reliableIndex = index;
+        frame.orderIndex = index;
+        frame.body.assign(10, 1);
+        holding.receiveDatagram(datagramOf(frame, index), 0, messages);
+    }
+    CHECK(holding.closed());
+}

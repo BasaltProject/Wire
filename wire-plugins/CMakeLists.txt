@@ -1,6 +1,7 @@
 basalt_module(wire-plugins
     SOURCES
         src/CommandSpec.cpp
+        src/EventPriority.cpp
         src/PluginFolder.cpp
         src/PluginManifest.cpp
         src/PluginOrder.cpp
