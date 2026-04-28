@@ -5,6 +5,8 @@ basalt_module(wire-protocol
         src/BlockEntityPackets.cpp
         src/BorderPackets.cpp
         src/ChatPackets.cpp
+        src/ItemIds.cpp
+        src/EntityTypeIds.cpp
         src/CommandPackets.cpp
         src/ConfigurationPackets.cpp
         src/EntityData.cpp
@@ -23,6 +25,7 @@ basalt_module(wire-protocol
         src/ParticleOptions.cpp
         src/AdvancementPackets.cpp
         src/RecipePackets.cpp
+        src/EnvelopeEndpoint.cpp
         src/SessionEnvelope.cpp
         src/SimplePackets.cpp
         src/StatusPackets.cpp

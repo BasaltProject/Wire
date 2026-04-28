@@ -5,7 +5,8 @@ basalt_module(wire-plugins
         src/PluginManifest.cpp
         src/PluginOrder.cpp
         src/PluginPackage.cpp
-    DEPENDS basalt::wire-common basalt::wire-io
+        src/PluginText.cpp
+    DEPENDS basalt::wire-common basalt::wire-io basalt::wire-lua
 )
 
 basalt_test(wire-plugins-package-test
