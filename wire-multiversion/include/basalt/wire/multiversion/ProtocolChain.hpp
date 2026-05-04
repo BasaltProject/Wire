@@ -86,8 +86,7 @@ class ProtocolChain {
 public:
     using Emit = std::function<void(std::int32_t, std::span<const std::uint8_t>)>;
 
-    /// `content` works on the server's side of the links; `tail` on the client's, after them going out and before them
-    /// coming in.
+    /// `content` works on the server's side of the links; `tail` on the client's, outside them.
     explicit ProtocolChain(std::vector<std::reference_wrapper<ProtocolLink>> links,
                            PacketContentRewriter* content = nullptr, PacketContentRewriter* tail = nullptr)
         : links_(std::move(links)), content_(content), tail_(tail) {}
@@ -105,8 +104,7 @@ public:
     /// Ids at or above this stand for a packet the native version has no counterpart for; the body is never touched.
     static constexpr std::int32_t kOpaqueBase = 0x40000000;
 
-    /// Id-only renumbering for a peer that speaks this chain's version natively: `ToNative` reads its ids, `FromNative`
-    /// writes them.
+    /// Id-only renumbering for a peer on this chain's version: `ToNative` reads its ids, `FromNative` writes them.
     [[nodiscard]] std::int32_t clientboundIdToNative(protocol::ProtocolState state, std::int32_t id) const;
     [[nodiscard]] std::int32_t clientboundIdFromNative(protocol::ProtocolState state, std::int32_t id) const;
     [[nodiscard]] std::int32_t serverboundIdToNative(protocol::ProtocolState state, std::int32_t id) const;

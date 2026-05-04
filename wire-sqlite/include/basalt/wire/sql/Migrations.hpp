@@ -15,8 +15,7 @@ struct Migration {
     std::string_view statements;
 };
 
-/// Applies, in order and one transaction each, every migration above the stored schema version.
-/// Versions must rise strictly; a database newer than the newest migration is refused, never downgraded.
+/// Applies each migration above the stored version in order, one transaction each; a newer database is refused.
 [[nodiscard]] std::expected<std::int32_t, std::string> migrate(Database& database,
                                                                std::span<const Migration> migrations);
 

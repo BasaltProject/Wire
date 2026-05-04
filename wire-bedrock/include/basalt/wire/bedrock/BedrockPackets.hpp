@@ -12,7 +12,6 @@
 #include <string_view>
 #include <utility>
 #include <vector>
-#include <vector>
 
 namespace basalt::wire::bedrock {
 
@@ -227,8 +226,7 @@ struct FormControl {
     std::int32_t initialIndex = 0;
 };
 
-/// A form with fields and a single submit; a label answers null, an input a string, a toggle a boolean, a slider a
-/// number and a dropdown the index of the option.
+/// A form with fields and one submit; it answers null, a string, a boolean, a number or the dropdown's index.
 [[nodiscard]] std::string customFormJson(std::string_view title, std::span<const FormControl> controls);
 
 /// Only the five that carry a position are worth naming here; the rest arrive as their number and are ignored.
