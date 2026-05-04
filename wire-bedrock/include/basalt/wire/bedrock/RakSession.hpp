@@ -53,6 +53,9 @@ public:
 
     [[nodiscard]] bool saidGoodbye() const noexcept { return saidGoodbye_; }
 
+    /// Drops the session on the server's next poll, without a word to the peer.
+    void close() noexcept { closed_ = true; }
+
     [[nodiscard]] const Stats& stats() const noexcept { return stats_; }
 
     [[nodiscard]] std::uint64_t lastHeardMs() const noexcept { return lastHeardMs_; }

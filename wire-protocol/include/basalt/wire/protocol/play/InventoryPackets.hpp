@@ -111,6 +111,8 @@ struct ServerboundContainerClickPacket {
     /// Whether the client believes it is holding something after this click.
     bool clientHasCarriedItem = false;
 
+    /// Written without the hashes of what the client expects, so the backend answers with what it really holds.
+    void write(io::ByteBuffer& buffer) const;
     [[nodiscard]] static std::optional<ServerboundContainerClickPacket> read(io::ByteBuffer& buffer);
 
     friend bool operator==(const ServerboundContainerClickPacket&, const ServerboundContainerClickPacket&) = default;

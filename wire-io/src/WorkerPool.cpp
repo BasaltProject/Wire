@@ -22,7 +22,7 @@ struct WorkerPool::Impl {
         Canceled canceled;
         std::stop_source stop;
         std::shared_ptr<Stats> stats;
-        State state = State::Pending;
+        std::atomic<State> state{State::Pending};
 
         void report(std::exception_ptr error) noexcept {
             ++stats->failures;
@@ -34,7 +34,7 @@ struct WorkerPool::Impl {
         }
 
         void cancel() noexcept {
-            state = State::Finished;
+            state.store(State::Finished);
             if (canceled) {
                 try {
                     canceled();
@@ -45,7 +45,7 @@ struct WorkerPool::Impl {
         }
 
         ~Job() {
-            if (state == State::Pending) {
+            if (state.load() == State::Pending) {
                 cancel();
             }
         }
