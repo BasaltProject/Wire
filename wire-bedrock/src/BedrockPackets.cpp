@@ -2007,7 +2007,8 @@ void writeSkin(io::ByteBuffer& buffer, const SkinInfo& skin, const int protocol)
 }
 
 void writeByteAngle(io::ByteBuffer& buffer, const float degrees) {
-    buffer.writeByte(static_cast<std::uint8_t>(static_cast<std::int8_t>(degrees / (360.0F / 256.0F))));
+    buffer.writeByte(
+        static_cast<std::uint8_t>(static_cast<std::int32_t>(std::trunc(degrees / (360.0F / 256.0F))) & 0xFF));
 }
 
 void writeAirItem(io::ByteBuffer& buffer, const int protocol) {
