@@ -2,7 +2,6 @@
 #include <basalt/wire/multiversion/java/ContentRewriter.hpp>
 #include <basalt/wire/multiversion/java/JavaTranslators.hpp>
 #include <basalt/wire/multiversion/java/Link107.hpp>
-#include <basalt/wire/multiversion/java/LoginRewriter.hpp>
 #include <basalt/wire/multiversion/java/Link109.hpp>
 #include <basalt/wire/multiversion/java/Link110.hpp>
 #include <basalt/wire/multiversion/java/Link210.hpp>
@@ -33,6 +32,7 @@
 #include <basalt/wire/multiversion/java/Link774.hpp>
 #include <basalt/wire/multiversion/java/Link775.hpp>
 #include <basalt/wire/multiversion/java/Link776.hpp>
+#include <basalt/wire/multiversion/java/LoginRewriter.hpp>
 #include <basalt/wire/multiversion/java/RenumberingLink.hpp>
 #include <basalt/wire/multiversion/java/Tables107.hpp>
 #include <basalt/wire/multiversion/java/Tables108.hpp>
