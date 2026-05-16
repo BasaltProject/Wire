@@ -6,12 +6,17 @@
 
 namespace basalt::wire::multiversion::java {
 
-void LoginFields::SpawnFields::write(io::ByteBuffer& output, bool withSeaLevel) const {
+void LoginFields::SpawnFields::write(io::ByteBuffer& output, bool withSeaLevel, bool varIntGamemodes) const {
     protocol::varInt::write(output, dimension);
     protocol::writeString(output, dimensionName);
     output.writeLong(hashedSeed);
-    output.writeByte(static_cast<std::uint8_t>(gamemode));
-    output.writeByte(static_cast<std::uint8_t>(previousGamemode));
+    if (varIntGamemodes) {
+        protocol::varInt::write(output, gamemode);
+        protocol::varInt::write(output, previousGamemode + 1);
+    } else {
+        output.writeByte(static_cast<std::uint8_t>(gamemode));
+        output.writeByte(static_cast<std::uint8_t>(previousGamemode));
+    }
     protocol::writeBoolean(output, debug);
     protocol::writeBoolean(output, flat);
     protocol::writeBoolean(output, deathDimension.has_value());
@@ -52,7 +57,7 @@ LoginFields::SpawnFields LoginFields::SpawnFields::read(io::ByteBuffer& input, b
     return fields;
 }
 
-void LoginFields::write(io::ByteBuffer& output, bool withOnlineMode, bool withSeaLevel) const {
+void LoginFields::write(io::ByteBuffer& output, bool withOnlineMode, bool withSeaLevel, bool varIntGamemodes) const {
     output.writeInt(entityId);
     protocol::writeBoolean(output, hardcore);
     protocol::varInt::write(output, static_cast<std::int32_t>(worldNames.size()));
@@ -65,7 +70,7 @@ void LoginFields::write(io::ByteBuffer& output, bool withOnlineMode, bool withSe
     protocol::writeBoolean(output, reducedDebugInfo);
     protocol::writeBoolean(output, respawnScreen);
     protocol::writeBoolean(output, limitedCrafting);
-    spawn.write(output, withSeaLevel);
+    spawn.write(output, withSeaLevel, varIntGamemodes);
     if (withOnlineMode) {
         protocol::writeBoolean(output, onlineMode);
     }

@@ -33,6 +33,11 @@ namespace javaTranslators {
 
 [[nodiscard]] std::unique_ptr<JavaChain> chainFor(std::int32_t protocol, const SubstitutionLabels* labels = nullptr);
 
+/// The chain for a client of this build whose server speaks an older protocol, or null where there is none.
+[[nodiscard]] std::unique_ptr<JavaChain> upChainFor(std::int32_t backendProtocol);
+
+[[nodiscard]] const std::set<std::int32_t>& upSupported();
+
 /// How `protocol` numbers a block state this server calls `nativeState`.
 [[nodiscard]] std::int32_t blockStateAs(std::int32_t protocol, std::int32_t nativeState);
 

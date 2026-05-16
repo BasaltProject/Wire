@@ -60,7 +60,7 @@ void writeDisplay(io::ByteBuffer& buffer, const AdvancementDisplayData& display)
     }
 }
 
-[[nodiscard]] AdvancementDisplayData readDisplay(io::ByteBuffer& buffer) {
+[[nodiscard]] AdvancementDisplayData readDisplay(io::ByteBuffer& buffer, AdvancementEntry* position) {
     AdvancementDisplayData display;
     display.title = text::componentNbt::deserialize(readAnonymousNbt(buffer));
     display.description = text::componentNbt::deserialize(readAnonymousNbt(buffer));
@@ -69,6 +69,10 @@ void writeDisplay(io::ByteBuffer& buffer, const AdvancementDisplayData& display)
     const std::int32_t flags = buffer.readInt();
     if ((flags & kBackgroundFlag) != 0) {
         display.background = readString(buffer);
+    }
+    if (position != nullptr) {
+        position->x = buffer.readFloat();
+        position->y = buffer.readFloat();
     }
     display.showToast = (flags & kToastFlag) != 0;
     display.hidden = (flags & kHiddenFlag) != 0;
@@ -131,7 +135,8 @@ void UpdateAdvancementsPacket::write(io::ByteBuffer& buffer) const {
     writeBoolean(buffer, showAdvancements);
 }
 
-std::optional<UpdateAdvancementsPacket> UpdateAdvancementsPacket::read(io::ByteBuffer& buffer) {
+std::optional<UpdateAdvancementsPacket> UpdateAdvancementsPacket::read(io::ByteBuffer& buffer,
+                                                                       bool positionInDisplay) {
     UpdateAdvancementsPacket packet;
     packet.reset = readBoolean(buffer);
     const std::int32_t added = readCollectionSize(buffer);
@@ -140,7 +145,7 @@ std::optional<UpdateAdvancementsPacket> UpdateAdvancementsPacket::read(io::ByteB
         entry.id = readString(buffer);
         entry.parent = readOptionalString(buffer);
         if (readBoolean(buffer)) {
-            entry.display = readDisplay(buffer);
+            entry.display = readDisplay(buffer, positionInDisplay ? &entry : nullptr);
         }
         const std::int32_t groups = readCollectionSize(buffer);
         for (std::int32_t g = 0; g < groups && !buffer.failed(); ++g) {
@@ -152,8 +157,10 @@ std::optional<UpdateAdvancementsPacket> UpdateAdvancementsPacket::read(io::ByteB
             entry.requirements.push_back(std::move(group));
         }
         entry.sendsTelemetryEvent = readBoolean(buffer);
-        entry.x = buffer.readFloat();
-        entry.y = buffer.readFloat();
+        if (!positionInDisplay) {
+            entry.x = buffer.readFloat();
+            entry.y = buffer.readFloat();
+        }
         packet.added.push_back(std::move(entry));
     }
     const std::int32_t removed = readCollectionSize(buffer);
