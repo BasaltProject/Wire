@@ -112,6 +112,54 @@ TEST_CASE("packet id tables translate both ways and drop what has no name") {
     CHECK_FALSE(tables.hasClientbound(basalt::wire::protocol::ProtocolState::Play));
 }
 
+TEST_CASE("a table read upward undoes what it did downward") {
+    const IdMap down{"0:10:0;12:5:-2|10>3;11>3"};
+    const IdMap up = down.inverted();
+    for (std::int32_t id : {0, 4, 9, 12, 16}) {
+        CHECK(up.map(down.map(id)) == id);
+    }
+    CHECK(up.map(99) == IdMap::kNone);
+
+    const PacketIdMap packets{"5,-1,3"};
+    CHECK(packets.inverted().map(5) == 0);
+    CHECK(packets.inverted().unmap(2) == 3);
+}
+
+TEST_CASE("a move packet goes down to 26.2 and comes back up to 26.3 as it was") {
+    namespace java = basalt::wire::multiversion::java;
+    using basalt::wire::protocol::ProtocolState;
+    basalt::wire::io::ByteBuffer native;
+    basalt::wire::protocol::varInt::write(native, 7);
+    basalt::wire::protocol::varInt::write(native, 1 | (1 << 1));
+    basalt::wire::protocol::varInt::write(native, 3);
+    native.writeShort(100);
+    native.writeShort(-50);
+    native.writeShort(25);
+    const std::vector<std::uint8_t> original = native.toVector();
+
+    const auto down = java::javaTranslators::chainFor(776);
+    const auto up = java::javaTranslators::upChainFor(776);
+    REQUIRE(down);
+    REQUIRE(up);
+    std::int32_t olderId = -1;
+    std::vector<std::uint8_t> older;
+    down->chain().clientbound(ProtocolState::Play, 54, original, [&](std::int32_t id, std::span<const std::uint8_t> body) {
+        olderId = id;
+        older.assign(body.begin(), body.end());
+    });
+    REQUIRE(olderId >= 0);
+    CHECK(older.size() == 1 + 6 + 1);
+
+    std::int32_t backId = -1;
+    std::vector<std::uint8_t> back;
+    up->chain().clientbound(ProtocolState::Play, olderId, older, [&](std::int32_t id, std::span<const std::uint8_t> body) {
+        backId = id;
+        back.assign(body.begin(), body.end());
+    });
+    CHECK(backId == 54);
+    CHECK(back == original);
+}
+
 TEST_CASE("the chunk rewriter renumbers block states and leaves biomes alone") {
     using namespace basalt::wire;
     namespace paletted = protocol::play::palettedContainer;
