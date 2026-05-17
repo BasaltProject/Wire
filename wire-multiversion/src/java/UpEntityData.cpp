@@ -52,8 +52,8 @@ bool UpEntityData::clientbound(protocol::ProtocolState state, MutablePacket& pac
             io::ByteBuffer input = io::ByteBuffer::wrap(packet.body);
             const std::int32_t entityId = input.readInt();
             if (!input.failed()) {
-                types_[entityId] = tables_->nativePlayerEntityType() >= 0 ? play::SpawnEntityPacket::kPlayerEntityType
-                                                                          : kUnknownType;
+                types_[entityId] =
+                    tables_->nativePlayerEntityType() >= 0 ? play::SpawnEntityPacket::kPlayerEntityType : kUnknownType;
             }
         } else if (packet.id == play::SpawnEntityPacket::kId) {
             io::ByteBuffer input = io::ByteBuffer::wrap(packet.body);

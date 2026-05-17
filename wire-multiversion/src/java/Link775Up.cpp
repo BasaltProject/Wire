@@ -1,6 +1,6 @@
-#include <basalt/wire/multiversion/java/Link775Up.hpp>
 #include <basalt/wire/multiversion/ProtocolVersions.hpp>
 #include <basalt/wire/multiversion/java/JavaTranslators.hpp>
+#include <basalt/wire/multiversion/java/Link775Up.hpp>
 #include <basalt/wire/multiversion/java/LoginFields.hpp>
 #include <basalt/wire/protocol/play/PlayPackets.hpp>
 
