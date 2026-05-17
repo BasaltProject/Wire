@@ -18,8 +18,9 @@ std::vector<std::uint8_t> ChunkRewriter::rewrite(std::span<const std::uint8_t> s
     io::ByteBuffer output;
 
     while (input.readableBytes() > 0 && !input.failed()) {
-        output.writeShort(input.readShort());
-        const std::int16_t fluids = options_.readsFluidCount ? input.readShort() : 0;
+        const std::int16_t blockCount = input.readShort();
+        output.writeShort(blockCount);
+        const std::int16_t fluids = options_.readsFluidCount ? input.readShort() : (options_.fluidCount ? blockCount : 0);
         if (options_.fluidCount) {
             output.writeShort(fluids);
         }

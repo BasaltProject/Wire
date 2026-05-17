@@ -33,8 +33,10 @@
 #include <basalt/wire/multiversion/java/Link774.hpp>
 #include <basalt/wire/multiversion/java/Link775.hpp>
 #include <basalt/wire/multiversion/java/Link776.hpp>
+#include <basalt/wire/multiversion/java/Link774Up.hpp>
 #include <basalt/wire/multiversion/java/Link775Up.hpp>
 #include <basalt/wire/multiversion/java/Link776Up.hpp>
+#include <basalt/wire/multiversion/java/UpEntityData.hpp>
 #include <basalt/wire/multiversion/java/RenumberingLink.hpp>
 #include <basalt/wire/multiversion/java/Tables107.hpp>
 #include <basalt/wire/multiversion/java/Tables108.hpp>
@@ -225,16 +227,17 @@ std::unique_ptr<ProtocolLink> climbing(const VersionTables& upward) {
     return std::make_unique<T>(upward);
 }
 
-constexpr std::array<UpEntry, 2> kUpLinks = {{
+constexpr std::array<UpEntry, 3> kUpLinks = {{
     {protocolVersions::kV26_2, &tables776, &climbing<Link776Up>},
     {protocolVersions::kV26_1, &tables775, &climbing<Link775Up>},
+    {protocolVersions::kV1_21_11, &tables774, &climbing<Link774Up>},
 }};
 
 class UpChain final : public JavaChain {
 public:
-    explicit UpChain(std::span<const UpEntry> used) {
+    UpChain(std::span<const UpEntry> used, std::int32_t backendVersion, std::int32_t clientVersion) {
         upward_.reserve(used.size());
-        std::int32_t newer = protocolVersions::kNative;
+        std::int32_t newer = clientVersion;
         for (const UpEntry& entry : used) {
             upward_.push_back(invertedTables(entry.tables(), newer));
             newer = entry.version;
@@ -243,8 +246,9 @@ public:
         std::vector<std::reference_wrapper<const VersionTables>> tables(upward_.begin(), upward_.end());
         composed_ = std::make_unique<ComposedTables>(tables);
         content_ = std::make_unique<ContentRewriter>(*composed_, nullptr, protocolVersions::kNative,
-                                                     std::vector<std::int32_t>{});
-        tail_ = std::make_unique<NumberedTail>(*content_);
+                                                     std::vector<std::int32_t>{},
+                                                     backendVersion >= protocolVersions::kV26_1);
+        tail_ = std::make_unique<UpEntityData>(*content_, *composed_, backendVersion);
         std::vector<std::reference_wrapper<ProtocolLink>> refs;
         for (std::size_t index = 0; index < used.size(); ++index) {
             links_.push_back(used[used.size() - 1 - index].make(upward_[index]));
@@ -259,7 +263,7 @@ private:
     std::vector<VersionTables> upward_;
     std::unique_ptr<ComposedTables> composed_;
     std::unique_ptr<ContentRewriter> content_;
-    std::unique_ptr<NumberedTail> tail_;
+    std::unique_ptr<UpEntityData> tail_;
     std::vector<std::unique_ptr<ProtocolLink>> links_;
     std::unique_ptr<ProtocolChain> chain_;
 };
@@ -267,6 +271,22 @@ private:
 } // namespace
 
 namespace javaTranslators {
+
+std::int32_t packetIdAt(std::int32_t version, protocol::ProtocolState state, bool clientbound,
+                        std::int32_t nativeId) {
+    std::int32_t id = nativeId;
+    if (version == protocolVersions::kNative) {
+        return id;
+    }
+    for (const LinkEntry& entry : kLinks) {
+        const PacketIdTables& packets = entry.tables().packets;
+        id = clientbound ? packets.toOlder(state, id) : packets.serverboundToOlder(state, id);
+        if (id < 0 || entry.version == version) {
+            return id;
+        }
+    }
+    return -1;
+}
 
 const std::set<std::int32_t>& upSupported() {
     static const std::set<std::int32_t> versions = [] {
@@ -279,15 +299,19 @@ const std::set<std::int32_t>& upSupported() {
     return versions;
 }
 
-std::unique_ptr<JavaChain> upChainFor(std::int32_t backendProtocol) {
-    std::size_t used = 0;
+std::unique_ptr<JavaChain> upChainFor(std::int32_t backendProtocol, std::int32_t clientProtocol) {
+    std::size_t first = 0;
+    while (first < kUpLinks.size() && kUpLinks[first].version >= clientProtocol) {
+        first++;
+    }
+    std::size_t used = first;
     while (used < kUpLinks.size() && kUpLinks[used].version >= backendProtocol) {
         used++;
     }
-    if (used == 0 || kUpLinks[used - 1].version != backendProtocol) {
+    if (used == first || kUpLinks[used - 1].version != backendProtocol) {
         return nullptr;
     }
-    return std::make_unique<UpChain>(std::span{kUpLinks}.first(used));
+    return std::make_unique<UpChain>(std::span{kUpLinks}.subspan(first, used - first), backendProtocol, clientProtocol);
 }
 
 const std::set<std::int32_t>& supported() {

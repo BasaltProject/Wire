@@ -46,12 +46,13 @@ constexpr std::int32_t kStone = 1;
 } // namespace
 
 ContentRewriter::ContentRewriter(const ComposedTables& tables, const SubstitutionLabels* labels, std::int32_t farEnd,
-                                 std::vector<std::int32_t> links)
+                                 std::vector<std::int32_t> links, bool backendCountsFluids)
     : tables_(&tables), labels_(labels), farEnd_(farEnd),
       entityData_(farEnd, std::move(links),
                   [this](const std::optional<play::WireItemStack>& item) { return stack(item); }),
       chunks_(tables.blockStates, ChunkRewriter::Options{.olderDirectBits = tables.blockStateDirectBits(),
-                                                         .fluidCount = tables.fluidCountInSections()}) {}
+                                                         .fluidCount = tables.fluidCountInSections(),
+                                                         .readsFluidCount = backendCountsFluids}) {}
 
 bool ContentRewriter::clientbound(ProtocolState state, MutablePacket& packet) {
     if (state == ProtocolState::Configuration && packet.nativeId() == protocol::configuration::TagsPacket::kId) {

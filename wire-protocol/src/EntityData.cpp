@@ -190,7 +190,8 @@ void SetEntityDataPacket::write(io::ByteBuffer& buffer) const {
     buffer.writeByte(kEndOfMetadata);
 }
 
-std::optional<SetEntityDataPacket> SetEntityDataPacket::read(io::ByteBuffer& buffer, const ParticleShapeOf& shapeOf) {
+std::optional<SetEntityDataPacket> SetEntityDataPacket::read(io::ByteBuffer& buffer, const ParticleShapeOf& shapeOf,
+                                                             std::span<const std::int32_t> serializerToNative) {
     SetEntityDataPacket packet;
     packet.entityId = varInt::read(buffer);
 
@@ -205,7 +206,16 @@ std::optional<SetEntityDataPacket> SetEntityDataPacket::read(io::ByteBuffer& buf
 
         Entry entry;
         entry.index = index;
-        const std::int32_t serializer = varInt::read(buffer);
+        std::int32_t serializer = varInt::read(buffer);
+        if (!serializerToNative.empty()) {
+            serializer = serializer >= 0 && static_cast<std::size_t>(serializer) < serializerToNative.size()
+                             ? serializerToNative[static_cast<std::size_t>(serializer)]
+                             : -1;
+            if (serializer < 0) {
+                buffer.markFailed();
+                return std::nullopt;
+            }
+        }
         switch (serializer) {
         case kByteSerializer:
             entry.value = ByteValue{static_cast<std::int8_t>(buffer.readByte())};

@@ -314,12 +314,18 @@ void ProtocolChain::serverboundStepwise(protocol::ProtocolState state, std::size
         return;
     }
     ProtocolLink& link = links_[remaining - 1];
-    const std::int32_t mapped = link.packets().toNative(state, id);
-    if (mapped == PacketIdMap::kDropped) {
-        return;
-    }
     MutablePacket packet;
-    packet.reset(mapped, mapped, std::vector<std::uint8_t>{body.begin(), body.end()});
+    packet.reset(id, id, std::vector<std::uint8_t>{body.begin(), body.end()});
+    if (link.serverboundForeign(state, packet)) {
+        const std::int32_t own = packet.id;
+        packet.reset(own, own, std::move(packet.body));
+    } else {
+        const std::int32_t mapped = link.packets().toNative(state, id);
+        if (mapped == PacketIdMap::kDropped) {
+            return;
+        }
+        packet.reset(mapped, mapped, std::move(packet.body));
+    }
     if (!link.serverbound(state, packet)) {
         return;
     }

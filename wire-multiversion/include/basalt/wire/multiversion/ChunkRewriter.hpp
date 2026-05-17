@@ -20,6 +20,7 @@ public:
         bool fluidCount = true;
         /// A link below the one that took it out reads what that link wrote, not what this server does.
         bool readsFluidCount = true;
+        /// Reading none while writing some, the count is the section's blocks, which can only be too high.
     };
 
     ChunkRewriter(const IdLookup& blockStates, Options options) : blockStates_(&blockStates), options_(options) {}
