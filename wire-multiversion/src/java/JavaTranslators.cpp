@@ -33,6 +33,7 @@
 #include <basalt/wire/multiversion/java/Link774.hpp>
 #include <basalt/wire/multiversion/java/Link775.hpp>
 #include <basalt/wire/multiversion/java/Link776.hpp>
+#include <basalt/wire/multiversion/java/Link775Up.hpp>
 #include <basalt/wire/multiversion/java/Link776Up.hpp>
 #include <basalt/wire/multiversion/java/RenumberingLink.hpp>
 #include <basalt/wire/multiversion/java/Tables107.hpp>
@@ -213,28 +214,53 @@ private:
     PacketContentRewriter* inner_;
 };
 
+struct UpEntry {
+    std::int32_t version;
+    const VersionTables& (*tables)();
+    std::unique_ptr<ProtocolLink> (*make)(const VersionTables& upward);
+};
+
+template <typename T>
+std::unique_ptr<ProtocolLink> climbing(const VersionTables& upward) {
+    return std::make_unique<T>(upward);
+}
+
+constexpr std::array<UpEntry, 2> kUpLinks = {{
+    {protocolVersions::kV26_2, &tables776, &climbing<Link776Up>},
+    {protocolVersions::kV26_1, &tables775, &climbing<Link775Up>},
+}};
+
 class UpChain final : public JavaChain {
 public:
-    explicit UpChain(const VersionTables& down) : upward_(invertedTables(down, protocolVersions::kNative)) {
-        const std::vector<std::reference_wrapper<const VersionTables>> tables{upward_};
+    explicit UpChain(std::span<const UpEntry> used) {
+        upward_.reserve(used.size());
+        std::int32_t newer = protocolVersions::kNative;
+        for (const UpEntry& entry : used) {
+            upward_.push_back(invertedTables(entry.tables(), newer));
+            newer = entry.version;
+        }
+        std::ranges::reverse(upward_);
+        std::vector<std::reference_wrapper<const VersionTables>> tables(upward_.begin(), upward_.end());
         composed_ = std::make_unique<ComposedTables>(tables);
         content_ = std::make_unique<ContentRewriter>(*composed_, nullptr, protocolVersions::kNative,
                                                      std::vector<std::int32_t>{});
         tail_ = std::make_unique<NumberedTail>(*content_);
-        link_ = std::make_unique<Link776Up>(upward_);
         std::vector<std::reference_wrapper<ProtocolLink>> refs;
-        refs.emplace_back(*link_);
-        chain_ = std::make_unique<ProtocolChain>(std::move(refs), nullptr, tail_.get());
+        for (std::size_t index = 0; index < used.size(); ++index) {
+            links_.push_back(used[used.size() - 1 - index].make(upward_[index]));
+            refs.emplace_back(*links_.back());
+        }
+        chain_ = std::make_unique<ProtocolChain>(std::move(refs), nullptr, tail_.get(), true);
     }
 
     [[nodiscard]] const ProtocolChain& chain() const override { return *chain_; }
 
 private:
-    VersionTables upward_;
+    std::vector<VersionTables> upward_;
     std::unique_ptr<ComposedTables> composed_;
     std::unique_ptr<ContentRewriter> content_;
     std::unique_ptr<NumberedTail> tail_;
-    std::unique_ptr<Link776Up> link_;
+    std::vector<std::unique_ptr<ProtocolLink>> links_;
     std::unique_ptr<ProtocolChain> chain_;
 };
 
@@ -243,15 +269,25 @@ private:
 namespace javaTranslators {
 
 const std::set<std::int32_t>& upSupported() {
-    static const std::set<std::int32_t> versions{protocolVersions::kV26_2};
+    static const std::set<std::int32_t> versions = [] {
+        std::set<std::int32_t> reachable;
+        for (const UpEntry& entry : kUpLinks) {
+            reachable.insert(entry.version);
+        }
+        return reachable;
+    }();
     return versions;
 }
 
 std::unique_ptr<JavaChain> upChainFor(std::int32_t backendProtocol) {
-    if (backendProtocol != protocolVersions::kV26_2) {
+    std::size_t used = 0;
+    while (used < kUpLinks.size() && kUpLinks[used].version >= backendProtocol) {
+        used++;
+    }
+    if (used == 0 || kUpLinks[used - 1].version != backendProtocol) {
         return nullptr;
     }
-    return std::make_unique<UpChain>(tables776());
+    return std::make_unique<UpChain>(std::span{kUpLinks}.first(used));
 }
 
 const std::set<std::int32_t>& supported() {

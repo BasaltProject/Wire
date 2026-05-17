@@ -148,7 +148,7 @@ bool Link776Up::clientbound(ProtocolState state, MutablePacket& packet) {
     if (state != ProtocolState::Play) {
         return true;
     }
-    const std::int32_t id = packet.nativeId();
+    const std::int32_t id = packet.id;
     if (id == ids_->loginPlay) {
         LoginFields login = decode(packet, [](io::ByteBuffer& in) { return LoginFields::read(in, true, true, false); });
         login.spawn.previousGamemode = static_cast<std::int8_t>(login.spawn.previousGamemode);
@@ -264,7 +264,7 @@ bool Link776Up::clientbound(ProtocolState state, MutablePacket& packet) {
 }
 
 bool Link776Up::configuration(MutablePacket& packet) const {
-    const std::int32_t id = packet.nativeId();
+    const std::int32_t id = packet.id;
     if (id == ids_->registryData) {
         auto data = decode(packet, [](io::ByteBuffer& in) { return configuration::RegistryDataPacket::read(in); });
         if (!data.has_value() || data->registryId != "minecraft:trim_material") {
