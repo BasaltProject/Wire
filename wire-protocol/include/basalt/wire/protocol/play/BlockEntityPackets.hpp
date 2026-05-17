@@ -3,6 +3,7 @@
 #include <basalt/wire/io/ByteBuffer.hpp>
 #include <basalt/wire/nbt/NbtTag.hpp>
 #include <basalt/wire/protocol/play/BlockPos.hpp>
+#include <basalt/wire/text/Component.hpp>
 
 #include <array>
 #include <cstdint>
@@ -131,6 +132,60 @@ struct SetStructureBlockPacket {
     [[nodiscard]] static std::optional<SetStructureBlockPacket> read(io::ByteBuffer& buffer);
 
     friend bool operator==(const SetStructureBlockPacket&, const SetStructureBlockPacket&) = default;
+};
+
+/// parity: `ServerboundSetTestBlockPacket`.
+struct SetTestBlockPacket {
+    static constexpr std::int32_t kId = 0x3d;
+
+    /// parity: `TestBlockMode`.
+    enum class Mode : std::int32_t { Start, Log, Fail, Accept };
+
+    BlockPos pos;
+    Mode mode = Mode::Start;
+    std::string message;
+
+    void write(io::ByteBuffer& buffer) const;
+    [[nodiscard]] static std::optional<SetTestBlockPacket> read(io::ByteBuffer& buffer);
+
+    friend bool operator==(const SetTestBlockPacket&, const SetTestBlockPacket&) = default;
+};
+
+/// parity: `ServerboundTestInstanceBlockActionPacket`.
+struct TestInstanceBlockActionPacket {
+    static constexpr std::int32_t kId = 0x41;
+
+    enum class Action : std::int32_t { Init, Query, Set, Reset, Save, Export, Run };
+    /// parity: `TestInstanceBlockEntity.Status`.
+    enum class Status : std::int32_t { Cleared, Running, Finished };
+
+    BlockPos pos;
+    Action action = Action::Init;
+    /// parity: `TestInstanceBlockEntity.Data`: the test, its size, rotation (`Rotation` index), and how it stands.
+    std::optional<std::string> test;
+    std::array<std::int32_t, 3> size{};
+    std::int32_t rotation = 0;
+    bool ignoreEntities = false;
+    Status status = Status::Cleared;
+    std::optional<text::Component> errorMessage;
+
+    void write(io::ByteBuffer& buffer) const;
+    [[nodiscard]] static std::optional<TestInstanceBlockActionPacket> read(io::ByteBuffer& buffer);
+
+    friend bool operator==(const TestInstanceBlockActionPacket&, const TestInstanceBlockActionPacket&) = default;
+};
+
+/// parity: `ClientboundTestInstanceBlockStatus`.
+struct TestInstanceBlockStatusPacket {
+    static constexpr std::int32_t kId = 0x81;
+
+    text::Component status;
+    std::optional<std::array<std::int32_t, 3>> size;
+
+    void write(io::ByteBuffer& buffer) const;
+    [[nodiscard]] static std::optional<TestInstanceBlockStatusPacket> read(io::ByteBuffer& buffer);
+
+    friend bool operator==(const TestInstanceBlockStatusPacket&, const TestInstanceBlockStatusPacket&) = default;
 };
 
 } // namespace basalt::wire::protocol::play

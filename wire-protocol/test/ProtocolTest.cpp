@@ -1037,3 +1037,30 @@ TEST_CASE("the envelope exchange opens once, carries data only after Opened and 
     CHECK(std::ranges::equal(received.packet, packet));
     CHECK(fresh.receive(open).closed);
 }
+
+TEST_CASE("the test block packets survive the wire") {
+    using namespace basalt::wire::protocol::play;
+    basalt::wire::io::ByteBuffer set;
+    SetTestBlockPacket{.pos = {1, 2, 3}, .mode = SetTestBlockPacket::Mode::Fail, .message = "no"}.write(set);
+    const auto block = SetTestBlockPacket::read(set);
+    REQUIRE(block.has_value());
+    CHECK(block->mode == SetTestBlockPacket::Mode::Fail);
+    CHECK(block->message == "no");
+
+    TestInstanceBlockActionPacket action{.pos = {4, 5, 6},
+                                         .action = TestInstanceBlockActionPacket::Action::Run,
+                                         .test = "test:demo",
+                                         .size = {2, 3, 4},
+                                         .rotation = 1,
+                                         .status = TestInstanceBlockActionPacket::Status::Finished,
+                                         .errorMessage = basalt::wire::text::Component::text("broken")};
+    basalt::wire::io::ByteBuffer acted;
+    action.write(acted);
+    CHECK(TestInstanceBlockActionPacket::read(acted) == action);
+
+    TestInstanceBlockStatusPacket status{.status = basalt::wire::text::Component::text("ok"),
+                                         .size = std::array<std::int32_t, 3>{1, 2, 3}};
+    basalt::wire::io::ByteBuffer told;
+    status.write(told);
+    CHECK(TestInstanceBlockStatusPacket::read(told) == status);
+}
