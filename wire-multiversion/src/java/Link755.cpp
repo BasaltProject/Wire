@@ -4,6 +4,7 @@
 #include <basalt/wire/protocol/play/InventoryPackets.hpp>
 #include <basalt/wire/protocol/play/PlayerStatePackets.hpp>
 
+#include <algorithm>
 #include <cstdint>
 #include <vector>
 
@@ -37,7 +38,7 @@ bool Link755::clientbound(protocol::ProtocolState state, MutablePacket& packet) 
         io::ByteBuffer input = io::ByteBuffer::wrap(packet.body);
         const std::int32_t count = protocol::varInt::read(input);
         std::vector<std::int32_t> ids;
-        ids.reserve(static_cast<std::size_t>(count < 0 ? 0 : count));
+        ids.reserve(std::min(static_cast<std::size_t>(count < 0 ? 0 : count), input.readableBytes()));
         for (std::int32_t i = 0; i < count && !input.failed(); ++i) {
             ids.push_back(protocol::varInt::read(input));
         }

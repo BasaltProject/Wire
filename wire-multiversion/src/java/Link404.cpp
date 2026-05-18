@@ -6,6 +6,7 @@
 #include <basalt/wire/protocol/play/PlayerStatePackets.hpp>
 #include <basalt/wire/protocol/play/WorldPackets.hpp>
 
+#include <algorithm>
 #include <array>
 #include <bit>
 #include <cstdint>
@@ -45,7 +46,7 @@ void copyContainer(io::ByteBuffer& input, io::ByteBuffer& output) {
 
 [[nodiscard]] std::vector<std::vector<std::uint8_t>> readArrays(io::ByteBuffer& input, int count) {
     std::vector<std::vector<std::uint8_t>> arrays;
-    arrays.reserve(static_cast<std::size_t>(count < 0 ? 0 : count));
+    arrays.reserve(std::min(static_cast<std::size_t>(count < 0 ? 0 : count), input.readableBytes()));
     for (int i = 0; i < count && !input.failed(); ++i) {
         const std::int32_t length = protocol::varInt::read(input);
         arrays.push_back(input.readBytes(static_cast<std::size_t>(length < 0 ? 0 : length)));

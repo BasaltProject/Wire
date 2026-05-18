@@ -8,6 +8,7 @@
 #include <basalt/wire/protocol/play/PlayerStatePackets.hpp>
 #include <basalt/wire/protocol/play/WorldPackets.hpp>
 
+#include <algorithm>
 #include <array>
 #include <cstdint>
 #include <utility>
@@ -84,9 +85,13 @@ void repackContainer(io::ByteBuffer& input, io::ByteBuffer& output) {
     }
     const std::int32_t count = protocol::varInt::read(input);
     std::vector<std::uint64_t> words;
-    words.reserve(static_cast<std::size_t>(count < 0 ? 0 : count));
+    words.reserve(std::min(static_cast<std::size_t>(count < 0 ? 0 : count), input.readableBytes()));
     for (std::int32_t i = 0; i < count && !input.failed(); ++i) {
         words.push_back(static_cast<std::uint64_t>(input.readLong()));
+    }
+    if (bits < 0 || bits > 32 || words.size() != play::bitStorageLongCount(bits, kBlocksPerSection)) {
+        input.markFailed();
+        return;
     }
     const play::BitStorage storage{bits, kBlocksPerSection, std::move(words)};
     std::vector<std::int32_t> values;
@@ -112,6 +117,9 @@ void repackContainer(io::ByteBuffer& input, io::ByteBuffer& output) {
         const auto* data = compound->values()[i].get<std::vector<std::int64_t>>();
         if (data == nullptr) {
             rewritten.set(name, compound->values()[i]);
+            continue;
+        }
+        if (data->size() != play::bitStorageLongCount(kHeightmapBits, kHeightmapEntries)) {
             continue;
         }
         std::vector<std::uint64_t> words;
@@ -367,7 +375,7 @@ void Link578::renameAttributes(MutablePacket& packet) {
     };
 
     std::vector<Entry> entries;
-    entries.reserve(static_cast<std::size_t>(count < 0 ? 0 : count));
+    entries.reserve(std::min(static_cast<std::size_t>(count < 0 ? 0 : count), input.readableBytes()));
     for (std::int32_t i = 0; i < count && !input.failed(); ++i) {
         Entry entry;
         entry.name = protocol::readString(input);

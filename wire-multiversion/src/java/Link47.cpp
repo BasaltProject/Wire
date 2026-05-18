@@ -10,6 +10,7 @@
 #include <basalt/wire/protocol/play/WorldPackets.hpp>
 
 #include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <string>
 
@@ -46,10 +47,18 @@ constexpr std::uint8_t kEndOfData = 0x7F;
 /// parity: a position was sent in thirty-seconds of a block.
 constexpr double kFixedPoint = 32.0;
 
+[[nodiscard]] std::int32_t fixedPoint(double value) {
+    constexpr double kLimit = 2147483647.0;
+    if (std::isnan(value)) {
+        return 0;
+    }
+    return static_cast<std::int32_t>(std::clamp(value * kFixedPoint, -kLimit, kLimit));
+}
+
 void writeFixed(io::ByteBuffer& output, double x, double y, double z) {
-    output.writeInt(static_cast<std::int32_t>(x * kFixedPoint));
-    output.writeInt(static_cast<std::int32_t>(y * kFixedPoint));
-    output.writeInt(static_cast<std::int32_t>(z * kFixedPoint));
+    output.writeInt(fixedPoint(x));
+    output.writeInt(fixedPoint(y));
+    output.writeInt(fixedPoint(z));
 }
 
 [[nodiscard]] std::vector<std::int32_t> readContainer(io::ByteBuffer& input) {
@@ -58,14 +67,14 @@ void writeFixed(io::ByteBuffer& output, double x, double y, double z) {
     const bool indirect = bits <= kMaxIndirectBits;
     if (indirect) {
         const std::int32_t entries = protocol::varInt::read(input);
-        palette.reserve(static_cast<std::size_t>(entries < 0 ? 0 : entries));
+        palette.reserve(std::min(static_cast<std::size_t>(entries < 0 ? 0 : entries), input.readableBytes()));
         for (std::int32_t i = 0; i < entries && !input.failed(); ++i) {
             palette.push_back(protocol::varInt::read(input));
         }
     }
     const std::int32_t count = protocol::varInt::read(input);
     std::vector<std::int64_t> words;
-    words.reserve(static_cast<std::size_t>(count < 0 ? 0 : count));
+    words.reserve(std::min(static_cast<std::size_t>(count < 0 ? 0 : count), input.readableBytes()));
     for (std::int32_t i = 0; i < count && !input.failed(); ++i) {
         words.push_back(input.readLong());
     }
