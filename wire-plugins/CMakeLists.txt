@@ -8,6 +8,7 @@ basalt_module(wire-plugins
         src/PluginPackage.cpp
         src/PluginSignature.cpp
         src/PluginText.cpp
+        src/PluginValue.cpp
     DEPENDS basalt::wire-common basalt::wire-io basalt::wire-lua
     PRIVATE_DEPENDS basalt::monocypher
 )
