@@ -19,9 +19,11 @@ basalt_test(wire-plugins-package-test
     DEPENDS basalt::wire-plugins
 )
 
-target_compile_definitions(wire-plugins-package-test
-    PRIVATE BASALT_TEST_SCRATCH_DIR="${CMAKE_CURRENT_BINARY_DIR}/test-data"
-)
+if(TARGET wire-plugins-package-test)
+    target_compile_definitions(wire-plugins-package-test
+        PRIVATE BASALT_TEST_SCRATCH_DIR="${CMAKE_CURRENT_BINARY_DIR}/test-data"
+    )
+endif()
 
 basalt_test(wire-plugins-signature-test
     SOURCES
@@ -29,9 +31,11 @@ basalt_test(wire-plugins-signature-test
     DEPENDS basalt::wire-plugins
 )
 
-target_compile_definitions(wire-plugins-signature-test
-    PRIVATE BASALT_TEST_SCRATCH_DIR="${CMAKE_CURRENT_BINARY_DIR}/test-data"
-)
+if(TARGET wire-plugins-signature-test)
+    target_compile_definitions(wire-plugins-signature-test
+        PRIVATE BASALT_TEST_SCRATCH_DIR="${CMAKE_CURRENT_BINARY_DIR}/test-data"
+    )
+endif()
 
 basalt_test(wire-plugins-order-test
     SOURCES
