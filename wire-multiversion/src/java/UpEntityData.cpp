@@ -2,11 +2,13 @@
 #include <basalt/wire/multiversion/java/EntityDataIndexes.hpp>
 #include <basalt/wire/multiversion/java/EntityDataTypes.hpp>
 #include <basalt/wire/multiversion/java/UpEntityData.hpp>
+#include <basalt/wire/protocol/ProtocolBuffer.hpp>
 #include <basalt/wire/protocol/VarInt.hpp>
 #include <basalt/wire/protocol/play/EntityData.hpp>
 #include <basalt/wire/protocol/play/ParticleOptions.hpp>
 #include <basalt/wire/protocol/play/PlayPackets.hpp>
 #include <basalt/wire/protocol/play/PlayerStatePackets.hpp>
+#include <basalt/wire/protocol/play/RecipePackets.hpp>
 
 #include <algorithm>
 #include <array>
@@ -27,6 +29,42 @@ constexpr std::array<std::pair<std::int32_t, Shape>, 22> kParticleShapes = {{
     {57, Shape::Item},           {58, Shape::Vibration},   {59, Shape::Trail},  {115, Shape::Delay},
     {121, Shape::BlockState},    {125, Shape::BlockState},
 }};
+
+/// parity: the items a 26.3 server's brewing stand takes as a bottle and as an ingredient, which older servers never
+/// sent because their clients had the lists built in.
+constexpr std::array<std::int32_t, 3> kBrewingInputs = {1442, 1271, 1445};
+constexpr std::array<std::int32_t, 21> kBrewingReagents = {1001, 237,  1274, 1272, 831,  1441, 1403,
+                                                           1269, 1279, 1,    1373, 1275, 824,  1064,
+                                                           1383, 1193, 973,  1217, 1267, 1273, 1189};
+
+void appendBrewingSets(MutablePacket& packet) {
+    io::ByteBuffer input = io::ByteBuffer::wrap(packet.body);
+    io::ByteBuffer output;
+    const std::int32_t sets = protocol::readCollectionSize(input, 2);
+    protocol::varInt::write(output, sets + 2);
+    for (std::int32_t i = 0; i < sets && !input.failed(); ++i) {
+        protocol::writeString(output, protocol::readString(input));
+        const std::int32_t items = protocol::readCollectionSize(input);
+        protocol::varInt::write(output, items);
+        for (std::int32_t k = 0; k < items && !input.failed(); ++k) {
+            protocol::varInt::write(output, protocol::varInt::read(input));
+        }
+    }
+    if (input.failed()) {
+        return;
+    }
+    const auto add = [&output](std::string_view key, std::span<const std::int32_t> items) {
+        protocol::writeString(output, key);
+        protocol::varInt::write(output, static_cast<std::int32_t>(items.size()));
+        for (const std::int32_t item : items) {
+            protocol::varInt::write(output, item);
+        }
+    };
+    add("minecraft:brewing_input", kBrewingInputs);
+    add("minecraft:brewing_reagent", kBrewingReagents);
+    output.writeBytes(input.readable());
+    packet.body = output.toVector();
+}
 
 } // namespace
 
@@ -75,7 +113,13 @@ bool UpEntityData::clientbound(protocol::ProtocolState state, MutablePacket& pac
             return false;
         }
     }
-    return next_->clientbound(state, packet);
+    if (!next_->clientbound(state, packet)) {
+        return false;
+    }
+    if (state == protocol::ProtocolState::Play && packet.id == play::UpdateRecipesPacket::kId) {
+        appendBrewingSets(packet);
+    }
+    return true;
 }
 
 bool UpEntityData::serverbound(protocol::ProtocolState state, MutablePacket& packet) {
