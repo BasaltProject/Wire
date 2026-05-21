@@ -182,7 +182,23 @@ bool UpEntityData::entityData(MutablePacket& packet) const {
     std::erase_if(data->entries, [&](play::SetEntityDataPacket::Entry& entry) {
         const std::int32_t index = nativeIndex(type, entry.index);
         entry.index = static_cast<std::uint8_t>(index);
-        return index < 0;
+        if (index < 0) {
+            return true;
+        }
+        // The content rewriter cannot read these, so their particle ids are renumbered here.
+        if (auto* particle = std::get_if<play::SetEntityDataPacket::ParticleValue>(&entry.value)) {
+            particle->particleId = tables_->particleType.map(particle->particleId);
+            return particle->particleId == IdMap::kNone;
+        }
+        if (auto* particles = std::get_if<play::SetEntityDataPacket::ParticlesValue>(&entry.value)) {
+            for (play::SetEntityDataPacket::ParticleValue& each : particles->particles) {
+                each.particleId = tables_->particleType.map(each.particleId);
+            }
+            return std::ranges::any_of(particles->particles, [](const play::SetEntityDataPacket::ParticleValue& each) {
+                return each.particleId == IdMap::kNone;
+            });
+        }
+        return false;
     });
     io::ByteBuffer output;
     data->write(output);
