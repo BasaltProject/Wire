@@ -66,6 +66,18 @@ void appendBrewingSets(MutablePacket& packet) {
     packet.body = output.toVector();
 }
 
+struct RetypedField {
+    std::int32_t entityType;
+    std::int32_t index;
+};
+
+constexpr std::array<RetypedField, 4> kRetypedIn1_21_11 = {{
+    {152, 21}, // a wolf's anger end time went from remaining ticks to an absolute game time
+    {11, 18},  // so did a bee's
+    {159, 15}, // an avatar's main hand went from a byte to an enum
+    {84, 15},
+}};
+
 } // namespace
 
 UpEntityData::UpEntityData(PacketContentRewriter& next, const ComposedTables& tables, std::int32_t backendVersion)
@@ -141,6 +153,12 @@ std::int32_t UpEntityData::nativeIndex(std::int32_t nativeType, std::int32_t ind
                 index++;
             }
         }
+        if (step == protocolVersions::kV1_21_9 &&
+            std::ranges::any_of(kRetypedIn1_21_11, [&](const RetypedField& field) {
+                return field.entityType == nativeType && field.index == index;
+            })) {
+            return -1;
+        }
     }
     return index;
 }
@@ -161,9 +179,11 @@ bool UpEntityData::entityData(MutablePacket& packet) const {
     }
     const auto known = types_.find(data->entityId);
     const std::int32_t type = known == types_.end() ? kUnknownType : known->second;
-    for (play::SetEntityDataPacket::Entry& entry : data->entries) {
-        entry.index = static_cast<std::uint8_t>(nativeIndex(type, entry.index));
-    }
+    std::erase_if(data->entries, [&](play::SetEntityDataPacket::Entry& entry) {
+        const std::int32_t index = nativeIndex(type, entry.index);
+        entry.index = static_cast<std::uint8_t>(index);
+        return index < 0;
+    });
     io::ByteBuffer output;
     data->write(output);
     packet.body = output.toVector();
