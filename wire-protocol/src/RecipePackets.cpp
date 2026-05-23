@@ -173,7 +173,7 @@ std::optional<RecipeBookEntry> RecipeBookEntry::read(io::ByteBuffer& buffer) {
         entry.craftingRequirements.reserve(static_cast<std::size_t>(count));
         for (std::int32_t i = 0; i < count && !buffer.failed(); ++i) {
             const std::int32_t size = varInt::read(buffer) - 1;
-            if (size < 0) {
+            if (size < 0 || static_cast<std::size_t>(size) > buffer.readableBytes()) {
                 buffer.markFailed();
                 return std::nullopt;
             }
@@ -342,7 +342,7 @@ std::optional<UpdateRecipesPacket> UpdateRecipesPacket::read(io::ByteBuffer& buf
     for (std::int32_t i = 0; i < count && !buffer.failed(); ++i) {
         StonecutterOption option;
         const std::int32_t inputs = varInt::read(buffer) - 1;
-        if (inputs < 0) {
+        if (inputs < 0 || static_cast<std::size_t>(inputs) > buffer.readableBytes()) {
             buffer.markFailed();
             return std::nullopt;
         }
