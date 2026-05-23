@@ -1,4 +1,5 @@
 #include <basalt/wire/multiversion/java/Link773.hpp>
+#include <basalt/wire/multiversion/java/SafeInt.hpp>
 #include <basalt/wire/nbt/Snbt.hpp>
 #include <basalt/wire/protocol/configuration/ConfigurationPackets.hpp>
 #include <basalt/wire/protocol/play/BorderPackets.hpp>
@@ -7,6 +8,7 @@
 #include <charconv>
 #include <cmath>
 #include <cstdint>
+#include <limits>
 
 namespace basalt::wire::multiversion::java {
 namespace {
@@ -69,7 +71,7 @@ constexpr std::int64_t kMillisPerTick = 50;
 }
 
 [[nodiscard]] std::int32_t hsvToRgb(float hue, float saturation, float value) {
-    const int sector = static_cast<int>(hue * 6.0F) % 6;
+    const int sector = static_cast<int>(safeInt(hue * 6.0F) % 6);
     const float fraction = hue * 6.0F - static_cast<float>(sector);
     const float p = value * (1.0F - saturation);
     const float q = value * (1.0F - fraction * saturation);
@@ -106,8 +108,9 @@ constexpr std::int64_t kMillisPerTick = 50;
     default:
         break;
     }
-    return (static_cast<std::int32_t>(red * 255.0F) << 16) | (static_cast<std::int32_t>(green * 255.0F) << 8) |
-           static_cast<std::int32_t>(blue * 255.0F);
+    return (static_cast<std::int32_t>(safeInt(red * 255.0F) & 255) << 16) |
+           (static_cast<std::int32_t>(safeInt(green * 255.0F) & 255) << 8) |
+           static_cast<std::int32_t>(safeInt(blue * 255.0F) & 255);
 }
 
 /// parity: `OverworldBiomeBuilder.calculateSkyColor`.
@@ -188,7 +191,8 @@ bool Link773::clientbound(ProtocolState state, MutablePacket& packet) {
             if (!border.has_value()) {
                 return;
             }
-            border->lerpTimeTicks *= kMillisPerTick;
+            constexpr std::int64_t kLimit = std::numeric_limits<std::int64_t>::max() / kMillisPerTick;
+            border->lerpTimeTicks = std::clamp<std::int64_t>(border->lerpTimeTicks, 0, kLimit) * kMillisPerTick;
             border->write(output);
         });
     }

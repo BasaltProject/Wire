@@ -5,6 +5,7 @@
 #include <basalt/wire/protocol/play/PlayPackets.hpp>
 #include <basalt/wire/protocol/play/WorldPackets.hpp>
 
+#include <algorithm>
 #include <cstdint>
 #include <string>
 
@@ -78,16 +79,20 @@ void copyContainer(io::ByteBuffer& input, io::ByteBuffer& output, std::size_t si
     const bool indirect = bits <= maxIndirectBits;
     if (indirect) {
         const std::int32_t entries = protocol::varInt::read(input);
-        palette.reserve(static_cast<std::size_t>(entries < 0 ? 0 : entries));
+        palette.reserve(std::min(static_cast<std::size_t>(entries < 0 ? 0 : entries), input.readableBytes()));
         for (std::int32_t i = 0; i < entries && !input.failed(); ++i) {
             palette.push_back(protocol::varInt::read(input));
         }
     }
     const std::int32_t longs = protocol::varInt::read(input);
     std::vector<std::uint64_t> words;
-    words.reserve(static_cast<std::size_t>(longs < 0 ? 0 : longs));
+    words.reserve(std::min(static_cast<std::size_t>(longs < 0 ? 0 : longs), input.readableBytes()));
     for (std::int32_t i = 0; i < longs && !input.failed(); ++i) {
         words.push_back(static_cast<std::uint64_t>(input.readLong()));
+    }
+    if (bits < 0 || bits > 32 || words.size() != play::bitStorageLongCount(bits, size)) {
+        input.markFailed();
+        return {};
     }
     const play::BitStorageView storage{bits, size, words};
     std::vector<std::int32_t> values;

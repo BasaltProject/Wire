@@ -114,7 +114,8 @@ std::int32_t idAt(ProtocolState state, bool clientbound, std::int32_t nativeId) 
 } // namespace
 
 bool Link773Up::configuration(MutablePacket& packet) const {
-    static const std::int32_t registryData = idAt(ProtocolState::Configuration, true, configuration::RegistryDataPacket::kId);
+    static const std::int32_t registryData =
+        idAt(ProtocolState::Configuration, true, configuration::RegistryDataPacket::kId);
     static const std::int32_t finish = idAt(ProtocolState::Configuration, true, configuration::kFinishConfigurationId);
     if (packet.id == registryData) {
         auto data = decode(packet, [](io::ByteBuffer& in) { return configuration::RegistryDataPacket::read(in); });
