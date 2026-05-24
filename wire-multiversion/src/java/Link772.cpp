@@ -1,4 +1,4 @@
-#include <basalt/wire/multiversion/java/SafeInt.hpp>
+#include <basalt/wire/common/SafeInt.hpp>
 #include <basalt/wire/multiversion/java/Link772.hpp>
 #include <basalt/wire/protocol/ProtocolBuffer.hpp>
 #include <basalt/wire/protocol/VarInt.hpp>
@@ -22,11 +22,11 @@ constexpr double kVelocityScale = 8000.0;
 constexpr double kVelocityLimit = 3.9;
 
 [[nodiscard]] std::int16_t quantize(double value) {
-    return static_cast<std::int16_t>(safeInt(std::clamp(value, -kVelocityLimit, kVelocityLimit) * kVelocityScale));
+    return static_cast<std::int16_t>(common::safeInt(std::clamp(value, -kVelocityLimit, kVelocityLimit) * kVelocityScale));
 }
 
 [[nodiscard]] std::uint8_t angleOf(float degrees) {
-    return static_cast<std::uint8_t>(safeInt(std::round(degrees * 256.0F / 360.0F)));
+    return static_cast<std::uint8_t>(common::safeInt(std::round(degrees * 256.0F / 360.0F)));
 }
 
 void writeShortVelocity(io::ByteBuffer& output, double x, double y, double z) {

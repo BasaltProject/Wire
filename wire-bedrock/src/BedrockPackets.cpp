@@ -8,6 +8,7 @@
 #include <basalt/wire/bedrock/BedrockSounds.hpp>
 #include <basalt/wire/bedrock/BedrockTypes.hpp>
 #include <basalt/wire/common/Base64.hpp>
+#include <basalt/wire/common/SafeInt.hpp>
 #include <basalt/wire/common/json/Json.hpp>
 
 #include <algorithm>
@@ -1839,8 +1840,7 @@ void writePlaySound(io::ByteBuffer& buffer, const std::string_view sound, const 
                     const double z, const float volume, const float pitch, const int protocol,
                     const std::optional<std::int64_t> soundHandle) {
     writeString(buffer, sound);
-    writeBlockPosition(buffer, static_cast<std::int32_t>(x * 8.0), static_cast<std::int32_t>(y * 8.0),
-                       static_cast<std::int32_t>(z * 8.0));
+    writeBlockPosition(buffer, common::safeInt32(x * 8.0), common::safeInt32(y * 8.0), common::safeInt32(z * 8.0));
     writeFloatLE(buffer, volume);
     writeFloatLE(buffer, pitch);
     if (writesNativeShapes(protocol)) {
@@ -2007,8 +2007,7 @@ void writeSkin(io::ByteBuffer& buffer, const SkinInfo& skin, const int protocol)
 }
 
 void writeByteAngle(io::ByteBuffer& buffer, const float degrees) {
-    buffer.writeByte(
-        static_cast<std::uint8_t>(static_cast<std::int32_t>(std::trunc(degrees / (360.0F / 256.0F))) & 0xFF));
+    buffer.writeByte(static_cast<std::uint8_t>(common::safeInt32(std::trunc(degrees / (360.0F / 256.0F))) & 0xFF));
 }
 
 void writeAirItem(io::ByteBuffer& buffer, const int protocol) {
@@ -3235,7 +3234,7 @@ constexpr std::array<std::string_view, 4> kWaypointDots{
         return kWaypointDots.size() - 1;
     }
     const float along = (distance - kWaypointNear) / (kWaypointFar - kWaypointNear);
-    return 1 + static_cast<std::size_t>(std::floor(along * 2.0F));
+    return 1 + static_cast<std::size_t>(std::max<std::int64_t>(common::safeInt(std::floor(along * 2.0F)), 0));
 }
 
 [[nodiscard]] float waypointIconSize(const float distance) {
@@ -3255,7 +3254,7 @@ constexpr std::array<std::string_view, 4> kWaypointDots{
     if (squared >= kFarSquared) {
         return 5;
     }
-    return 3 + static_cast<std::int32_t>(std::floor((squared - kNearSquared) / (kFarSquared - kNearSquared) * 2.0F));
+    return 3 + common::safeInt32(std::floor((squared - kNearSquared) / (kFarSquared - kNearSquared) * 2.0F));
 }
 
 constexpr std::int32_t kWaypointWorldPos = 1;
