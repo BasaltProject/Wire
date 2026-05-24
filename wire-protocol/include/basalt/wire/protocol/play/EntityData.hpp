@@ -215,9 +215,12 @@ struct SetEntityDataPacket {
     std::vector<Entry> entries;
 
     void write(io::ByteBuffer& buffer) const;
+    using ForeignValue = std::function<std::optional<Value>(std::int32_t serializer, io::ByteBuffer&)>;
+
     [[nodiscard]] static std::optional<SetEntityDataPacket> read(io::ByteBuffer& buffer,
                                                                  const ParticleShapeOf& shapeOf = {},
-                                                                 std::span<const std::int32_t> serializerToNative = {});
+                                                                 std::span<const std::int32_t> serializerToNative = {},
+                                                                 const ForeignValue& foreign = {});
 
     [[nodiscard]] static SetEntityDataPacket item(std::int32_t entityId, std::optional<WireItemStack> stack);
 
