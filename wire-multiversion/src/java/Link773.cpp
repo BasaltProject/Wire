@@ -1,5 +1,5 @@
-#include <basalt/wire/multiversion/java/Link773.hpp>
 #include <basalt/wire/common/SafeInt.hpp>
+#include <basalt/wire/multiversion/java/Link773.hpp>
 #include <basalt/wire/nbt/Snbt.hpp>
 #include <basalt/wire/protocol/configuration/ConfigurationPackets.hpp>
 #include <basalt/wire/protocol/play/BorderPackets.hpp>

@@ -135,8 +135,7 @@ void UpdateAdvancementsPacket::write(io::ByteBuffer& buffer) const {
     writeBoolean(buffer, showAdvancements);
 }
 
-std::optional<UpdateAdvancementsPacket> UpdateAdvancementsPacket::read(io::ByteBuffer& buffer,
-                                                                       bool positionInDisplay) {
+std::optional<UpdateAdvancementsPacket> UpdateAdvancementsPacket::read(io::ByteBuffer& buffer, bool positionInDisplay) {
     UpdateAdvancementsPacket packet;
     packet.reset = readBoolean(buffer);
     const std::int32_t added = readCollectionSize(buffer);

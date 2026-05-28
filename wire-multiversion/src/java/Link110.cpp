@@ -45,7 +45,8 @@ bool Link110::clientbound(protocol::ProtocolState state, MutablePacket& packet) 
         output.writeInt(y);
         output.writeInt(z);
         output.writeFloat(volume);
-        output.writeByte(static_cast<std::uint8_t>(std::clamp<std::int64_t>(common::safeInt(pitch * kPitchSteps), 0, 255)));
+        output.writeByte(
+            static_cast<std::uint8_t>(std::clamp<std::int64_t>(common::safeInt(pitch * kPitchSteps), 0, 255)));
     });
     return true;
 }

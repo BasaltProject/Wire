@@ -22,7 +22,8 @@ constexpr double kVelocityScale = 8000.0;
 constexpr double kVelocityLimit = 3.9;
 
 [[nodiscard]] std::int16_t quantize(double value) {
-    return static_cast<std::int16_t>(common::safeInt(std::clamp(value, -kVelocityLimit, kVelocityLimit) * kVelocityScale));
+    return static_cast<std::int16_t>(
+        common::safeInt(std::clamp(value, -kVelocityLimit, kVelocityLimit) * kVelocityScale));
 }
 
 [[nodiscard]] std::uint8_t angleOf(float degrees) {

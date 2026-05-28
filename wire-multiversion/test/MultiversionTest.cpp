@@ -143,19 +143,21 @@ TEST_CASE("a move packet goes down to 26.2 and comes back up to 26.3 as it was")
     REQUIRE(up);
     std::int32_t olderId = -1;
     std::vector<std::uint8_t> older;
-    down->chain().clientbound(ProtocolState::Play, 54, original, [&](std::int32_t id, std::span<const std::uint8_t> body) {
-        olderId = id;
-        older.assign(body.begin(), body.end());
-    });
+    down->chain().clientbound(ProtocolState::Play, 54, original,
+                              [&](std::int32_t id, std::span<const std::uint8_t> body) {
+                                  olderId = id;
+                                  older.assign(body.begin(), body.end());
+                              });
     REQUIRE(olderId >= 0);
     CHECK(older.size() == 1 + 6 + 1);
 
     std::int32_t backId = -1;
     std::vector<std::uint8_t> back;
-    up->chain().clientbound(ProtocolState::Play, olderId, older, [&](std::int32_t id, std::span<const std::uint8_t> body) {
-        backId = id;
-        back.assign(body.begin(), body.end());
-    });
+    up->chain().clientbound(ProtocolState::Play, olderId, older,
+                            [&](std::int32_t id, std::span<const std::uint8_t> body) {
+                                backId = id;
+                                back.assign(body.begin(), body.end());
+                            });
     CHECK(backId == 54);
     CHECK(back == original);
 }

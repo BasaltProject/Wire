@@ -7,7 +7,8 @@
 
 namespace basalt::wire::multiversion::java {
 
-/// A 1.21.9 client on a 1.21.7 or 1.21.8 server: velocities, spawns, explosions, the spawn position and the border centre.
+/// A 1.21.9 client on a 1.21.7 or 1.21.8 server: velocities, spawns, explosions, the spawn position and the border
+/// centre.
 class Link772Up final : public RenumberingLink {
 public:
     using RenumberingLink::RenumberingLink;
