@@ -26,6 +26,8 @@ public:
 
     [[nodiscard]] bool exists(std::string_view uuid);
 
+    [[nodiscard]] std::optional<std::string> groupOf(std::string_view uuid);
+
     bool setGroup(std::string_view uuid, const std::optional<std::string>& group);
 
     void setLastIp(std::string_view uuid, const std::optional<std::string>& address);

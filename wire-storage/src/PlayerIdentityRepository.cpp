@@ -32,6 +32,15 @@ bool PlayerIdentityRepository::exists(std::string_view uuid) {
     return statement.step() && statement.integer(0) != 0;
 }
 
+std::optional<std::string> PlayerIdentityRepository::groupOf(std::string_view uuid) {
+    wire::sql::Statement statement = database_->prepare("SELECT group_name FROM player WHERE uuid = ?");
+    statement.bind(1, uuid);
+    if (!statement.step() || statement.isNull(0)) {
+        return std::nullopt;
+    }
+    return statement.text(0);
+}
+
 bool PlayerIdentityRepository::setGroup(std::string_view uuid, const std::optional<std::string>& group) {
     if (!exists(uuid)) {
         return false;

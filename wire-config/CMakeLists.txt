@@ -1,10 +1,13 @@
 basalt_module(wire-config
     SOURCES
-        src/BasicPlaceholders.cpp
         src/AnimationPlaceholders.cpp
         src/AnimationsConfig.cpp
+        src/BasicPlaceholders.cpp
+        src/CommandsConfig.cpp
         src/ConfigDirectory.cpp
         src/ConfigUpgrade.cpp
+        src/MessageCatalog.cpp
+        src/Permissions.cpp
         src/PlayerUi.cpp
         src/ProfileSelection.cpp
         src/ServerListConfig.cpp
