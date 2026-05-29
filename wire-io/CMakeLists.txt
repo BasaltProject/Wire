@@ -3,6 +3,7 @@ basalt_module(wire-io
         src/BudgetMemoryResource.cpp
         src/Compression.cpp
         src/ConfigFiles.cpp
+        src/ConsoleEditor.cpp
         src/ConsoleInput.cpp
         src/DnsResolver.cpp
         src/EventLoop.cpp
