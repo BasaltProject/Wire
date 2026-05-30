@@ -58,6 +58,11 @@ using HttpsProgress = std::function<void(std::size_t bytesSoFar)>;
                                                                 const HttpsProgress& onProgress = {},
                                                                 const HttpsOptions& options = {});
 
+[[nodiscard]] std::expected<HttpsResponse, HttpsError> httpsPut(std::string_view url,
+                                                                std::span<const std::uint8_t> body,
+                                                                std::string_view extraHeaders = {},
+                                                                const HttpsOptions& options = {});
+
 /// Call on a bounded worker: local trust and resolver configuration reads are blocking file operations.
 [[nodiscard]] std::expected<HttpsResponse, HttpsError> httpsGetBounded(std::string_view url, std::size_t maxBytes,
                                                                        const BoundedHttpsOptions& options,
