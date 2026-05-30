@@ -18,6 +18,8 @@
 #elif defined(__APPLE__)
 #include <mach/mach.h>
 #include <poll.h>
+#include <pthread.h>
+#include <pthread/qos.h>
 #include <sys/resource.h>
 #include <termios.h>
 #include <unistd.h>
@@ -25,6 +27,7 @@
 #include <cstdio>
 #include <poll.h>
 #include <sys/resource.h>
+#include <sys/syscall.h>
 #include <termios.h>
 #include <unistd.h>
 #endif
@@ -118,6 +121,17 @@ std::optional<std::chrono::microseconds> processCpuTime() {
         return static_cast<std::int64_t>(time.tv_sec) * 1'000'000 + time.tv_usec;
     };
     return std::chrono::microseconds{micros(usage.ru_utime) + micros(usage.ru_stime)};
+#endif
+}
+
+void lowerCurrentThreadPriority() {
+#if defined(_WIN32)
+    SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_BELOW_NORMAL);
+#elif defined(__APPLE__)
+    pthread_set_qos_class_self_np(QOS_CLASS_UTILITY, 0);
+#else
+    // On Linux a nice value set on a thread id only reaches that thread.
+    static_cast<void>(setpriority(PRIO_PROCESS, static_cast<id_t>(syscall(SYS_gettid)), 10));
 #endif
 }
 
