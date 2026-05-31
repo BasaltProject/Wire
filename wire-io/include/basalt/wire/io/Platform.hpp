@@ -29,6 +29,9 @@ void sleepFor(std::chrono::milliseconds duration);
 
 [[nodiscard]] std::optional<unsigned int> cpuCoreCount();
 
+/// Lets the thread give way to the others when every core is busy; background work like generation calls this.
+void lowerCurrentThreadPriority();
+
 namespace terminal {
 
 [[nodiscard]] bool enableRawMode();

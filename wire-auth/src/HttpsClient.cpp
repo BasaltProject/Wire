@@ -549,8 +549,13 @@ std::expected<HttpsResponse, HttpsError> detail::decodeHttpsResponse(std::span<c
     return response;
 }
 
-std::expected<HttpsResponse, HttpsError> httpsGet(std::string_view url, std::size_t maxBytes,
-                                                  const HttpsProgress& onProgress, const HttpsOptions& options) {
+namespace {
+
+[[nodiscard]] std::expected<HttpsResponse, HttpsError> send(std::string_view method, std::string_view url,
+                                                            std::span<const std::uint8_t> payload,
+                                                            std::string_view extraHeaders, std::size_t maxBytes,
+                                                            const HttpsProgress& onProgress,
+                                                            const HttpsOptions& options) {
     const std::optional<Url> target = parse(url);
     if (!target.has_value()) {
         return std::unexpected(HttpsError{"invalid HTTPS address", HttpsError::Kind::InvalidRequest});
@@ -574,8 +579,13 @@ std::expected<HttpsResponse, HttpsError> httpsGet(std::string_view url, std::siz
     if (const std::optional<HttpsError> failed = session.connect(*target); failed.has_value()) {
         return std::unexpected(*failed);
     }
-    const std::string request = "GET " + target->path + " HTTP/1.1\r\nHost: " + target->authority +
-                                "\r\nUser-Agent: Basalt\r\nAccept: */*\r\nConnection: close\r\n\r\n";
+    std::string request = std::string{method} + " " + target->path + " HTTP/1.1\r\nHost: " + target->authority +
+                          "\r\nUser-Agent: Basalt\r\nAccept: */*\r\nConnection: close\r\n";
+    if (!payload.empty() || method == "PUT") {
+        request += "Content-Length: " + std::to_string(payload.size()) + "\r\n";
+    }
+    request += std::string{extraHeaders} + "\r\n";
+    request.append(reinterpret_cast<const char*>(payload.data()), payload.size());
     if (const std::optional<HttpsError> failed = session.write(request); failed.has_value()) {
         return std::unexpected(*failed);
     }
@@ -597,6 +607,19 @@ std::expected<HttpsResponse, HttpsError> httpsGet(std::string_view url, std::siz
         return std::unexpected{HttpsError{"the response exceeded its body byte limit"}};
     }
     return response;
+}
+
+} // namespace
+
+std::expected<HttpsResponse, HttpsError> httpsGet(std::string_view url, std::size_t maxBytes,
+                                                  const HttpsProgress& onProgress, const HttpsOptions& options) {
+    return send("GET", url, {}, {}, maxBytes, onProgress, options);
+}
+
+std::expected<HttpsResponse, HttpsError> httpsPut(std::string_view url, std::span<const std::uint8_t> body,
+                                                  std::string_view extraHeaders, const HttpsOptions& options) {
+    constexpr std::size_t kReplyLimit = 64 * 1024;
+    return send("PUT", url, body, extraHeaders, kReplyLimit, {}, options);
 }
 
 std::expected<HttpsResponse, HttpsError> httpsGetBounded(std::string_view url, std::size_t maxBytes,

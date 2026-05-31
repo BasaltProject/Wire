@@ -24,7 +24,11 @@ LuaRef LuaRef::take(lua_State* state) {
     if (state == nullptr) {
         return {};
     }
-    return LuaRef{state, luaL_ref(state, LUA_REGISTRYINDEX)};
+    // The registry is shared by every coroutine, and a coroutine can be collected while its reference lives on.
+    lua_rawgeti(state, LUA_REGISTRYINDEX, LUA_RIDX_MAINTHREAD);
+    lua_State* main = lua_tothread(state, -1);
+    lua_pop(state, 1);
+    return LuaRef{main != nullptr ? main : state, luaL_ref(state, LUA_REGISTRYINDEX)};
 }
 
 LuaRef LuaRef::of(lua_State* state, std::int32_t index) {
