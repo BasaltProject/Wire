@@ -1,3 +1,4 @@
+#include <basalt/wire/protocol/PacketLimiter.hpp>
 #include <basalt/wire/protocol/PacketNames.hpp>
 
 #include <doctest.h>
@@ -11,4 +12,16 @@ TEST_CASE("packet names resolve by every spelling and round trip") {
     CHECK(packetNames::resolve("serverbound.play.0x7") == chat);
     CHECK(packetNames::of(*chat) == "serverbound.chat_command");
     CHECK_FALSE(packetNames::resolve("serverbound.no_such_packet"));
+}
+
+TEST_CASE("packet limiter applies per-packet caps within a second") {
+    auto limits = std::make_shared<PacketLimits>();
+    limits->rules.push_back({packetNames::Phase::kPlay, 7, 2, true});
+    PacketLimiter limiter{limits};
+    const auto now = PacketLimiter::Clock::now();
+    using Verdict = PacketLimiter::Verdict;
+    CHECK(limiter.receive(packetNames::Phase::kPlay, 7, now) == Verdict::kAllow);
+    CHECK(limiter.receive(packetNames::Phase::kPlay, 7, now) == Verdict::kAllow);
+    CHECK(limiter.receive(packetNames::Phase::kPlay, 7, now) == Verdict::kKick);
+    CHECK(limiter.receive(packetNames::Phase::kPlay, 7, now + std::chrono::seconds{2}) == Verdict::kAllow);
 }

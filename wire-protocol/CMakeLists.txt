@@ -2,6 +2,7 @@ basalt_module(wire-protocol
     SOURCES
         src/CookiePackets.cpp
         src/PacketFraming.cpp
+        src/PacketLimiter.cpp
         src/PacketNames.cpp
         src/PacketNameTable.cpp
         src/BlockEntityPackets.cpp
