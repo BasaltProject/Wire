@@ -1,10 +1,13 @@
 #include <basalt/wire/bedrock/BedrockBanners.hpp>
 #include <basalt/wire/bedrock/BedrockJavaBlockEntities.hpp>
 #include <basalt/wire/bedrock/BedrockPackets.hpp>
+#include <basalt/wire/common/json/Json.hpp>
+#include <basalt/wire/text/ComponentJson.hpp>
 #include <basalt/wire/text/ComponentNbt.hpp>
 #include <basalt/wire/text/Serializers.hpp>
 
 #include <array>
+#include <expected>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -78,6 +81,17 @@ void writeBanner(io::ByteBuffer& tags, const std::int32_t x, const std::int32_t 
                    data.getString("CustomName"));
 }
 
+[[nodiscard]] std::string plainLine(const nbt::NbtTag& line) {
+    const std::string* raw = line.get<std::string>();
+    if (raw != nullptr && !raw->empty() && (raw->front() == '{' || raw->front() == '[' || raw->front() == '"')) {
+        const std::expected<common::JsonValue, common::JsonError> parsed = common::parseJson(*raw);
+        if (parsed.has_value()) {
+            return text::toPlainText(text::componentJson::deserialize(*parsed));
+        }
+    }
+    return text::toPlainText(text::componentNbt::deserialize(line));
+}
+
 [[nodiscard]] std::string plainSide(const nbt::NbtCompound* side) {
     const nbt::NbtList* messages = side == nullptr ? nullptr : side->getList("messages");
     if (messages == nullptr) {
@@ -90,7 +104,7 @@ void writeBanner(io::ByteBuffer& tags, const std::int32_t x, const std::int32_t 
             text += '\n';
         }
         first = false;
-        text += text::toPlainText(text::componentNbt::deserialize(line));
+        text += plainLine(line);
     }
     return text;
 }
