@@ -2,6 +2,8 @@ basalt_module(wire-protocol
     SOURCES
         src/CookiePackets.cpp
         src/PacketFraming.cpp
+        src/PacketNames.cpp
+        src/PacketNameTable.cpp
         src/BlockEntityPackets.cpp
         src/BorderPackets.cpp
         src/ChatPackets.cpp
@@ -42,5 +44,6 @@ basalt_test(wire-protocol-test
     SOURCES
         test/ProtocolTest.cpp
         test/CookiePacketsTest.cpp
+        test/PacketNamesTest.cpp
     DEPENDS basalt::wire-protocol
 )
