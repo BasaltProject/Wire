@@ -61,6 +61,7 @@ std::optional<ItemComponent> ItemComponent::readPayload(io::ByteBuffer& buffer, 
     case kDamage:
     case kRarity:
     case kRepairCost:
+    case kMapId:
         return ItemComponent{id, Number{varInt::read(buffer)}};
     case kUnbreakable:
     case kCreativeSlotLock:

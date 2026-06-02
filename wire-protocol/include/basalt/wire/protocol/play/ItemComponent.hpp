@@ -27,6 +27,7 @@ inline constexpr std::int32_t kRepairCost = 19;
 inline constexpr std::int32_t kCreativeSlotLock = 20;
 inline constexpr std::int32_t kEnchantmentGlintOverride = 21;
 inline constexpr std::int32_t kStoredEnchantments = 45;
+inline constexpr std::int32_t kMapId = 48;
 inline constexpr std::int32_t kDyedColor = 47;
 } // namespace dataComponent
 
