@@ -1,5 +1,5 @@
-#include <basalt/wire/config/CommandsConfig.hpp>
 #include <basalt/wire/common/placeholder/Placeholders.hpp>
+#include <basalt/wire/config/CommandsConfig.hpp>
 
 #include <algorithm>
 #include <utility>
@@ -55,8 +55,7 @@ const std::string* CommandsConfig::message(std::string_view key) const {
     return nullptr;
 }
 
-std::expected<CommandsConfig, std::string> CommandsConfig::parse(const TomlTable& rootTable,
-                                                                 std::string_view pathName,
+std::expected<CommandsConfig, std::string> CommandsConfig::parse(const TomlTable& rootTable, std::string_view pathName,
                                                                  const common::Logger& logger) {
     const std::string path{pathName};
     const TomlTable* root = &rootTable;

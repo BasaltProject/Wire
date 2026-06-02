@@ -4,6 +4,7 @@ basalt_module(wire-io
         src/Compression.cpp
         src/ConfigFiles.cpp
         src/ConsoleEditor.cpp
+        src/ProxyProtocol.cpp
         src/ConsoleInput.cpp
         src/DnsResolver.cpp
         src/EventLoop.cpp
@@ -36,6 +37,7 @@ endif()
 basalt_test(wire-io-test
     SOURCES
         test/IoTest.cpp
+        test/ProxyProtocolTest.cpp
         test/ConfigFilesTest.cpp
         test/ConsoleInputTest.cpp
         test/DnsResolverTest.cpp

@@ -134,9 +134,11 @@ std::optional<std::string> readEdited(const ConsoleEditorOptions& options, std::
 
 Completion complete(std::string_view line, std::vector<std::string> candidates) {
     const auto lastSpace = line.rfind(' ');
-    const std::string_view head = lastSpace == std::string_view::npos ? std::string_view{} : line.substr(0, lastSpace + 1);
+    const std::string_view head =
+        lastSpace == std::string_view::npos ? std::string_view{} : line.substr(0, lastSpace + 1);
     const std::string_view partial = line.substr(head.size());
-    std::erase_if(candidates, [&](const std::string& candidate) { return !startsWithIgnoringCase(candidate, partial); });
+    std::erase_if(candidates,
+                  [&](const std::string& candidate) { return !startsWithIgnoringCase(candidate, partial); });
     std::ranges::sort(candidates);
     candidates.erase(std::unique(candidates.begin(), candidates.end()), candidates.end());
     Completion result{std::string{line}, {}};
