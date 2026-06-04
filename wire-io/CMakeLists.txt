@@ -4,6 +4,7 @@ basalt_module(wire-io
         src/Compression.cpp
         src/ConfigFiles.cpp
         src/ConsoleEditor.cpp
+        src/ConnectionGate.cpp
         src/ProxyProtocol.cpp
         src/ConsoleInput.cpp
         src/DnsResolver.cpp
