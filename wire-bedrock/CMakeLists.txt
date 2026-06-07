@@ -39,6 +39,7 @@ basalt_module(wire-bedrock
         src/NetherNetDtls.cpp
         src/NetherNetHttp.cpp
         src/NetherNetIdentity.cpp
+        src/NetherNetIdentityStore.cpp
         src/NetherNetSctp.cpp
         src/NetherNetSdp.cpp
         src/NetherNetServer.cpp

@@ -10,6 +10,9 @@ inline constexpr int kBedrockProtocols[] = {1001, 2168, 2169, 2193, 2225};
 
 inline constexpr int kNativeBedrockProtocol = 2225;
 
+/// The game version the native protocol belongs to, as the server list shows it.
+inline constexpr std::string_view kBedrockGameVersion = "1.26.60";
+
 enum class BedrockPacket : std::uint16_t {
     Login = 1,
     PlayStatus = 2,
