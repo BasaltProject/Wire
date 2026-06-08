@@ -2,6 +2,9 @@ basalt_module(wire-plugins
     SOURCES
         src/CommandSpec.cpp
         src/EventPriority.cpp
+        src/PacketNaming.cpp
+        src/PacketRegistry.cpp
+        src/PacketView.cpp
         src/PluginFolder.cpp
         src/PluginManifest.cpp
         src/PluginOrder.cpp
@@ -10,7 +13,7 @@ basalt_module(wire-plugins
         src/PluginText.cpp
         src/PluginToml.cpp
         src/PluginValue.cpp
-    DEPENDS basalt::wire-common basalt::wire-io basalt::wire-lua
+    DEPENDS basalt::wire-common basalt::wire-io basalt::wire-lua basalt::wire-protocol
     PRIVATE_DEPENDS basalt::monocypher
 )
 
@@ -53,5 +56,11 @@ basalt_test(wire-plugins-manifest-test
 basalt_test(wire-plugins-command-spec-test
     SOURCES
         test/CommandSpecTest.cpp
+    DEPENDS basalt::wire-plugins
+)
+
+basalt_test(wire-plugins-packet-registry-test
+    SOURCES
+        test/PacketRegistryTest.cpp
     DEPENDS basalt::wire-plugins
 )
