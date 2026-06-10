@@ -43,3 +43,16 @@ TEST_CASE("the registry costs nothing without a listener and honours scope, orde
     packet.editable = false;
     CHECK(registry.fire(packet));
 }
+
+TEST_CASE("a listener that could not run cancels the packet only when it was added fail closed") {
+    PacketRegistry registry{[](const void*, const basalt::wire::lua::LuaRef&, PluginPacket&) { return false; }, {}};
+    int owner = 0;
+    PluginPacket packet;
+    PluginHandle open = registry.add(&owner, {-1, -1, -1}, {}, 2, false);
+    CHECK(registry.fire(packet));
+    open.remove();
+    PluginHandle closed = registry.add(&owner, {-1, -1, -1}, {}, 2, false, true);
+    CHECK_FALSE(registry.fire(packet));
+    packet.editable = false;
+    CHECK(registry.fire(packet));
+}

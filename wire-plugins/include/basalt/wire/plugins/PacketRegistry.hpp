@@ -18,7 +18,8 @@ namespace basalt::wire::plugins {
 /// The packet bus both hosts share. Lua listeners belong to an opaque owner the host gives back when it delivers.
 class PacketRegistry : public PluginPacketBus {
 public:
-    using Deliver = std::function<void(const void* owner, const lua::LuaRef& fn, PluginPacket& packet)>;
+    /// Returns false when the listener could not run; a listener added with failClosed then cancels the packet.
+    using Deliver = std::function<bool(const void* owner, const lua::LuaRef& fn, PluginPacket& packet)>;
 
     /// Gives a Lua listener the vanilla name of the packet it is about to see.
     using Namer = std::function<std::string(const PacketAddress&)>;
@@ -26,7 +27,7 @@ public:
     PacketRegistry(Deliver deliver, Namer namer) : deliver_(std::move(deliver)), namer_(std::move(namer)) {}
 
     [[nodiscard]] PluginHandle add(const void* owner, const PacketScope& scope, lua::LuaRef fn, std::int32_t priority,
-                                   bool observer);
+                                   bool observer, bool failClosed = false);
 
     [[nodiscard]] bool listening(const PacketAddress& address) const noexcept override;
 
@@ -50,6 +51,7 @@ private:
         NativePacketListener native;
         std::int32_t priority = 0;
         bool observer = false;
+        bool failClosed = false;
         std::int64_t id = 0;
     };
 

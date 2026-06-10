@@ -69,13 +69,14 @@ void PacketRegistry::remove(std::int64_t id) {
 }
 
 PluginHandle PacketRegistry::add(const void* owner, const PacketScope& scope, lua::LuaRef fn, std::int32_t priority,
-                                 bool observer) {
+                                 bool observer, bool failClosed) {
     auto listener = std::make_shared<Listener>();
     listener->scope = scope;
     listener->owner = owner;
     listener->fn = std::move(fn);
     listener->priority = priority;
     listener->observer = observer;
+    listener->failClosed = failClosed;
     {
         const std::lock_guard<std::mutex> guard{mutex_};
         listener->id = nextId_++;
@@ -154,7 +155,9 @@ bool PacketRegistry::fire(PluginPacket& packet) {
                 packet.name = namer_ ? namer_(packet.address) : std::string{};
                 named = true;
             }
-            deliver_(listener->owner, listener->fn, packet);
+            if (!deliver_(listener->owner, listener->fn, packet) && listener->failClosed && packet.editable) {
+                packet.cancelled = true;
+            }
         }
         if (frozen) {
             packet.cancelled = wasCancelled;
