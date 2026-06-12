@@ -51,3 +51,8 @@ add_subdirectory(wire-sqlite)
 add_subdirectory(wire-config)
 add_subdirectory(wire-storage)
 add_subdirectory(wire-bedrock)
+
+include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/BasaltJni.cmake)
+if(BASALT_JNI_INCLUDE_DIR)
+    add_subdirectory(wire-shim)
+endif()
