@@ -145,7 +145,7 @@ void RakServer::handleOffline(std::span<const std::uint8_t> datagram, const io::
 
 void RakServer::onUnconnectedPing(io::ByteBuffer& body, const io::UdpEndpoint& from) {
     const std::int64_t pingTime = body.readLong();
-    if (body.failed() || !hasMagic(body.readable())) {
+    if (body.failed() || !hasMagic(body.readable()) || (offlineGate_ && !offlineGate_(from, false))) {
         return;
     }
 
@@ -206,6 +206,9 @@ void RakServer::onOpenConnectionRequest2(io::ByteBuffer& body, const io::UdpEndp
         return;
     }
 
+    if (offlineGate_ && !offlineGate_(from, true)) {
+        return;
+    }
     if (sessions_.contains(from)) {
         io::ByteBuffer out{32};
         out.writeByte(static_cast<std::uint8_t>(RakId::AlreadyConnected));

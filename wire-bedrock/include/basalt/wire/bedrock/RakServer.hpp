@@ -31,6 +31,8 @@ public:
 
     using MessageHandler = std::function<void(RakSession&, std::span<const std::uint8_t>)>;
     using SessionHandler = std::function<void(RakSession&)>;
+    /// Asked before an offline ping is answered (connecting false) and before a session is allocated (true).
+    using OfflineGate = std::function<bool(const io::UdpEndpoint&, bool connecting)>;
 
     explicit RakServer(RakServerConfig config);
 
@@ -47,6 +49,8 @@ public:
     [[nodiscard]] std::size_t sessionCount() const noexcept { return sessions_.size(); }
 
     void onAdvertise(Advertiser advertiser) { advertiser_ = std::move(advertiser); }
+
+    void onOffline(OfflineGate gate) { offlineGate_ = std::move(gate); }
 
     void onMessage(MessageHandler handler) { onMessage_ = std::move(handler); }
 
@@ -73,6 +77,7 @@ private:
     std::uint64_t lastPollMs_ = 0;
 
     Advertiser advertiser_;
+    OfflineGate offlineGate_;
     MessageHandler onMessage_;
     SessionHandler onConnect_;
     SessionHandler onDisconnect_;
