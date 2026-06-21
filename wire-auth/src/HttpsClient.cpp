@@ -599,7 +599,7 @@ namespace {
     }
     std::string request = std::string{method} + " " + target->path + " HTTP/1.1\r\nHost: " + target->authority +
                           "\r\nUser-Agent: Basalt\r\nAccept: */*\r\nConnection: close\r\n";
-    if (!payload.empty() || method == "PUT") {
+    if (!payload.empty() || method == "PUT" || method == "POST") {
         request += "Content-Length: " + std::to_string(payload.size()) + "\r\n";
     }
     request += std::string{extraHeaders} + "\r\n";
@@ -638,6 +638,12 @@ std::expected<HttpsResponse, HttpsError> httpsPut(std::string_view url, std::spa
                                                   std::string_view extraHeaders, const HttpsOptions& options) {
     constexpr std::size_t kReplyLimit = 64 * 1024;
     return send("PUT", url, body, extraHeaders, kReplyLimit, {}, options);
+}
+
+std::expected<HttpsResponse, HttpsError> httpsPost(std::string_view url, std::span<const std::uint8_t> body,
+                                                   std::string_view extraHeaders, const HttpsOptions& options) {
+    constexpr std::size_t kReplyLimit = 64 * 1024;
+    return send("POST", url, body, extraHeaders, kReplyLimit, {}, options);
 }
 
 std::expected<HttpsResponse, HttpsError> httpsGetBounded(std::string_view url, std::size_t maxBytes,
