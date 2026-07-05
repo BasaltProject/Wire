@@ -60,6 +60,8 @@ struct ServerListProfile {
     std::optional<std::int32_t> onlinePlayers;
     std::optional<std::vector<std::string>> hover;
     std::optional<std::string> icon;
+    std::optional<std::string> source;
+    std::optional<std::vector<std::string>> relay;
 
     [[nodiscard]] static ServerListProfile from(ProfileHeader header, const wire::common::toml::TomlTable& table);
 

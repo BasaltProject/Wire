@@ -62,8 +62,8 @@ std::vector<std::string> GroupsConfig::names() const {
 }
 
 const PermissionGroup& GroupsConfig::at(const std::size_t index) const noexcept {
-    static const PermissionGroup nothing{};
-    return index < groups_.size() ? groups_[index] : nothing;
+    static const PermissionGroup kNothing{};
+    return index < groups_.size() ? groups_[index] : kNothing;
 }
 
 const PermissionGroup* GroupsConfig::find(std::string_view name) const {

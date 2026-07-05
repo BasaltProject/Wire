@@ -9,8 +9,8 @@ namespace basalt::wire::config {
 using wire::common::toml::TomlTable;
 
 const wire::common::placeholder::PlaceholderSlot<PingRequest>& pingSlot() {
-    static const wire::common::placeholder::PlaceholderSlot<PingRequest> slot{"ping"};
-    return slot;
+    static const wire::common::placeholder::PlaceholderSlot<PingRequest> kSlot{"ping"};
+    return kSlot;
 }
 
 const std::optional<std::string>& PingRequest::knownPlayer() const {
@@ -36,6 +36,7 @@ ServerListProfile ServerListProfile::from(ProfileHeader header, const TomlTable&
     if (std::vector<std::string> written = table.stringList("hover"); !written.empty()) {
         hover = std::move(written);
     }
+    std::vector<std::string> relay = table.stringList("relay");
     return ServerListProfile{.header = std::move(header),
                              .motd = linesOf(table, "motd"),
                              .versionName = text("version-name"),
@@ -46,7 +47,9 @@ ServerListProfile ServerListProfile::from(ProfileHeader header, const TomlTable&
                              .maxPlayers = number("max-players"),
                              .onlinePlayers = number("online-players"),
                              .hover = std::move(hover),
-                             .icon = text("icon")};
+                             .icon = text("icon"),
+                             .source = text("source"),
+                             .relay = relay.empty() ? std::nullopt : std::optional{std::move(relay)}};
 }
 
 ServerListProfile ServerListProfile::inheriting(const ServerListProfile& fallback) const {
@@ -83,6 +86,12 @@ ServerListProfile ServerListProfile::inheriting(const ServerListProfile& fallbac
     }
     if (!filled.icon.has_value()) {
         filled.icon = fallback.icon;
+    }
+    if (!filled.source.has_value()) {
+        filled.source = fallback.source;
+    }
+    if (!filled.relay.has_value()) {
+        filled.relay = fallback.relay;
     }
     return filled;
 }

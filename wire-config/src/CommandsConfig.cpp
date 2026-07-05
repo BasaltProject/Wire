@@ -36,14 +36,14 @@ using common::toml::TomlTable;
 } // namespace
 
 const CommandOverride& CommandsConfig::get(std::string_view command) const {
-    static const CommandOverride untouched;
+    static const CommandOverride kUntouched;
     const std::string lowercase = lowercaseAscii(command);
     for (const std::pair<std::string, CommandOverride>& entry : overrides_) {
         if (entry.first == lowercase) {
             return entry.second;
         }
     }
-    return untouched;
+    return kUntouched;
 }
 
 const std::string* CommandsConfig::message(std::string_view key) const {

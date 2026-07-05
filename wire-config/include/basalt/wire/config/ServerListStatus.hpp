@@ -37,6 +37,10 @@ public:
                              std::int32_t max)>
             ping;
         std::function<std::optional<std::string>(const std::string& address)> playerByAddress;
+        /// The status of the server a profile's `source` names, for the fields its `relay` lists; empty when unknown.
+        std::function<std::optional<wire::protocol::status::ServerStatusPayload>(
+            const std::string& source, const std::string& host, const std::vector<std::string>& fields)>
+            relay;
     };
 
     struct Options {

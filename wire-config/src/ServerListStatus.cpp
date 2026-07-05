@@ -67,9 +67,26 @@ ServerStatusPayload ServerListStatus::statusFor(std::int32_t protocolVersion, co
                                                          : current.select(*placeholders_, context, logger_);
     const std::vector<ListedPlayer> players = onlinePlayers_ ? onlinePlayers_() : std::vector<ListedPlayer>{};
 
-    const std::int32_t online = profile.onlinePlayers.value_or(static_cast<std::int32_t>(players.size()));
+    std::optional<ServerStatusPayload> relayed;
+    std::vector<std::string> relaying;
+    if (profile.source.has_value() && *profile.source != "profile" && hooks_.relay) {
+        relaying = profile.relay.value_or(std::vector<std::string>{"online", "max", "sample"});
+        relayed = hooks_.relay(*profile.source, host, relaying);
+    }
+    const auto relays = [&relayed, &relaying](std::string_view field) {
+        return relayed.has_value() && std::ranges::find(relaying, field) != relaying.end();
+    };
+
+    std::int32_t online = profile.onlinePlayers.value_or(static_cast<std::int32_t>(players.size()));
     std::int32_t max = profile.maxPlayers.value_or(options_.slots);
-    Component motd = render(profile.motd.value_or(std::vector<std::string>{}), context);
+    if (relays("online") && relayed->players.has_value()) {
+        online = relayed->players->online;
+    }
+    if (relays("max") && relayed->players.has_value()) {
+        max = relayed->players->max;
+    }
+    Component motd =
+        relays("motd") ? relayed->description : render(profile.motd.value_or(std::vector<std::string>{}), context);
 
     if (hooks_.ping) {
         const Hooks::Answer answer = hooks_.ping(address, wire::text::toPlainText(motd), online, max);
@@ -86,11 +103,19 @@ ServerStatusPayload ServerListStatus::statusFor(std::int32_t protocolVersion, co
     if (!profile.hidePlayerCount.value_or(false)) {
         payload.players =
             ServerStatusPayload::Players{.max = max, .online = online, .sample = sampleFor(profile, players, context)};
+        if (relays("sample") && relayed->players.has_value()) {
+            payload.players->sample = relayed->players->sample;
+        }
     }
     payload.version =
         ServerStatusPayload::Version{.name = profile.versionName.value_or(options_.versionName),
                                      .protocol = profile.versionProtocol.value_or(options_.protocolVersion)};
-    if (std::vector<std::uint8_t> icon = iconFor(profile); !icon.empty()) {
+    if (relays("version") && relayed->version.has_value()) {
+        payload.version = *relayed->version;
+    }
+    if (relays("icon") && relayed->favicon.has_value()) {
+        payload.favicon = relayed->favicon;
+    } else if (std::vector<std::uint8_t> icon = iconFor(profile); !icon.empty()) {
         payload.favicon = std::move(icon);
     }
     return payload;

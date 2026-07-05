@@ -40,9 +40,9 @@ const std::string* MessageCatalog::find(std::string_view section, std::string_vi
 }
 
 const std::map<std::string, std::string, std::less<>>& MessageCatalog::section(std::string_view name) const {
-    static const std::map<std::string, std::string, std::less<>> none;
+    static const std::map<std::string, std::string, std::less<>> kNone;
     const auto texts = sections_.find(name);
-    return texts == sections_.end() ? none : texts->second;
+    return texts == sections_.end() ? kNone : texts->second;
 }
 
 } // namespace basalt::wire::config
