@@ -121,6 +121,8 @@ constexpr std::int32_t kNitwit = 5;
                 return kLong;
             } else if constexpr (std::is_same_v<T, SetEntityDataPacket::StringValue>) {
                 return kString;
+            } else if constexpr (std::is_same_v<T, SetEntityDataPacket::RawValue>) {
+                return kNone;
             } else {
                 return static_cast<std::int32_t>(held.registry);
             }
@@ -306,6 +308,8 @@ void EntityDataRewriter::writeEntry(io::ByteBuffer& output, const SetEntityDataP
                 protocol::writeString(payload, held.value);
             } else if constexpr (std::is_same_v<T, SetEntityDataPacket::ItemValue>) {
                 legacyStacks::write(payload, stack_(held.stack), farEnd_);
+            } else if constexpr (std::is_same_v<T, SetEntityDataPacket::RawValue>) {
+                written = false;
             } else {
                 // The packing of a position changed in 1.14, and this only ever carries a bed.
                 if (farEnd_ < protocolVersions::kV1_14) {

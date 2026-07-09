@@ -184,6 +184,9 @@ void SetEntityDataPacket::write(io::ByteBuffer& buffer) const {
         } else if (const auto* registryValue = std::get_if<RegistryIdValue>(&entry.value)) {
             varInt::write(buffer, static_cast<std::int32_t>(registryValue->registry));
             varInt::write(buffer, registryValue->value);
+        } else if (const auto* raw = std::get_if<RawValue>(&entry.value)) {
+            varInt::write(buffer, raw->serializer);
+            buffer.writeBytes(raw->bytes);
         }
     }
 
