@@ -49,8 +49,8 @@ std::expected<Document, std::string> loadToml(std::string_view root, std::string
     text.resize(read);
     auto parsed = common::toml::parse(text);
     if (!parsed)
-        return std::unexpected(path +
-                               " is not valid TOML: " + std::string{common::toml::tomlErrorMessage(parsed.error())});
+        return std::unexpected(path + " is not valid TOML: line " + std::to_string(common::toml::tomlErrorLine(text)) +
+                               ": " + std::string{common::toml::tomlErrorMessage(parsed.error())});
     return Document{std::move(*parsed), generated};
 }
 

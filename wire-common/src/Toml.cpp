@@ -460,3 +460,22 @@ std::expected<TomlTable, TomlError> parse(std::string_view text) {
 }
 
 } // namespace basalt::wire::common::toml
+
+namespace basalt::wire::common::toml {
+
+std::size_t tomlErrorLine(std::string_view text) {
+    if (parse(text))
+        return 0;
+    std::size_t end = 0;
+    std::size_t line = 0;
+    while (end < text.size()) {
+        const std::size_t next = text.find('\n', end);
+        end = next == std::string_view::npos ? text.size() : next + 1;
+        ++line;
+        if (!parse(text.substr(0, end)))
+            return line;
+    }
+    return line;
+}
+
+} // namespace basalt::wire::common::toml

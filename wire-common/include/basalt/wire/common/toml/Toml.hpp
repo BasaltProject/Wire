@@ -26,6 +26,9 @@ enum class TomlError : std::uint8_t {
 
 [[nodiscard]] std::string_view tomlErrorMessage(TomlError error) noexcept;
 
+/// 1-based line where `text` first stops parsing, or 0 when it parses.
+[[nodiscard]] std::size_t tomlErrorLine(std::string_view text);
+
 class TomlValue;
 
 class TomlTable {
