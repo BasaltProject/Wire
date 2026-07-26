@@ -188,6 +188,12 @@ void PlayerInfoUpdatePacket::write(io::ByteBuffer& buffer) const {
         if ((actions & kUpdateLatency) != 0) {
             varInt::write(buffer, entry.latencyMillis);
         }
+        if ((actions & kUpdateDisplayName) != 0) {
+            writeBoolean(buffer, entry.displayName.has_value());
+            if (entry.displayName) {
+                writeAnonymousNbt(buffer, text::componentNbt::serialize(*entry.displayName));
+            }
+        }
     }
 }
 
@@ -197,8 +203,9 @@ std::optional<PlayerInfoUpdatePacket> PlayerInfoUpdatePacket::read(io::ByteBuffe
     if (buffer.failed()) {
         return std::nullopt;
     }
-    constexpr std::uint8_t supported = kAddPlayer | kInitializeChat | kUpdateGameMode | kUpdateListed | kUpdateLatency;
-    if ((packet.actions & static_cast<std::uint8_t>(~supported)) != 0) {
+    constexpr std::uint8_t kSupported =
+        kAddPlayer | kInitializeChat | kUpdateGameMode | kUpdateListed | kUpdateLatency | kUpdateDisplayName;
+    if ((packet.actions & static_cast<std::uint8_t>(~kSupported)) != 0) {
         buffer.markFailed();
         return std::nullopt;
     }
@@ -239,6 +246,9 @@ std::optional<PlayerInfoUpdatePacket> PlayerInfoUpdatePacket::read(io::ByteBuffe
         }
         if ((packet.actions & kUpdateLatency) != 0) {
             entry.latencyMillis = varInt::read(buffer);
+        }
+        if ((packet.actions & kUpdateDisplayName) != 0 && readBoolean(buffer)) {
+            entry.displayName = text::componentNbt::deserialize(readAnonymousNbt(buffer));
         }
         packet.entries.push_back(std::move(entry));
     }

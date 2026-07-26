@@ -103,6 +103,7 @@ struct PlayerInfoEntry {
     std::vector<login::GameProfileProperty> properties;
     /// Their chat session, which lets every client check what they sign.
     std::optional<RemoteChatSessionData> chatSession;
+    std::optional<text::Component> displayName;
 
     friend bool operator==(const PlayerInfoEntry&, const PlayerInfoEntry&) = default;
 };
