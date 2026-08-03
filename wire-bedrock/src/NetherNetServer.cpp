@@ -39,6 +39,8 @@ constexpr std::string_view kUnreliableLabel = "UnreliableDataChannel";
 constexpr auto kNegotiationTimeout = std::chrono::seconds{30};
 constexpr auto kSilenceTimeout = std::chrono::seconds{30};
 constexpr auto kHttpTimeout = std::chrono::seconds{10};
+constexpr std::size_t kMaxHttpConnections = 1024;
+constexpr std::uint32_t kMaxHttpPerAddress = 16;
 constexpr auto kCloseGrace = std::chrono::milliseconds{300};
 
 std::string randomText(std::size_t length) {
@@ -147,6 +149,8 @@ struct NetherNetServer::Impl {
     std::atomic<std::size_t> connections{0};
 
     StatusProvider status;
+    SignalGate signal;
+    std::unordered_map<std::string, std::uint32_t> httpPerAddress;
     LinkHandler connected;
     MessageHandler message;
     LinkHandler disconnected;
@@ -239,13 +243,17 @@ void NetherNetServer::Impl::acceptConnections() {
         if (!accepted->setNonBlocking()) {
             continue;
         }
+        if (http.size() >= kMaxHttpConnections || httpPerAddress[accepted->remoteAddress()] >= kMaxHttpPerAddress) {
+            continue;
+        }
         const std::uint64_t token = nextToken++;
         const std::int64_t handle = accepted->nativeHandle();
+        ++httpPerAddress[accepted->remoteAddress()];
         HttpConnection& connection = http[token];
         connection.socket = std::move(*accepted);
         connection.deadline = Clock::now() + kHttpTimeout;
         if (!loop->watch(handle, io::IoInterest{true, false}, token)) {
-            http.erase(token);
+            closeHttp(token);
         }
     }
 }
@@ -256,6 +264,10 @@ void NetherNetServer::Impl::closeHttp(std::uint64_t token) {
         return;
     }
     loop->unwatch(found->second.socket.nativeHandle());
+    if (const auto count = httpPerAddress.find(found->second.socket.remoteAddress()); count != httpPerAddress.end() &&
+                                                                                       --count->second == 0) {
+        httpPerAddress.erase(count);
+    }
     http.erase(found);
 }
 
@@ -338,11 +350,15 @@ void NetherNetServer::Impl::respond(std::uint64_t token, const nethernet::HttpRe
 
     constexpr std::string_view kJoin = "/v1/join";
     const std::string path = request.path.substr(0, request.path.find('?'));
-    if (request.method == "GET" && path == kJoin) {
+    const bool offer = request.method == "POST" && path.starts_with("/v1/join/");
+    if (signal && (offer || request.method == "GET") && !signal(connection.socket.remoteAddress(), offer)) {
+        statusCode = 429;
+        body = "Too many requests";
+    } else if (request.method == "GET" && path == kJoin) {
         statusCode = 200;
         contentType = "application/json";
         body = statusJson(status ? status() : NetherNetStatus{});
-    } else if (request.method == "POST" && path.starts_with("/v1/join/")) {
+    } else if (offer) {
         body = negotiate(connection, request, statusCode, contentType);
     }
 
@@ -708,6 +724,8 @@ NetherNetServer::NetherNetServer(NetherNetConfig config) : impl_(std::make_uniqu
 NetherNetServer::~NetherNetServer() { stop(); }
 
 void NetherNetServer::onStatus(StatusProvider provider) { impl_->status = std::move(provider); }
+
+void NetherNetServer::onSignal(SignalGate gate) { impl_->signal = std::move(gate); }
 
 void NetherNetServer::onConnect(LinkHandler handler) { impl_->connected = std::move(handler); }
 

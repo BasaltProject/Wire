@@ -11,6 +11,7 @@
 #include <memory>
 #include <span>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace basalt::wire::bedrock {
@@ -84,6 +85,7 @@ class NetherNetServer {
 public:
     using StatusProvider = std::function<NetherNetStatus()>;
     using LinkHandler = std::function<void(const std::shared_ptr<NetherNetLink>&)>;
+    using SignalGate = std::function<bool(std::string_view address, bool connecting)>;
     using MessageHandler = std::function<void(const std::shared_ptr<NetherNetLink>&, std::span<const std::uint8_t>)>;
 
     explicit NetherNetServer(NetherNetConfig config);
@@ -93,6 +95,9 @@ public:
 
     /// Runs on the network thread, so it must not touch anything the owner's thread owns.
     void onStatus(StatusProvider provider);
+
+    /// Runs on the network thread for each signaling request; false answers 429. `connecting` is true for an offer.
+    void onSignal(SignalGate gate);
 
     void onConnect(LinkHandler handler);
 
