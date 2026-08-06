@@ -33,6 +33,9 @@ struct NetherNetConfig {
 
     std::size_t maxConnections = 512;
 
+    /// Peers still negotiating at once; the rest of the offers get 503.
+    std::size_t maxNegotiating = 256;
+
     /// Refuse an offer that does not prove which key signed it.
     bool requireIdentity = false;
 };
@@ -85,6 +88,7 @@ class NetherNetServer {
 public:
     using StatusProvider = std::function<NetherNetStatus()>;
     using LinkHandler = std::function<void(const std::shared_ptr<NetherNetLink>&)>;
+    using AbandonHandler = std::function<void(std::string_view address)>;
     using SignalGate = std::function<bool(std::string_view address, bool connecting)>;
     using MessageHandler = std::function<void(const std::shared_ptr<NetherNetLink>&, std::span<const std::uint8_t>)>;
 
@@ -98,6 +102,9 @@ public:
 
     /// Runs on the network thread for each signaling request; false answers 429. `connecting` is true for an offer.
     void onSignal(SignalGate gate);
+
+    /// Runs on the network thread when an offer's peer ends without ever becoming a link.
+    void onAbandon(AbandonHandler handler);
 
     void onConnect(LinkHandler handler);
 

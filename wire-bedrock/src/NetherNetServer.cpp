@@ -36,7 +36,7 @@ constexpr std::size_t kMaxMessageBytes = 16U << 20U;
 constexpr std::string_view kReliableLabel = "ReliableDataChannel";
 constexpr std::string_view kUnreliableLabel = "UnreliableDataChannel";
 
-constexpr auto kNegotiationTimeout = std::chrono::seconds{30};
+constexpr auto kNegotiationTimeout = std::chrono::seconds{10};
 constexpr auto kSilenceTimeout = std::chrono::seconds{30};
 constexpr auto kHttpTimeout = std::chrono::seconds{10};
 constexpr std::size_t kMaxHttpConnections = 1024;
@@ -94,6 +94,7 @@ struct Peer {
     std::uint64_t id = 0;
     std::string ufrag;
     std::string pwd;
+    std::string origin;
     std::vector<std::uint8_t> identityKey;
     std::unique_ptr<nethernet::DtlsSession> dtls;
     std::unique_ptr<nethernet::SctpEngine> sctp;
@@ -150,6 +151,7 @@ struct NetherNetServer::Impl {
 
     StatusProvider status;
     SignalGate signal;
+    AbandonHandler abandoned;
     std::unordered_map<std::string, std::uint32_t> httpPerAddress;
     LinkHandler connected;
     MessageHandler message;
@@ -223,6 +225,7 @@ void NetherNetServer::Impl::run() {
         servicePeers(now);
     }
 
+    abandoned = nullptr;
     for (const auto& peer : peers) {
         peer->dead = true;
         removePeer(*peer);
@@ -264,8 +267,8 @@ void NetherNetServer::Impl::closeHttp(std::uint64_t token) {
         return;
     }
     loop->unwatch(found->second.socket.nativeHandle());
-    if (const auto count = httpPerAddress.find(found->second.socket.remoteAddress()); count != httpPerAddress.end() &&
-                                                                                       --count->second == 0) {
+    if (const auto count = httpPerAddress.find(found->second.socket.remoteAddress());
+        count != httpPerAddress.end() && --count->second == 0) {
         httpPerAddress.erase(count);
     }
     http.erase(found);
@@ -401,7 +404,9 @@ std::string NetherNetServer::Impl::negotiate(HttpConnection& connection, const n
         return "An identity is required";
     }
 
-    if (peers.size() >= config.maxConnections) {
+    const auto negotiating = static_cast<std::size_t>(std::ranges::count_if(
+        peers, [](const std::unique_ptr<Peer>& peer) { return !peer->announced && !peer->dead; }));
+    if (peers.size() >= config.maxConnections || negotiating >= config.maxNegotiating) {
         statusCode = 503;
         return "Service unavailable";
     }
@@ -437,6 +442,7 @@ std::string NetherNetServer::Impl::negotiate(HttpConnection& connection, const n
     peer->pwd = answer.icePwd;
     peer->identityKey = std::move(identityKey);
     peer->created = Clock::now();
+    peer->origin = connection.socket.remoteAddress();
     peer->lastHeard = peer->created;
     Peer* raw = peer.get();
     peer->dtls = std::make_unique<nethernet::DtlsSession>(*credentials, offer->fingerprintDigest,
@@ -507,8 +513,8 @@ void NetherNetServer::Impl::servicePeers(Clock::time_point now) {
     for (std::size_t index = 0; index < peers.size();) {
         Peer& peer = *peers[index];
         if (!peer.dead) {
-            const bool stale =
-                peer.iceReady ? now - peer.lastHeard > kSilenceTimeout : now - peer.created > kNegotiationTimeout;
+            const bool stale = (peer.iceReady ? now - peer.lastHeard > kSilenceTimeout : false) ||
+                               (!peer.announced && now - peer.created > kNegotiationTimeout);
             if (stale) {
                 peer.dead = true;
             }
@@ -710,6 +716,9 @@ void NetherNetServer::Impl::removePeer(Peer& peer) {
     if (peer.sctp != nullptr) {
         peer.sctp->shutdown();
     }
+    if (!peer.announced && abandoned) {
+        abandoned(peer.origin);
+    }
     if (peer.announced) {
         peer.link->markClosed();
         connections.fetch_sub(1);
@@ -726,6 +735,8 @@ NetherNetServer::~NetherNetServer() { stop(); }
 void NetherNetServer::onStatus(StatusProvider provider) { impl_->status = std::move(provider); }
 
 void NetherNetServer::onSignal(SignalGate gate) { impl_->signal = std::move(gate); }
+
+void NetherNetServer::onAbandon(AbandonHandler handler) { impl_->abandoned = std::move(handler); }
 
 void NetherNetServer::onConnect(LinkHandler handler) { impl_->connected = std::move(handler); }
 
