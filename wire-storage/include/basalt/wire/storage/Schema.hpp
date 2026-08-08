@@ -20,10 +20,12 @@ namespace schema {
 /// The `plugin_data` and `holder_data` tables.
 [[nodiscard]] std::string_view pluginDdl();
 
+/// The `antibot_verified` table.
+[[nodiscard]] std::string_view antibotDdl();
+
 } // namespace schema
 
-/// Opens `path`, creating its parent directory and the tables of `ddl` when the file is new.
-/// A file missing a column that `ddl` declares is refused with a message saying so.
+/// Opens `path`, creating missing tables of `ddl`; a table lacking a declared column is refused.
 [[nodiscard]] std::expected<std::unique_ptr<wire::sql::Database>, std::string>
 openPlayerDatabase(const std::string& path, std::string_view ddl);
 

@@ -84,6 +84,20 @@ CREATE TABLE IF NOT EXISTS holder_data (
 )";
 }
 
+std::string_view antibotDdl() {
+    return R"(
+-- Players the antibot verified. An empty origin trusts the name from anywhere; names are stored lower case.
+CREATE TABLE IF NOT EXISTS antibot_verified (
+    name TEXT NOT NULL,
+    origin TEXT NOT NULL DEFAULT '',
+    expires_at INTEGER NOT NULL,
+    PRIMARY KEY (name, origin)
+);
+
+CREATE INDEX IF NOT EXISTS antibot_verified_expires ON antibot_verified(expires_at);
+)";
+}
+
 } // namespace schema
 
 namespace {
@@ -96,6 +110,9 @@ namespace {
     reference->exec(ddl);
     for (const std::string& table : reference->tables()) {
         const std::vector<std::string> actual = database.columns(table);
+        if (actual.empty()) {
+            continue;
+        }
         std::string names;
         for (const std::string& column : reference->columns(table)) {
             if (std::ranges::find(actual, column) == actual.end()) {
@@ -125,11 +142,11 @@ std::expected<std::unique_ptr<wire::sql::Database>, std::string> openPlayerDatab
         return std::unexpected(path + " could not be opened");
     }
     auto database = std::make_unique<wire::sql::Database>(std::move(*opened));
-    if (database->tables().empty() && !database->exec(ddl)) {
-        return std::unexpected(path + " could not be created: " + database->error());
-    }
     if (std::string mismatch = missingColumns(*database, ddl, path); !mismatch.empty()) {
         return std::unexpected(std::move(mismatch));
+    }
+    if (!database->exec(ddl)) {
+        return std::unexpected(path + " could not be created: " + database->error());
     }
     return database;
 }
