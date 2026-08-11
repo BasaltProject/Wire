@@ -12,6 +12,7 @@ basalt_module(wire-bedrock
         src/BedrockColumn.cpp
         src/BedrockBiomeTables.cpp
         src/BedrockItemFrames.cpp
+        src/BedrockJavaSkin.cpp
         src/BedrockJavaBlockEntities.cpp
         src/BedrockBlocks2630.cpp
         src/BedrockBlocks2640.cpp
@@ -46,6 +47,7 @@ basalt_module(wire-bedrock
         src/NetherNetStun.cpp
         src/RakSession.cpp
     DEPENDS basalt::wire-common basalt::wire-io basalt::wire-nbt basalt::wire-text basalt::wire-protocol
+        basalt::wire-auth
     PRIVATE_DEPENDS basalt::mbedtls basalt::usrsctp basalt::zlib
 )
 
