@@ -7,6 +7,7 @@ basalt_module(wire-bedrock
         src/BedrockKeys.cpp
         src/BedrockNbt.cpp
         src/BedrockPacketNames.cpp
+        src/BedrockRecords.cpp
         src/BedrockAdvertisement.cpp
         src/BedrockBanners.cpp
         src/BedrockBiomes.cpp
