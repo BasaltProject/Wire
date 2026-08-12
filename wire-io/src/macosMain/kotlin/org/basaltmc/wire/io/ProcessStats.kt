@@ -7,8 +7,10 @@ import kotlinx.cinterop.alloc
 import kotlinx.cinterop.memScoped
 import kotlinx.cinterop.ptr
 import platform.posix.RUSAGE_SELF
+import platform.posix._SC_NPROCESSORS_ONLN
 import platform.posix.getrusage
 import platform.posix.rusage
+import platform.posix.sysconf
 
 /** User plus system time, which together are what the process actually cost the machine. */
 public actual fun processCpuMicros(): Long? =
@@ -19,3 +21,6 @@ public actual fun processCpuMicros(): Long? =
         val system = usage.ru_stime.tv_sec * 1_000_000L + usage.ru_stime.tv_usec
         user + system
     }
+
+/** Cores currently online, which is what a pool should be sized against rather than what exists. */
+public actual fun cpuCoreCount(): Int? = sysconf(_SC_NPROCESSORS_ONLN).toInt().takeIf { it > 0 }
