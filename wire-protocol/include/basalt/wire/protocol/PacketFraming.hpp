@@ -38,7 +38,7 @@ inspectFrame(std::span<const std::uint8_t> bytes, bool compressed, std::size_t m
                                                                   std::span<const std::uint8_t> packetIdAndData);
 
 std::expected<void, FramingError> writeCompressed(io::ByteBuffer& output, std::span<const std::uint8_t> packetIdAndData,
-                                                  std::int32_t threshold);
+                                                  std::int32_t threshold, int zlibLevel = 6);
 
 /// Reports false without touching the input when a whole frame is not buffered yet.
 std::expected<bool, FramingError> tryReadFrame(io::ByteBuffer& input, bool compressionEnabled, io::ByteBuffer& into,

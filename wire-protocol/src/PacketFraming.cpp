@@ -94,7 +94,7 @@ std::expected<void, FramingError> writeUncompressed(io::ByteBuffer& output,
 }
 
 std::expected<void, FramingError> writeCompressed(io::ByteBuffer& output, std::span<const std::uint8_t> packetIdAndData,
-                                                  std::int32_t threshold) {
+                                                  std::int32_t threshold, int zlibLevel) {
     if (packetIdAndData.empty()) {
         return std::unexpected{FramingError::EmptyFrame};
     }
@@ -120,7 +120,7 @@ std::expected<void, FramingError> writeCompressed(io::ByteBuffer& output, std::s
     }
     const std::size_t bodyAt = output.writerIndex();
     varInt::write(output, size);
-    const auto compressed = io::zlib::compressInto(packetIdAndData, output);
+    const auto compressed = io::zlib::compressInto(packetIdAndData, output, zlibLevel);
     if (!compressed) {
         output.trimTail(output.writerIndex() - lengthAt);
         return std::unexpected{FramingError::DecompressionFailed};
