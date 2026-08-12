@@ -15,7 +15,7 @@ plugins {
 
 tasks.register("generate") {
     group = "basalt"
-    description = "Regenerates basalt-registry's real vanilla ID tables from the official server jar's own data generator."
+    description = "Regenerates server-registry's real vanilla ID tables from the official server jar's own data generator."
 
     doLast {
         val jarPath =
@@ -48,7 +48,7 @@ tasks.register("generate") {
         val items = parseRegistryEntries(File(reportsDir, "registries.json").readText(), "minecraft:item")
         val blocks = parseRegistryEntries(File(reportsDir, "registries.json").readText(), "minecraft:block")
 
-        val registryDir = project.rootProject.file("basalt-registry/src/commonMain/kotlin/org/basaltmc/server/registry")
+        val registryDir = project.rootProject.file("server-registry/src/commonMain/kotlin/org/basaltmc/server/registry")
         writeIdTable(File(registryDir, "VanillaBlockStates.kt"), "ALL_DEFAULT_BLOCK_STATES", BLOCK_STATES_KDOC, blockStates)
         writeIdTable(File(registryDir, "VanillaItems.kt"), "ALL_ITEMS", ITEMS_KDOC, items)
         writeIdTable(File(registryDir, "VanillaBlockIds.kt"), "ALL_BLOCK_IDS", BLOCK_IDS_KDOC, blocks)
@@ -117,7 +117,7 @@ val BLOCK_STATES_KDOC =
      * Every block's default state id, straight from the real 26.2 server jar's own data
      * generator (${'`'}net.minecraft.data.Main --reports${'`'}, the ${'`'}blocks.json${'`'} report): authoritative,
      * not decompiled/guessed. Non-default states (block properties: facing, waterlogged, age...)
-     * aren't included, since basalt-world doesn't model block properties yet; every block here
+     * aren't included, since server-world doesn't model block properties yet; every block here
      * is registered by its default state only, same shape [Blocks] already used for its five
      * hand-picked named constants.
      */
