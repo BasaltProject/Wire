@@ -23,19 +23,39 @@ import org.basaltmc.wire.text.ComponentNbt
 public data class WireItemStack(
     val itemId: Int,
     val count: Int,
+    /**
+     * Enchantment registry id to level, written as the `minecraft:enchantments` component.
+     *
+     * The one component this build writes, because it is the one a command can set. Its payload is
+     * the map vanilla's `ItemEnchantments` codec reads: a varint count, then a registry id and a
+     * level per entry.
+     */
+    val enchantments: Map<Int, Int> = emptyMap(),
 ) {
     public fun write(buffer: ByteBuffer) {
         buffer.writeVarInt(count)
         if (count <= 0) return
         buffer.writeVarInt(itemId)
-        // The component patch: nothing added, nothing removed.
+        // The component patch: what this stack adds, then what it removes.
+        buffer.writeVarInt(if (enchantments.isEmpty()) 0 else 1)
         buffer.writeVarInt(0)
-        buffer.writeVarInt(0)
+        if (enchantments.isEmpty()) return
+        buffer.writeVarInt(ENCHANTMENTS_COMPONENT)
+        buffer.writeVarInt(enchantments.size)
+        for ((enchantment, level) in enchantments) {
+            // parity: `Enchantment.STREAM_CODEC` is `holderRegistry`, which writes the plain id.
+            // Adding one landed every enchantment on the next entry of the registry.
+            buffer.writeVarInt(enchantment)
+            buffer.writeVarInt(level)
+        }
     }
 
     public companion object {
         /** A count of zero is how vanilla writes "this slot is empty"; the rest of the stack follows only if non-empty. */
         public val EMPTY: WireItemStack = WireItemStack(0, 0)
+
+        /** parity: `minecraft:enchantments`' index in `DataComponents`' own registration order. */
+        public const val ENCHANTMENTS_COMPONENT: Int = 13
 
         public fun write(
             buffer: ByteBuffer,
@@ -50,23 +70,31 @@ public data class WireItemStack(
             val itemId = buffer.readVarInt()
             val added = buffer.readVarInt()
             val removed = buffer.readVarInt()
-            if (added != 0 || removed != 0) {
-                throw ProtocolException(
-                    "Item stacks with data components are not supported yet " +
-                        "($added added, $removed removed on item $itemId)",
-                )
+            if (removed != 0) {
+                throw ProtocolException("Item stacks that remove data components are not supported yet")
             }
-            return WireItemStack(itemId, count)
+            // The one component this build can read back is the one it writes; anything else has an
+            // unknown length, and skipping blindly would lose track of where the next stack begins.
+            var enchantments = emptyMap<Int, Int>()
+            repeat(added) {
+                val component = buffer.readVarInt()
+                if (component != ENCHANTMENTS_COMPONENT) {
+                    throw ProtocolException("Data component $component is not supported yet on item $itemId")
+                }
+                enchantments =
+                    buildMap { repeat(buffer.readVarInt()) { put(buffer.readVarInt(), buffer.readVarInt()) } }
+            }
+            return WireItemStack(itemId, count, enchantments)
         }
 
         /**
          * The same stack in the delimited form `set_creative_slot` uses
          * (`ItemStack.OPTIONAL_UNTRUSTED_STREAM_CODEC` over `DataComponentPatch.DELIMITED_STREAM_CODEC`).
          *
-         * Each component carries its own length prefix here, so unlike [read] this can skip them
-         * blindly instead of refusing the stack: refusing dropped the session whenever a player
-         * dragged a damaged tool or a written book out of the creative menu. The components are
-         * still discarded, the same gap [read] documents.
+         * Every component is length-prefixed here, so unlike [read] the ones this build does not
+         * model are skipped instead of costing the session. The enchantments are read back: a
+         * creative client echoes a slot whenever the inventory screen opens, and dropping them
+         * there stripped an enchanted item its owner had merely looked at.
          */
         public fun readDelimited(buffer: ByteBuffer): WireItemStack? {
             val count = buffer.readVarInt()
@@ -74,13 +102,21 @@ public data class WireItemStack(
             val itemId = buffer.readVarInt()
             val added = buffer.readVarInt()
             val removed = buffer.readVarInt()
+            var enchantments = emptyMap<Int, Int>()
             repeat(added) {
-                buffer.readVarInt() // component type id
-                buffer.readBytes(buffer.readVarInt()) // its length-prefixed payload
+                val component = buffer.readVarInt()
+                val length = buffer.readVarInt()
+                val before = buffer.readableBytes
+                if (component == ENCHANTMENTS_COMPONENT) {
+                    enchantments =
+                        buildMap { repeat(buffer.readVarInt()) { put(buffer.readVarInt(), buffer.readVarInt()) } }
+                }
+                // Whatever was read, the next component starts where this one's length said it does.
+                buffer.readBytes(length - (before - buffer.readableBytes))
             }
             // Removals are just the type ids, with no payload to skip.
             repeat(removed) { buffer.readVarInt() }
-            return WireItemStack(itemId, count)
+            return WireItemStack(itemId, count, enchantments)
         }
     }
 }

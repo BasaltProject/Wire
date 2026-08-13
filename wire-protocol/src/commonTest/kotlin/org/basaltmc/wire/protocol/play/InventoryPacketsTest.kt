@@ -2,11 +2,13 @@ package org.basaltmc.wire.protocol.play
 
 import org.basaltmc.wire.io.ByteBuffer
 import org.basaltmc.wire.protocol.ProtocolException
+import org.basaltmc.wire.protocol.readVarInt
 import org.basaltmc.wire.protocol.writeBoolean
 import org.basaltmc.wire.protocol.writeVarInt
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 
 class InventoryPacketsTest {
@@ -32,11 +34,13 @@ class InventoryPacketsTest {
     @Test
     fun aStackCarryingComponentsIsRefusedRatherThanMisread() {
         val buffer = ByteBuffer()
-        // Hand-written: one component added, which this build has no codec for.
+        // Hand-written: one component added, and one this build has no codec for (1 is
+        // `minecraft:max_stack_size`, not the enchantments it can read).
         buffer.writeByte(1)
         buffer.writeByte(1)
         buffer.writeByte(1)
         buffer.writeByte(0)
+        buffer.writeByte(1)
 
         // Refused, because a component cannot be skipped without knowing its length: a reader that
         // ignored it would not know where the next stack starts.
@@ -156,5 +160,63 @@ class InventoryPacketsTest {
         packet.write(buffer)
 
         assertEquals(packet, ServerboundSetCreativeModeSlotPacket.read(buffer))
+    }
+
+    @Test
+    fun anEnchantedStackRoundTripsItsComponent() {
+        val buffer = ByteBuffer()
+        val stack = WireItemStack(itemId = 900, count = 1, enchantments = mapOf(3 to 5, 7 to 1))
+        stack.write(buffer)
+        assertEquals(stack, WireItemStack.read(buffer))
+    }
+
+    @Test
+    fun aStackWithNoComponentsStillWritesAnEmptyPatch() {
+        val buffer = ByteBuffer()
+        val stack = WireItemStack(itemId = 1, count = 2)
+        stack.write(buffer)
+        assertEquals(stack, WireItemStack.read(buffer))
+    }
+
+    @Test
+    fun aDelimitedStackKeepsItsEnchantmentsAndSkipsTheRest() {
+        // What a creative client echoes back when the inventory screen opens: the enchantments have
+        // to survive the round trip or the item is stripped just for being looked at.
+        val buffer = ByteBuffer()
+        buffer.writeVarInt(1) // count
+        buffer.writeVarInt(7) // item id
+        buffer.writeVarInt(2) // added components
+        buffer.writeVarInt(0) // removed
+        val enchantments = ByteBuffer()
+        enchantments.writeVarInt(1)
+        enchantments.writeVarInt(3) // the enchantment's plain registry id
+        enchantments.writeVarInt(5)
+        val payload = enchantments.readBytes(enchantments.readableBytes)
+        buffer.writeVarInt(WireItemStack.ENCHANTMENTS_COMPONENT)
+        buffer.writeVarInt(payload.size)
+        buffer.writeBytes(payload)
+        buffer.writeVarInt(999) // a component this build does not model
+        buffer.writeVarInt(3)
+        buffer.writeBytes(byteArrayOf(1, 2, 3))
+
+        val decoded = assertNotNull(WireItemStack.readDelimited(buffer))
+        assertEquals(mapOf(3 to 5), decoded.enchantments)
+        assertEquals(0, buffer.readableBytes)
+    }
+
+    @Test
+    fun enchantmentsAreWrittenAsPlainRegistryIds() {
+        // parity: `Enchantment.STREAM_CODEC` is `holderRegistry`. Writing id plus one put every
+        // enchantment on the next registry entry: asking for efficiency gave feather falling.
+        val buffer = ByteBuffer()
+        WireItemStack(itemId = 7, count = 1, enchantments = mapOf(12 to 5)).write(buffer)
+        buffer.readVarInt() // count
+        buffer.readVarInt() // item id
+        buffer.readVarInt() // added components
+        buffer.readVarInt() // removed components
+        assertEquals(WireItemStack.ENCHANTMENTS_COMPONENT, buffer.readVarInt())
+        assertEquals(1, buffer.readVarInt())
+        assertEquals(12, buffer.readVarInt())
+        assertEquals(5, buffer.readVarInt())
     }
 }
