@@ -104,4 +104,12 @@ class ConfigurationPacketsTest {
         packet.write(buffer)
         assertEquals(packet, TagsPacket.read(buffer))
     }
+
+    @Test
+    fun brandRoundTrips() {
+        val buffer = ByteBuffer()
+        val packet = BrandPacket("Basalt 26.2")
+        packet.write(buffer)
+        assertEquals(packet, BrandPacket.read(buffer))
+    }
 }
