@@ -3,9 +3,11 @@ package org.basaltmc.wire.protocol.play
 import org.basaltmc.wire.io.ByteBuffer
 import org.basaltmc.wire.protocol.ProtocolException
 import org.basaltmc.wire.protocol.readBoolean
+import org.basaltmc.wire.protocol.readProtocolString
 import org.basaltmc.wire.protocol.readUuid
 import org.basaltmc.wire.protocol.readVarInt
 import org.basaltmc.wire.protocol.writeBoolean
+import org.basaltmc.wire.protocol.writeProtocolString
 import org.basaltmc.wire.protocol.writeUuid
 import org.basaltmc.wire.protocol.writeVarInt
 import kotlin.math.abs
@@ -423,5 +425,234 @@ public data class ClientboundTakeItemEntityPacket(
 
         public fun read(buffer: ByteBuffer): ClientboundTakeItemEntityPacket =
             ClientboundTakeItemEntityPacket(buffer.readVarInt(), buffer.readVarInt(), buffer.readVarInt())
+    }
+}
+
+/**
+ * Clientbound, id 0x02: a one-off animation on an entity. Mirrors `ClientboundAnimatePacket`.
+ *
+ * The action is a byte with no varint, and the values are vanilla's own: swinging the off hand is
+ * 3, not 1, because 1 was the old "hurt" animation and the numbering was never compacted.
+ */
+public data class AnimatePacket(
+    val entityId: Int,
+    val action: Int,
+) {
+    public fun write(buffer: ByteBuffer) {
+        buffer.writeVarInt(entityId)
+        buffer.writeByte(action.toByte())
+    }
+
+    public companion object {
+        public const val ID: Int = 0x02
+        public const val SWING_MAIN_HAND: Int = 0
+        public const val WAKE_UP: Int = 2
+        public const val SWING_OFFHAND: Int = 3
+        public const val CRITICAL_HIT: Int = 4
+        public const val MAGIC_CRITICAL_HIT: Int = 5
+
+        public fun read(buffer: ByteBuffer): AnimatePacket =
+            AnimatePacket(buffer.readVarInt(), buffer.readByte().toInt() and 0xFF)
+    }
+}
+
+/**
+ * Clientbound, id 0x64: who is leashed to (or riding) what. Mirrors `ClientboundSetEntityLinkPacket`.
+ *
+ * Both ids are plain ints rather than varints, which is unusual enough to be worth stating: a
+ * varint here writes a shorter frame and desynchronizes the client on the next packet.
+ */
+public data class SetEntityLinkPacket(
+    val sourceId: Int,
+    val destinationId: Int,
+) {
+    public fun write(buffer: ByteBuffer) {
+        buffer.writeInt(sourceId)
+        buffer.writeInt(destinationId)
+    }
+
+    public companion object {
+        public const val ID: Int = 0x64
+
+        /** What vanilla writes to say "nothing": -1, which is how a dismount is expressed. */
+        public const val NO_VEHICLE: Int = -1
+
+        public fun read(buffer: ByteBuffer): SetEntityLinkPacket =
+            SetEntityLinkPacket(buffer.readInt(), buffer.readInt())
+    }
+}
+
+/**
+ * Clientbound, id 0x2f: particles at a position. Mirrors `ClientboundLevelParticlesPacket`.
+ *
+ * The particle *type* is written last, after the counts, and carries its own options for the types
+ * that have them. Only option-free types are written here; the ones with options are refused
+ * before they reach this packet, because a missing option block desynchronizes the stream.
+ */
+public data class LevelParticlesPacket(
+    val particleTypeId: Int,
+    val x: Double,
+    val y: Double,
+    val z: Double,
+    val offsetX: Float = 0f,
+    val offsetY: Float = 0f,
+    val offsetZ: Float = 0f,
+    val maxSpeed: Float = 0f,
+    val count: Int = 1,
+    /** parity: `force`, which shows the particle past the client's own particle-count setting. */
+    val overrideLimiter: Boolean = false,
+    val alwaysShow: Boolean = false,
+) {
+    public fun write(buffer: ByteBuffer) {
+        buffer.writeBoolean(overrideLimiter)
+        buffer.writeBoolean(alwaysShow)
+        buffer.writeDouble(x)
+        buffer.writeDouble(y)
+        buffer.writeDouble(z)
+        buffer.writeFloat(offsetX)
+        buffer.writeFloat(offsetY)
+        buffer.writeFloat(offsetZ)
+        buffer.writeFloat(maxSpeed)
+        buffer.writeInt(count)
+        buffer.writeVarInt(particleTypeId)
+    }
+
+    public companion object {
+        public const val ID: Int = 0x2f
+
+        public fun read(buffer: ByteBuffer): LevelParticlesPacket {
+            val overrideLimiter = buffer.readBoolean()
+            val alwaysShow = buffer.readBoolean()
+            val x = buffer.readDouble()
+            val y = buffer.readDouble()
+            val z = buffer.readDouble()
+            val offsetX = buffer.readFloat()
+            val offsetY = buffer.readFloat()
+            val offsetZ = buffer.readFloat()
+            val maxSpeed = buffer.readFloat()
+            val count = buffer.readInt()
+            return LevelParticlesPacket(
+                particleTypeId = buffer.readVarInt(),
+                x = x,
+                y = y,
+                z = z,
+                offsetX = offsetX,
+                offsetY = offsetY,
+                offsetZ = offsetZ,
+                maxSpeed = maxSpeed,
+                count = count,
+                overrideLimiter = overrideLimiter,
+                alwaysShow = alwaysShow,
+            )
+        }
+    }
+}
+
+/**
+ * Clientbound, id 0x8a: one entry of the locator bar. Mirrors `ClientboundTrackedWaypointPacket`.
+ *
+ * The identifier is an `Either<UUID, String>`, written as a boolean and then the chosen side, and
+ * the payload depends on the waypoint's own kind: a position is three varints, which is the kind a
+ * command can point at. The icon is a style id plus an optional packed RGB colour.
+ */
+@OptIn(ExperimentalUuidApi::class)
+/**
+ * parity: `ClientboundEntityEventPacket`.
+ *
+ * Most events are animations, but 24 to 28 are the player's own permission level, and the client
+ * needs them: its local command parser refuses selectors (`@a`, `@s`) until it has been told the
+ * player is at least a gamemaster, so without this a perfectly valid command is drawn in red and
+ * only the server accepts it.
+ */
+public data class EntityEventPacket(
+    val entityId: Int,
+    val eventId: Byte,
+) {
+    public fun write(buffer: ByteBuffer) {
+        buffer.writeInt(entityId)
+        buffer.writeByte(eventId)
+    }
+
+    public companion object {
+        public const val ID: Int = 0x22
+
+        /** parity: `EntityEvent.PERMISSION_LEVEL_ALL` and the four above it. */
+        public const val PERMISSION_LEVEL_BASE: Int = 24
+
+        public fun permissionLevel(
+            entityId: Int,
+            level: Int,
+        ): EntityEventPacket = EntityEventPacket(entityId, (PERMISSION_LEVEL_BASE + level.coerceIn(0, 4)).toByte())
+
+        public fun read(buffer: ByteBuffer): EntityEventPacket = EntityEventPacket(buffer.readInt(), buffer.readByte())
+    }
+}
+
+public data class TrackedWaypointPacket(
+    val operation: Operation,
+    val entityUuid: Uuid,
+    val style: String,
+    val color: Int?,
+    val x: Int,
+    val y: Int,
+    val z: Int,
+) {
+    /** parity: `ClientboundTrackedWaypointPacket.Operation`, written as its ordinal. */
+    public enum class Operation {
+        TRACK,
+        UNTRACK,
+        UPDATE,
+    }
+
+    public fun write(buffer: ByteBuffer) {
+        buffer.writeVarInt(operation.ordinal)
+        // The identifier: `true` selects the UUID side of the either.
+        buffer.writeBoolean(true)
+        buffer.writeUuid(entityUuid)
+        buffer.writeProtocolString(style)
+        buffer.writeBoolean(color != null)
+        // parity: `ByteBufCodecs.RGB_COLOR`, three bytes and not an int. Writing four disconnects
+        // the client: it reads the waypoint type out of the leftover byte.
+        color?.let {
+            buffer.writeByte(((it shr 16) and 0xFF).toByte())
+            buffer.writeByte(((it shr 8) and 0xFF).toByte())
+            buffer.writeByte((it and 0xFF).toByte())
+        }
+        buffer.writeVarInt(WAYPOINT_TYPE_VEC3I)
+        buffer.writeVarInt(x)
+        buffer.writeVarInt(y)
+        buffer.writeVarInt(z)
+    }
+
+    public companion object {
+        public const val ID: Int = 0x8a
+
+        /** parity: `TrackedWaypoint.Type`: EMPTY 0, VEC3I 1, CHUNK 2, AZIMUTH 3. */
+        public const val WAYPOINT_TYPE_VEC3I: Int = 1
+
+        public fun read(buffer: ByteBuffer): TrackedWaypointPacket {
+            val operation = Operation.entries[buffer.readVarInt()]
+            check(buffer.readBoolean()) { "only the uuid side of the identifier is written here" }
+            val uuid = buffer.readUuid()
+            val style = buffer.readProtocolString()
+            val color =
+                if (buffer.readBoolean()) {
+                    ((buffer.readByte().toInt() and 0xFF) shl 16) or
+                        ((buffer.readByte().toInt() and 0xFF) shl 8) or
+                        (buffer.readByte().toInt() and 0xFF)
+                } else {
+                    null
+                }
+            check(buffer.readVarInt() == WAYPOINT_TYPE_VEC3I) { "only positioned waypoints are written here" }
+            return TrackedWaypointPacket(
+                operation,
+                uuid,
+                style,
+                color,
+                buffer.readVarInt(),
+                buffer.readVarInt(),
+                buffer.readVarInt(),
+            )
+        }
     }
 }
