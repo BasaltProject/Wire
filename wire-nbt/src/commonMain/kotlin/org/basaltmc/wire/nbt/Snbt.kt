@@ -107,10 +107,25 @@ public object Snbt {
         return tag
     }
 
+    /**
+     * Parses one value starting at [from] and returns it with the index just past it, leaving
+     * whatever follows alone. What a command argument needs: `/summon pig ~ ~ ~ {a:1} extra` has to
+     * stop at the closing brace rather than refuse the rest of the line as trailing data.
+     */
+    public fun parseFrom(
+        text: String,
+        from: Int,
+    ): Pair<NbtTag, Int> {
+        val parser = Parser(text, from)
+        parser.skipWhitespace()
+        return parser.parseValue() to parser.position
+    }
+
     private class Parser(
         private val text: String,
+        start: Int = 0,
     ) {
-        var position: Int = 0
+        var position: Int = start
             private set
 
         val atEnd: Boolean get() = position >= text.length
