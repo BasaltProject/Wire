@@ -43,19 +43,30 @@ class TranslationResolverTest {
     }
 
     @Test
-    fun anUnsupportedFormatSpecifierThrows() {
+    fun anUnsupportedFormatSpecifierThrowsInStrictMode() {
         val table = LangTable.parse("""{"bad": "%d apples"}""")
         assertFailsWith<TranslationFormatException> {
-            Component.Translatable("bad", args = listOf(Component.text("3"))).resolvePlainText(table)
+            Component.Translatable("bad", args = listOf(Component.text("3"))).resolveTemplateStrict(table)
         }
     }
 
     @Test
-    fun anOutOfRangeArgumentIndexThrows() {
+    fun anOutOfRangeArgumentIndexThrowsInStrictMode() {
         val table = LangTable.parse("""{"needsArg": "%s"}""")
         assertFailsWith<TranslationFormatException> {
-            Component.Translatable("needsArg").resolvePlainText(table)
+            Component.Translatable("needsArg").resolveTemplateStrict(table)
         }
+    }
+
+    @Test
+    fun aTemplateThatCannotBeFormattedRendersAsItsFormatString() {
+        // parity: vanilla catches the same failure and shows the raw string, so a message with too
+        // few arguments is ugly rather than fatal to whatever was printing it.
+        val table = LangTable.parse("""{"needsArg": "wanted %s and %s"}""")
+        assertEquals(
+            "wanted %s and %s",
+            Component.Translatable("needsArg", args = listOf(Component.text("one"))).resolvePlainText(table),
+        )
     }
 
     @Test

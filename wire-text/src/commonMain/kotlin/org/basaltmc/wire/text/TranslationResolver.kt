@@ -31,13 +31,28 @@ public fun Component.resolvePlainText(table: LangTable): String {
 
 /**
  * Resolves a [Component.Translatable]'s own template (not its children) into plain text using
- * [table], mirroring vanilla's `TranslatableContents.decompose`/`decomposeTemplate`. Vanilla's
- * format string is a small, strict subset of `String.format`: `%s`, `%N$s`, and `%%` for a literal
- * percent, everything else (`%d`, a bare trailing `%`...) is unsupported and throws exactly like
- * the real client would fail to render it, rather than silently producing something
- * plausible-looking but wrong. Arguments are resolved recursively.
+ * [table], mirroring vanilla's `TranslatableContents.decompose`.
+ *
+ * parity: a template that cannot be formatted renders as the raw format string, which is what
+ * vanilla does when `decomposeTemplate` throws. A message with the wrong number of arguments is a
+ * bug in the caller, but it is a cosmetic one: it must never take down whatever was printing it.
+ * Use [resolveTemplateStrict] to see the failure instead.
  */
 public fun Component.Translatable.resolveTemplate(table: LangTable): String {
+    val format = table.getOrDefault(key, fallback ?: key)
+    return try {
+        resolveTemplateStrict(table)
+    } catch (_: TranslationFormatException) {
+        format
+    }
+}
+
+/**
+ * [resolveTemplate] without the fallback: throws [TranslationFormatException] on an unsupported
+ * specifier or a missing argument. Vanilla's format string is a small, strict subset of
+ * `String.format`: `%s`, `%N$s`, and `%%` for a literal percent, and nothing else.
+ */
+public fun Component.Translatable.resolveTemplateStrict(table: LangTable): String {
     val format = table.getOrDefault(key, fallback ?: key)
     val result = StringBuilder()
     var replacementIndex = 0
