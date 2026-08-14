@@ -139,6 +139,9 @@ bool writeJavaBlockEntity(io::ByteBuffer& tags, const std::int32_t x, const std:
         return false;
     }
     const std::optional<JavaSignText> sign = readJavaSign(data);
+    if (!sign) {
+        return false;
+    }
     writeSignTag(tags, x, y, z, sign->front, sign->back, sign->waxed);
     return true;
 }
