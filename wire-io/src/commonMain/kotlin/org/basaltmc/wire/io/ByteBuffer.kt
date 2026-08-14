@@ -126,6 +126,22 @@ public class ByteBuffer(
     /** A copy of the unread region, from [readerIndex] to [writerIndex]. Does not consume. */
     public fun toByteArray(): ByteArray = array.copyOfRange(readerIndex, writerIndex)
 
+    /**
+     * Runs [block] over the unread region in place, without copying it out. The array must not be
+     * kept or written past [block]: it is the live backing store and grows out from under holders.
+     */
+    public fun <T> withReadable(block: (array: ByteArray, offset: Int, length: Int) -> T): T =
+        block(array, readerIndex, readableBytes)
+
+    public companion object {
+        /** Adopts [bytes] as the readable content without copying; the buffer owns the array afterwards. */
+        public fun wrap(bytes: ByteArray): ByteBuffer =
+            ByteBuffer(0).also {
+                it.array = bytes
+                it.writerIndex = bytes.size
+            }
+    }
+
     private fun checkReadable(length: Int) {
         if (length > readableBytes) {
             throw IndexOutOfBoundsException(

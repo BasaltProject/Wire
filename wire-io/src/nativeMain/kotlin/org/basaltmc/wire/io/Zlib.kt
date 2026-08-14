@@ -1,4 +1,4 @@
-@file:OptIn(ExperimentalForeignApi::class)
+@file:OptIn(ExperimentalForeignApi::class, ExperimentalUnsignedTypes::class)
 
 package org.basaltmc.wire.io
 
@@ -39,7 +39,8 @@ public object Zlib {
         if (data.isEmpty()) return ByteArray(0)
         val bound = compressBound(data.size.convert())
         val dest = UByteArray(bound.toInt())
-        val source = data.toUByteArray()
+        // A reinterpret view, not a copy: this runs per packet, and the copies were the cost.
+        val source = data.asUByteArray()
         return memScoped {
             val destLen = alloc(bound)
             val result =
@@ -55,7 +56,7 @@ public object Zlib {
                     }
                 }
             if (result != Z_OK) throw ZlibException(result)
-            dest.copyOf(destLen.value.toInt()).toByteArray()
+            dest.asByteArray().copyOf(destLen.value.toInt())
         }
     }
 
@@ -67,7 +68,7 @@ public object Zlib {
         if (uncompressedSize == 0) return ByteArray(0)
         require(data.isNotEmpty()) { "Cannot decompress empty input into $uncompressedSize bytes" }
         val dest = UByteArray(uncompressedSize)
-        val source = data.toUByteArray()
+        val source = data.asUByteArray()
         return memScoped {
             val destLen = alloc<uLongVar>()
             destLen.value = uncompressedSize.convert()
@@ -78,7 +79,11 @@ public object Zlib {
                     }
                 }
             when (result) {
-                Z_OK -> dest.copyOf(destLen.value.toInt()).toByteArray()
+                Z_OK -> {
+                    val written = destLen.value.toInt()
+                    // The play protocol declares the exact size, so this is the common path.
+                    if (written == uncompressedSize) dest.asByteArray() else dest.asByteArray().copyOf(written)
+                }
                 Z_BUF_ERROR -> throw ZlibBufferTooSmallException()
                 else -> throw ZlibException(result)
             }

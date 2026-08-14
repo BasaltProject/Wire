@@ -32,17 +32,18 @@ public object PacketFraming {
         compress: (ByteArray) -> ByteArray,
     ) {
         require(packetIdAndData.size <= MAX_UNCOMPRESSED_SIZE) { "Packet too big: ${packetIdAndData.size}" }
-        val inner = ByteBuffer()
+        // Framed in place: the frame length is the data-length varint plus the payload, both known
+        // without staging the frame in a buffer of its own. This runs once per outbound packet.
         if (packetIdAndData.size < threshold) {
-            VarInt.write(inner, 0)
-            inner.writeBytes(packetIdAndData)
+            VarInt.write(output, VarInt.sizeOf(0) + packetIdAndData.size)
+            VarInt.write(output, 0)
+            output.writeBytes(packetIdAndData)
         } else {
-            VarInt.write(inner, packetIdAndData.size)
-            inner.writeBytes(compress(packetIdAndData))
+            val compressed = compress(packetIdAndData)
+            VarInt.write(output, VarInt.sizeOf(packetIdAndData.size) + compressed.size)
+            VarInt.write(output, packetIdAndData.size)
+            output.writeBytes(compressed)
         }
-        val innerBytes = inner.toByteArray()
-        VarInt.write(output, innerBytes.size)
-        output.writeBytes(innerBytes)
     }
 
     /**

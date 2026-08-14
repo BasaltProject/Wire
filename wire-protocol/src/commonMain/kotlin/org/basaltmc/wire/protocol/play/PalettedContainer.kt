@@ -24,28 +24,35 @@ public object PalettedContainer {
         maxIndirectBits: Int,
         directBits: Int,
     ) {
-        val palette = LinkedHashSet<Int>()
-        for (value in values) palette.add(value)
+        // First-seen order into a flat array, no boxed sets or maps: this runs once per section of
+        // every chunk sent, and palettes small enough to be indirect are small enough to scan.
+        val paletteLimit = (1 shl maxIndirectBits) + 1
+        val palette = IntArray(paletteLimit)
+        var paletteSize = 0
+        for (value in values) {
+            if (indexIn(palette, paletteSize, value) < 0) {
+                palette[paletteSize++] = value
+                if (paletteSize == paletteLimit) break
+            }
+        }
 
-        if (palette.size == 1) {
+        if (paletteSize == 1) {
             buffer.writeByte(0.toByte())
-            buffer.writeVarInt(palette.first())
+            buffer.writeVarInt(palette[0])
             // No data array follows: vanilla's zero-bit storage has zero longs, and (like the
             // indirect/direct cases below) the length is never written on the wire, only computed
             // from bitsPerEntry and the container size (`FriendlyByteBuf.writeFixedSizeLongArray`).
             return
         }
 
-        val neededBits = bitsFor(palette.size)
+        val neededBits = bitsFor(paletteSize)
         if (neededBits <= maxIndirectBits) {
             val bitsPerEntry = neededBits.coerceAtLeast(minIndirectBits)
             buffer.writeByte(bitsPerEntry.toByte())
-            val paletteList = palette.toList()
-            buffer.writeVarInt(paletteList.size)
-            for (value in paletteList) buffer.writeVarInt(value)
-            val indexOf = paletteList.withIndex().associate { (index, value) -> value to index }
+            buffer.writeVarInt(paletteSize)
+            for (i in 0 until paletteSize) buffer.writeVarInt(palette[i])
             val storage = BitStorage(bitsPerEntry, values.size)
-            for (i in values.indices) storage[i] = indexOf.getValue(values[i])
+            for (i in values.indices) storage[i] = indexIn(palette, paletteSize, values[i])
             for (long in storage.data) buffer.writeLong(long)
         } else {
             buffer.writeByte(directBits.toByte())
@@ -53,6 +60,15 @@ public object PalettedContainer {
             for (i in values.indices) storage[i] = values[i]
             for (long in storage.data) buffer.writeLong(long)
         }
+    }
+
+    private fun indexIn(
+        palette: IntArray,
+        paletteSize: Int,
+        value: Int,
+    ): Int {
+        for (i in 0 until paletteSize) if (palette[i] == value) return i
+        return -1
     }
 
     public fun read(

@@ -6,6 +6,9 @@ import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.alloc
 import kotlinx.cinterop.memScoped
 import kotlinx.cinterop.ptr
+import kotlinx.cinterop.sizeOf
+import platform.psapi.K32GetProcessMemoryInfo
+import platform.psapi.PROCESS_MEMORY_COUNTERS
 import platform.windows.FILETIME
 import platform.windows.GetCurrentProcess
 import platform.windows.GetProcessTimes
@@ -41,4 +44,13 @@ public actual fun cpuCoreCount(): Int? =
         val info = alloc<SYSTEM_INFO>()
         GetSystemInfo(info.ptr)
         info.dwNumberOfProcessors.toInt().takeIf { it > 0 }
+    }
+
+/** `GetProcessMemoryInfo`'s working set, Task Manager's own memory column. Unverified locally. */
+public actual fun processResidentBytes(): Long? =
+    memScoped {
+        val counters = alloc<PROCESS_MEMORY_COUNTERS>()
+        counters.cb = sizeOf<PROCESS_MEMORY_COUNTERS>().toUInt()
+        val result = K32GetProcessMemoryInfo(GetCurrentProcess(), counters.ptr, counters.cb)
+        if (result != 0) counters.WorkingSetSize.toLong() else null
     }
