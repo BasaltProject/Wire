@@ -59,9 +59,22 @@ tasks.register("generate") {
         val toolRules = parseToolComponents(File(reportsDir, "minecraft/components/item"))
         writeToolTable(File(registryDir, "VanillaItemTools.kt"), toolRules)
 
+        val components =
+            parseRegistryEntries(File(reportsDir, "registries.json").readText(), "minecraft:data_component_type")
+        writeIdTable(
+            File(registryDir, "VanillaDataComponents.kt"),
+            "ALL_DATA_COMPONENT_IDS",
+            DATA_COMPONENTS_KDOC,
+            components,
+        )
+
+        val durability = parseDurabilityComponents(File(reportsDir, "minecraft/components/item"))
+        writeDurabilityTable(File(registryDir, "VanillaItemDurability.kt"), durability)
+
         println(
             "Regenerated ${blockStates.size} block default states, ${items.size} items, " +
-                "${hardness.size} block hardness entries and ${toolRules.size} tool(s) from $jarPath.",
+                "${hardness.size} block hardness entries, ${toolRules.size} tool(s), " +
+                "${components.size} data component type(s) and ${durability.size} damageable item(s) from $jarPath.",
         )
     }
 }
@@ -322,6 +335,73 @@ fun writeToolTable(
          * `mineable/<kind>` rule so the exclusion wins.
          */
         internal val ALL_ITEM_TOOLS: List<Pair<String, List<ToolRule>>> =
+            listOf(
+        BODY,
+            )
+        """.trimIndent().replace("BODY", body) + "\n",
+    )
+}
+
+val DATA_COMPONENTS_KDOC =
+    """
+    /**
+     * Every data component type's id in the `minecraft:data_component_type` registry, which is what
+     * an item stack's component patch carries on the wire.
+     *
+     * The names are what `/give diamond_sword[custom_name=...]` writes, so both directions of that
+     * translation come from the real registry rather than from a hand-kept list.
+     */
+    """.trimIndent()
+
+// `max_damage` is how much wear an item survives; `damage_per_block` and `item_damage_per_attack`
+// are what one use costs, zero meaning that use does not wear it at all.
+fun parseDurabilityComponents(componentsDir: File): List<Triple<String, Int, Pair<Int, Int>>> {
+    if (!componentsDir.isDirectory) return emptyList()
+    val slurper = groovy.json.JsonSlurper()
+    return componentsDir
+        .listFiles { file -> file.extension == "json" }
+        .orEmpty()
+        .sortedBy { it.name }
+        .mapNotNull { file ->
+            @Suppress("UNCHECKED_CAST")
+            val root = slurper.parse(file) as Map<String, Any?>
+            @Suppress("UNCHECKED_CAST")
+            val components = root["components"] as? Map<String, Any?> ?: return@mapNotNull null
+            val maxDamage = (components["minecraft:max_damage"] as? Number)?.toInt() ?: return@mapNotNull null
+            @Suppress("UNCHECKED_CAST")
+            val tool = components["minecraft:tool"] as? Map<String, Any?>
+            @Suppress("UNCHECKED_CAST")
+            val weapon = components["minecraft:weapon"] as? Map<String, Any?>
+            // Zero where the item has no `tool`/`weapon` component at all: vanilla's `Item.mineBlock`
+            // returns early for one, so armour and a bow take no wear from mining or from swinging.
+            val perBlock = if (tool == null) 0 else (tool["damage_per_block"] as? Number)?.toInt() ?: 1
+            val perAttack = if (weapon == null) 0 else (weapon["item_damage_per_attack"] as? Number)?.toInt() ?: 1
+            Triple(file.nameWithoutExtension, maxDamage, perBlock to perAttack)
+        }
+}
+
+fun writeDurabilityTable(
+    file: File,
+    entries: List<Triple<String, Int, Pair<Int, Int>>>,
+) {
+    val body =
+        entries.joinToString(",\n") { (item, maxDamage, cost) ->
+            "        \"$item\" to ItemDurabilityEntry($maxDamage, ${cost.first}, ${cost.second})"
+        }
+    file.writeText(
+        """
+        package org.basaltmc.server.registry
+
+        /**
+         * Every damageable item, from the real server jar's own item component reports: how much
+         * wear it survives (`minecraft:max_damage`), what breaking one block costs it
+         * (`minecraft:tool`'s `damage_per_block`) and what one attack costs it
+         * (`minecraft:weapon`'s `item_damage_per_attack`).
+         *
+         * An item missing from here has no durability at all, which is not the same as having a
+         * large one: it never wears and never breaks.
+         */
+        internal val ALL_ITEM_DURABILITY: List<Pair<String, ItemDurabilityEntry>> =
             listOf(
         BODY,
             )

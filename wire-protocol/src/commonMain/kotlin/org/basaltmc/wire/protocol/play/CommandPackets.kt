@@ -122,6 +122,23 @@ public sealed class ArgumentParser(
         }
     }
 
+    /** `brigadier:float`, with the same "omit an unbounded end" encoding as [BrigadierDouble]. */
+    public data class BrigadierFloat(
+        val min: Float = -Float.MAX_VALUE,
+        val max: Float = Float.MAX_VALUE,
+    ) : ArgumentParser(1) {
+        override fun writeProperties(buffer: ByteBuffer) {
+            val hasMin = min != -Float.MAX_VALUE
+            val hasMax = max != Float.MAX_VALUE
+            var flags = 0
+            if (hasMin) flags = flags or 1
+            if (hasMax) flags = flags or 2
+            buffer.writeByte(flags.toByte())
+            if (hasMin) buffer.writeFloat(min)
+            if (hasMax) buffer.writeFloat(max)
+        }
+    }
+
     /** `minecraft:game_profile`: a player by name, online or not. */
     public data object GameProfile : ArgumentParser(7)
 
@@ -257,6 +274,45 @@ public sealed class ArgumentParser(
         }
     }
 
+    /** `minecraft:function`: a function or `#tag` of functions. */
+    public data object Function : ArgumentParser(37)
+
+    /** `minecraft:hex_color`: `#rrggbb`, which is what a waypoint's own colour takes. */
+    public data object HexColor : ArgumentParser(17)
+
+    /** `minecraft:resource_or_tag`: an entry of [registry] or a `#tag` of them. */
+    public data class ResourceOrTag(
+        val registry: String,
+    ) : ArgumentParser(44) {
+        override fun writeProperties(buffer: ByteBuffer) {
+            buffer.writeProtocolString(registry)
+        }
+    }
+
+    /** `minecraft:resource_or_tag_key`: like [ResourceOrTag], but the entry need not be loaded. */
+    public data class ResourceOrTagKey(
+        val registry: String,
+    ) : ArgumentParser(45) {
+        override fun writeProperties(buffer: ByteBuffer) {
+            buffer.writeProtocolString(registry)
+        }
+    }
+
+    /** `minecraft:resource_selector`: one or more entries of [registry], by name or by pattern. */
+    public data class ResourceSelector(
+        val registry: String,
+    ) : ArgumentParser(48) {
+        override fun writeProperties(buffer: ByteBuffer) {
+            buffer.writeProtocolString(registry)
+        }
+    }
+
+    /** `minecraft:template_mirror`: the three mirror modes `/place template` takes. */
+    public data object TemplateMirror : ArgumentParser(49)
+
+    /** `minecraft:template_rotation`: the four rotations `/place template` takes. */
+    public data object TemplateRotation : ArgumentParser(50)
+
     /** `minecraft:heightmap`: one of the heightmap types `/execute positioned over` accepts. */
     public data object Heightmap : ArgumentParser(51)
 
@@ -279,6 +335,13 @@ public sealed class ArgumentParser(
         public fun read(buffer: ByteBuffer): ArgumentParser =
             when (val registryId = buffer.readVarInt()) {
                 0 -> BrigadierBool
+                1 -> {
+                    val flags = buffer.readByte().toInt()
+                    BrigadierFloat(
+                        min = if (flags and 1 != 0) buffer.readFloat() else -Float.MAX_VALUE,
+                        max = if (flags and 2 != 0) buffer.readFloat() else Float.MAX_VALUE,
+                    )
+                }
                 2 -> {
                     val flags = buffer.readByte().toInt()
                     BrigadierDouble(
@@ -308,6 +371,7 @@ public sealed class ArgumentParser(
                 14 -> ItemStack
                 15 -> ItemPredicate
                 16 -> TeamColor
+                17 -> HexColor
                 18 -> TextComponent
                 19 -> Style
                 20 -> Message
@@ -327,14 +391,20 @@ public sealed class ArgumentParser(
                 34 -> ItemSlot
                 35 -> ItemSlots
                 36 -> ResourceLocation
+                37 -> Function
                 38 -> EntityAnchor
                 39 -> IntRange
                 40 -> FloatRange
                 41 -> Dimension
                 42 -> GameMode
                 43 -> Time(min = buffer.readInt())
+                44 -> ResourceOrTag(buffer.readProtocolString())
+                45 -> ResourceOrTagKey(buffer.readProtocolString())
                 46 -> Resource(buffer.readProtocolString())
                 47 -> ResourceKey(buffer.readProtocolString())
+                48 -> ResourceSelector(buffer.readProtocolString())
+                49 -> TemplateMirror
+                50 -> TemplateRotation
                 51 -> Heightmap
                 52 -> LootTable
                 55 -> Dialog

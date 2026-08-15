@@ -502,6 +502,8 @@ public data class LevelParticlesPacket(
     /** parity: `force`, which shows the particle past the client's own particle-count setting. */
     val overrideLimiter: Boolean = false,
     val alwaysShow: Boolean = false,
+    /** The type's own extra data, written straight after its id. Null for the types that carry none. */
+    val options: ParticleOptions? = null,
 ) {
     public fun write(buffer: ByteBuffer) {
         buffer.writeBoolean(overrideLimiter)
@@ -515,6 +517,7 @@ public data class LevelParticlesPacket(
         buffer.writeFloat(maxSpeed)
         buffer.writeInt(count)
         buffer.writeVarInt(particleTypeId)
+        options?.write(buffer)
     }
 
     public companion object {
