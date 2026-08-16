@@ -199,4 +199,23 @@ class EntityPacketsTest {
         base.write(without)
         assertEquals(3, withColour.readableBytes - without.readableBytes)
     }
+
+    /** parity: `Entity`'s shared flags at index 0 and its air supply at index 1. */
+    @Test
+    fun submersionMetadataRoundTrips() {
+        val buffer = ByteBuffer()
+        val packet = SetEntityDataPacket.submersion(entityId = 42, airSupply = 140, onFire = true)
+        packet.write(buffer)
+
+        val read = SetEntityDataPacket.read(buffer)
+        assertEquals(packet, read)
+        assertEquals(
+            SetEntityDataPacket.Entry.Bytes(SetEntityDataPacket.SHARED_FLAGS_INDEX, 1),
+            read.entries.first(),
+        )
+        assertEquals(
+            SetEntityDataPacket.Entry.Ints(SetEntityDataPacket.AIR_SUPPLY_INDEX, 140),
+            read.entries.last(),
+        )
+    }
 }

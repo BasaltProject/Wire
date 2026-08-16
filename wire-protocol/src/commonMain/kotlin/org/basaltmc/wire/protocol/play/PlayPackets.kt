@@ -1292,6 +1292,41 @@ public data class ServerboundUseItemOnPacket(
 }
 
 /**
+ * Serverbound, id 0x43: using an item without a block under the crosshair. Mirrors
+ * `ServerboundUseItemPacket`.
+ *
+ * A bucket rides on this one rather than on [ServerboundUseItemOnPacket]: fluids are not block
+ * targets, and the item's own `use` is what fills or empties it. The client predicts the change
+ * locally and undoes it only when the ack for [sequence] arrives, so a server that ignores this
+ * packet leaves the water it just scooped missing from that client for good.
+ */
+public data class ServerboundUseItemPacket(
+    val hand: ServerboundUseItemOnPacket.Hand,
+    val sequence: Int,
+    val yaw: Float,
+    val pitch: Float,
+) {
+    public fun write(buffer: ByteBuffer) {
+        buffer.writeVarInt(hand.ordinal)
+        buffer.writeVarInt(sequence)
+        buffer.writeFloat(yaw)
+        buffer.writeFloat(pitch)
+    }
+
+    public companion object {
+        public const val ID: Int = 0x43
+
+        public fun read(buffer: ByteBuffer): ServerboundUseItemPacket =
+            ServerboundUseItemPacket(
+                ServerboundUseItemOnPacket.Hand.entries[buffer.readVarInt()],
+                buffer.readVarInt(),
+                buffer.readFloat(),
+                buffer.readFloat(),
+            )
+    }
+}
+
+/**
  * Serverbound, id 0x24: middle-click "pick block" on a targeted block. Mirrors
  * `ServerboundPickItemFromBlockPacket`. [includeData] asks for the block's block-entity data
  * (a sign's text, a container's contents) copied onto the picked stack; this build ignores it,
