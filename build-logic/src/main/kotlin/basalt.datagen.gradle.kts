@@ -1069,6 +1069,7 @@ val DUMP_BLOCK_SUPPORT_SOURCE =
     import net.minecraft.world.level.block.Block;
     import net.minecraft.tags.BlockTags;
     import net.minecraft.world.level.block.Blocks;
+    import net.minecraft.world.level.block.Fallable;
     import net.minecraft.world.level.block.FallingBlock;
     import net.minecraft.world.level.block.FireBlock;
     import net.minecraft.world.level.block.FenceBlock;
@@ -1121,7 +1122,12 @@ val DUMP_BLOCK_SUPPORT_SOURCE =
                 if (state.is(BlockTags.PREVENTS_NEARBY_LEAF_DECAY)) families.append("prevents_decay,");
                 if (state.is(BlockTags.MAINTAINS_FARMLAND)) families.append("maintains_farmland,");
                 if (state.is(BlockTags.SUPPORTS_CACTUS)) families.append("supports_cactus,");
-                if (block instanceof FallingBlock) families.append("falling,");
+                if (state.is(BlockTags.SNIFFER_EGG_HATCH_BOOST)) families.append("hatch_boost,");
+                if (state.is(BlockTags.CAUSES_CONTINUOUS_GEYSER_ERUPTIONS)) families.append("geyser_continuous,");
+                if (state.is(BlockTags.CAUSES_PERIODIC_GEYSER_ERUPTIONS)) families.append("geyser_periodic,");
+                // Fallable, not FallingBlock: suspicious sand and gravel fall the same way
+                // and are the only two that implement it without extending it.
+                if (block instanceof Fallable) families.append("falling,");
                 if (block instanceof StairBlock) families.append("stairs,");
                 if (state.is(BlockTags.SOUL_FIRE_BASE_BLOCKS)) families.append("soul_fire_base,");
                     if (Block.isExceptionForConnection(state)) families.append("exception,");
@@ -1312,6 +1318,13 @@ val DUMP_BLOCK_SUPPORT_SOURCE =
             if (name.equals("getMinY")) return 0;
             if (name.equals("getHeight") && method.getParameterCount() == 0) return 384;
             if (name.equals("isClientSide")) return false;
+            // Full daylight, not the zero an unanswered int method gave: a crop asks for light in
+            // the same canSurvive this probe is measuring support with, so darkness made every
+            // direction fail and the state came out as if nothing held it up at all.
+            if (name.equals("getRawBrightness") || name.equals("getBrightness")
+                    || name.equals("getMaxLocalRawBrightness")) {
+                return 15;
+            }
             if (method.isDefault()) return InvocationHandler.invokeDefault(proxy, method, args);
             Class<?> returnType = method.getReturnType();
             if (returnType == boolean.class) return false;
