@@ -1065,3 +1065,54 @@ public data class RemoveMobEffectPacket(
             RemoveMobEffectPacket(buffer.readVarInt(), buffer.readVarInt())
     }
 }
+
+/**
+ * Clientbound, id 0x23: where an entity is, how fast it is going and which way it faces.
+ *
+ * Mirrors `ClientboundEntityPositionSyncPacket`. The velocity is the point of it: a client that
+ * knows it interpolates between updates, where a teleport snaps. Vanilla sends this for anything
+ * whose position has to be exact, and a falling block is one of them.
+ */
+public data class EntityPositionSyncPacket(
+    val entityId: Int,
+    val x: Double,
+    val y: Double,
+    val z: Double,
+    val velocityX: Double,
+    val velocityY: Double,
+    val velocityZ: Double,
+    val yaw: Float,
+    val pitch: Float,
+    val onGround: Boolean,
+) {
+    public fun write(buffer: ByteBuffer) {
+        buffer.writeVarInt(entityId)
+        buffer.writeDouble(x)
+        buffer.writeDouble(y)
+        buffer.writeDouble(z)
+        buffer.writeDouble(velocityX)
+        buffer.writeDouble(velocityY)
+        buffer.writeDouble(velocityZ)
+        buffer.writeFloat(yaw)
+        buffer.writeFloat(pitch)
+        buffer.writeBoolean(onGround)
+    }
+
+    public companion object {
+        public const val ID: Int = 0x23
+
+        public fun read(buffer: ByteBuffer): EntityPositionSyncPacket =
+            EntityPositionSyncPacket(
+                entityId = buffer.readVarInt(),
+                x = buffer.readDouble(),
+                y = buffer.readDouble(),
+                z = buffer.readDouble(),
+                velocityX = buffer.readDouble(),
+                velocityY = buffer.readDouble(),
+                velocityZ = buffer.readDouble(),
+                yaw = buffer.readFloat(),
+                pitch = buffer.readFloat(),
+                onGround = buffer.readBoolean(),
+            )
+    }
+}
