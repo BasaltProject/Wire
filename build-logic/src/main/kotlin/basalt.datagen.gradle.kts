@@ -840,6 +840,8 @@ class BlockSupportData(
     val index: List<Int>,
     val randomTick: List<Int>,
     val conductors: List<Int>,
+    val pushReactions: List<Pair<Int, String>>,
+    val brewing: List<List<String>>,
     val families: List<Pair<String, String>>,
     val fireOdds: List<Triple<Int, Int, Int>>,
     val weathering: List<Pair<String, String>>,
@@ -876,6 +878,8 @@ fun extractBlockSupport(workDir: File): BlockSupportData {
     val supportLines = mutableListOf<List<String>>()
     val randomTick = mutableListOf<Int>()
     val conductors = mutableListOf<Int>()
+    val pushReactions = mutableListOf<Pair<Int, String>>()
+    val brewing = mutableListOf<List<String>>()
     val families = mutableListOf<Pair<String, String>>()
     val fireOdds = mutableListOf<Triple<Int, Int, Int>>()
     val weathering = mutableListOf<Pair<String, String>>()
@@ -885,6 +889,8 @@ fun extractBlockSupport(workDir: File): BlockSupportData {
         when (columns.firstOrNull()) {
             "RANDOMTICK" -> randomTick += columns[1].toInt()
             "CONDUCTOR" -> conductors += columns[1].toInt()
+            "PUSH" -> pushReactions += columns[1].toInt() to columns[2]
+            "BREW" -> brewing += listOf(columns[1], columns[2], columns[3], columns[4])
             "WET" -> wetByState[columns[1].toInt()] = columns.drop(2).map { it.substringAfter('=') }
             "SUPPORT" -> supportLines += columns
             "FAMILY" -> families += columns[1] to columns[2].trimEnd(',')
@@ -917,6 +923,8 @@ fun extractBlockSupport(workDir: File): BlockSupportData {
         index.toList(),
         randomTick,
         conductors,
+        pushReactions,
+        brewing,
         families,
         fireOdds,
         weathering,
@@ -975,6 +983,12 @@ fun writeSupportTable(
     val tickBody = support.randomTick.chunked(20).joinToString(",\n") { row -> "        " + row.joinToString(", ") }
     val conductorBody =
         support.conductors.chunked(20).joinToString(",\n") { row -> "        " + row.joinToString(", ") }
+    val brewBody =
+        support.brewing.joinToString(",\n") { row ->
+            "        BrewingMix(\"" + row[0] + "\", \"" + row[1] + "\", \"" + row[2] + "\", \"" + row[3] + "\")"
+        }
+    val pushBody =
+        support.pushReactions.joinToString(",\n") { (state, reaction) -> "        $state to \"$reaction\"" }
     val byFamily = LinkedHashMap<String, MutableList<String>>()
     for ((blockId, names) in support.families) {
         for (name in names.split(',').filter { it.isNotEmpty() }) byFamily.getOrPut(name) { mutableListOf() } += blockId
@@ -1038,6 +1052,25 @@ fun writeSupportTable(
         CONDUCTOR_BODY,
             )
 
+        /**
+         * What a piston does with a state, for the states that are not simply pushed.
+         * parity: `BlockState.getPistonPushReaction`: `BLOCK` stops it, `DESTROY` breaks,
+         * `PUSH_ONLY` will not be pulled back and `IGNORE` is left where it is.
+         */
+        internal val ALL_PUSH_REACTIONS: List<Pair<Int, String>> =
+            listOf(
+        PUSH_BODY,
+            )
+
+        /**
+         * Every brew a stand can make: which list it belongs to, what goes in, what ingredient turns
+         * it and what comes out. parity: `PotionBrewing.bootstrap`, built in code and not in data.
+         */
+        internal val ALL_BREWING_MIXES: List<BrewingMix> =
+            listOf(
+        BREW_BODY,
+            )
+
         /** What each copper block turns into as it weathers. parity: `WeatheringCopper.NEXT_BY_BLOCK`. */
         internal val ALL_WEATHERING_STEPS: List<Pair<String, String>> =
             listOf(
@@ -1069,6 +1102,8 @@ fun writeSupportTable(
             .replace("INDEX_BODY", indexBody)
             .replace("TICK_BODY", tickBody)
             .replace("CONDUCTOR_BODY", conductorBody)
+            .replace("PUSH_BODY", pushBody)
+            .replace("BREW_BODY", brewBody)
             .replace("FAMILY_BODY", familyBody)
             .replace("FIRE_BODY", fireBody)
             .replace("COPPER_BODY", copperBody)
@@ -1102,8 +1137,10 @@ val DUMP_BLOCK_SUPPORT_SOURCE =
     import net.minecraft.tags.BlockTags;
     import net.minecraft.world.level.block.Blocks;
     import net.minecraft.world.flag.FeatureFlags;
+    import net.minecraft.world.item.alchemy.PotionBrewing;
     import net.minecraft.world.item.Item;
     import net.minecraft.world.level.block.entity.FuelValues;
+    import net.minecraft.world.level.material.PushReaction;
     import net.minecraft.world.level.block.Fallable;
     import net.minecraft.world.level.block.FallingBlock;
     import net.minecraft.world.level.block.FireBlock;
@@ -1158,6 +1195,9 @@ val DUMP_BLOCK_SUPPORT_SOURCE =
                 if (state.is(BlockTags.MAINTAINS_FARMLAND)) families.append("maintains_farmland,");
                 if (state.is(BlockTags.SUPPORTS_CACTUS)) families.append("supports_cactus,");
                 if (state.is(BlockTags.SNIFFER_EGG_HATCH_BOOST)) families.append("hatch_boost,");
+                // What a piston refuses to move whatever its push reaction says: the last line of
+                // `PistonBaseBlock.isPushable` is `!state.hasBlockEntity()`.
+                if (state.hasBlockEntity()) families.append("block_entity,");
                 if (state.is(BlockTags.CAUSES_CONTINUOUS_GEYSER_ERUPTIONS)) families.append("geyser_continuous,");
                 if (state.is(BlockTags.CAUSES_PERIODIC_GEYSER_ERUPTIONS)) families.append("geyser_periodic,");
                 // Fallable, not FallingBlock: suspicious sand and gravel fall the same way
@@ -1207,6 +1247,12 @@ val DUMP_BLOCK_SUPPORT_SOURCE =
                     // wire climbs over. parity: `BlockBehaviour.Properties.isRedstoneConductor`.
                     if (state.isRedstoneConductor(level, ORIGIN)) {
                         out.append("CONDUCTOR\t").append(id).append('\n');
+                    }
+                    // What a piston does with this state. Only the ones that are not NORMAL are
+                    // listed: everything else moves, which is the overwhelming majority.
+                    if (state.getPistonPushReaction() != PushReaction.NORMAL) {
+                        out.append("PUSH\t").append(id).append('\t')
+                           .append(state.getPistonPushReaction().name()).append('\n');
                     }
                     WORLD.clear();
                     if (survives(state, level)) {
@@ -1288,6 +1334,34 @@ val DUMP_BLOCK_SUPPORT_SOURCE =
             } catch (ReflectiveOperationException failure) {
                 throw new IllegalStateException("FuelValues.values moved: " + failure, failure);
             }
+            // The brewing table, which vanilla also builds in code: base potion, ingredient, result.
+            try {
+                PotionBrewing brewing = PotionBrewing.bootstrap(FeatureFlags.VANILLA_SET);
+                for (String field : new String[] {"potionMixes", "containerMixes"}) {
+                    java.lang.reflect.Field mixes = PotionBrewing.class.getDeclaredField(field);
+                    mixes.setAccessible(true);
+                    for (Object mix : (List<?>) mixes.get(brewing)) {
+                        java.lang.reflect.Method from = mix.getClass().getDeclaredMethod("from");
+                        java.lang.reflect.Method to = mix.getClass().getDeclaredMethod("to");
+                        java.lang.reflect.Method ingredient = mix.getClass().getDeclaredMethod("ingredient");
+                        from.setAccessible(true);
+                        to.setAccessible(true);
+                        ingredient.setAccessible(true);
+                        String fromName = describeHolder(from.invoke(mix));
+                        String toName = describeHolder(to.invoke(mix));
+                        StringBuilder items = new StringBuilder();
+                        ((net.minecraft.world.item.crafting.Ingredient) ingredient.invoke(mix)).items()
+                            .forEach(held -> {
+                                if (items.length() > 0) items.append(',');
+                                items.append(BuiltInRegistries.ITEM.getKey(held.value()).getPath());
+                            });
+                        out.append("BREW\t").append(field).append('\t').append(fromName).append('\t')
+                           .append(items).append('\t').append(toName).append('\n');
+                    }
+                }
+            } catch (ReflectiveOperationException failure) {
+                throw new IllegalStateException("PotionBrewing moved: " + failure, failure);
+            }
             System.err.println("always=" + always + " composite=" + composite);
             System.out.print(out);
         }
@@ -1311,6 +1385,15 @@ val DUMP_BLOCK_SUPPORT_SOURCE =
          * and naming it keeps the answer right for a state the probe never placed: an upside-down slab
          * holds a torch, its default state does not, and a list of blocks cannot tell them apart.
          */
+        /** A holder of a potion or an item, named the way the registry does. */
+        private static String describeHolder(Object holder) {
+            Object value = ((net.minecraft.core.Holder<?>) holder).value();
+            if (value instanceof net.minecraft.world.item.Item item) {
+                return BuiltInRegistries.ITEM.getKey(item).getPath();
+            }
+            return BuiltInRegistries.POTION.getKey((net.minecraft.world.item.alchemy.Potion) value).getPath();
+        }
+
         private static String shorten(String members, Direction direction, List<Block> blocks, LevelReader level) {
             if (members.isEmpty()) return members;
             StringBuilder full = new StringBuilder();
