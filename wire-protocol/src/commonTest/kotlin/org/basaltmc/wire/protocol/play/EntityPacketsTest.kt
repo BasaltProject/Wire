@@ -176,6 +176,56 @@ class EntityPacketsTest {
     }
 
     @Test
+    fun blockDestructionRoundTrips() {
+        val buffer = ByteBuffer()
+        val packet = BlockDestructionPacket(entityId = 5, pos = BlockPos(1, 64, -3), stage = 7)
+        packet.write(buffer)
+        assertEquals(packet, BlockDestructionPacket.read(buffer))
+    }
+
+    /** parity: `LevelEvent.PARTICLES_DESTROY_BLOCK`, whose data is the state id that broke. */
+    @Test
+    fun levelEventRoundTrips() {
+        val buffer = ByteBuffer()
+        val packet =
+            LevelEventPacket(LevelEventPacket.PARTICLES_DESTROY_BLOCK, BlockPos(-2, 70, 8), data = 1234)
+        packet.write(buffer)
+        assertEquals(packet, LevelEventPacket.read(buffer))
+    }
+
+    /** The crouch everyone else sees: the flags byte and the pose travel together. */
+    @Test
+    fun postureCarriesTheFlagsAndThePose() {
+        val buffer = ByteBuffer()
+        val flags = SetEntityDataPacket.FLAG_SNEAKING or SetEntityDataPacket.FLAG_ON_FIRE
+        SetEntityDataPacket.posture(entityId = 3, flags = flags, pose = Pose.CROUCHING).write(buffer)
+
+        val decoded = SetEntityDataPacket.read(buffer)
+        val bytes = decoded.entries.filterIsInstance<SetEntityDataPacket.Entry.Bytes>().single()
+        assertEquals(SetEntityDataPacket.SHARED_FLAGS_INDEX, bytes.index)
+        assertEquals(flags.toByte(), bytes.value)
+        assertEquals(
+            Pose.CROUCHING,
+            decoded.entries
+                .filterIsInstance<SetEntityDataPacket.Entry.Poses>()
+                .single()
+                .pose,
+        )
+    }
+
+    /** parity: `ClientboundRotateHeadPacket`, the head that turns apart from the body. */
+    @Test
+    fun rotateHeadRoundTripsWithinAStep() {
+        val buffer = ByteBuffer()
+        RotateHeadPacket(entityId = 7, headYaw = 90f).write(buffer)
+
+        val decoded = RotateHeadPacket.read(buffer)
+        assertEquals(7, decoded.entityId)
+        // One byte for a full turn, so 90 degrees comes back within a step and a half.
+        assertTrue(kotlin.math.abs(decoded.headYaw - 90f) < 2f, "was ${decoded.headYaw}")
+    }
+
+    @Test
     fun absorptionMetadataRoundTrips() {
         val buffer = ByteBuffer()
         // 17, right after `Avatar`'s two: an older version would say 15 and paint no yellow hearts.
@@ -243,7 +293,12 @@ class EntityPacketsTest {
     @Test
     fun submersionMetadataRoundTrips() {
         val buffer = ByteBuffer()
-        val packet = SetEntityDataPacket.submersion(entityId = 42, airSupply = 140, onFire = true)
+        val packet =
+            SetEntityDataPacket.submersion(
+                entityId = 42,
+                airSupply = 140,
+                flags = SetEntityDataPacket.FLAG_ON_FIRE,
+            )
         packet.write(buffer)
 
         val read = SetEntityDataPacket.read(buffer)
