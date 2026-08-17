@@ -356,6 +356,9 @@ public data class OpenScreenPacket(
         /** `minecraft:generic_9x3`, the three rows a single chest and a barrel show. */
         public const val CHEST_MENU: Int = 2
 
+        /** `minecraft:crafter_3x3`, the nine slots of a crafter with no result slot. */
+        public const val CRAFTER_MENU: Int = 7
+
         /** The three cookers, whose screens differ only in which recipes their book offers. */
         public const val FURNACE_MENU: Int = 14
         public const val BLAST_FURNACE_MENU: Int = 10
