@@ -83,12 +83,16 @@ tasks.register("generate") {
         val food = parseFoodComponents(File(reportsDir, "minecraft/components/item"))
         writeFoodTable(File(registryDir, "VanillaItemFood.kt"), food)
 
+        val support = extractBlockSupport(workDir)
+        writeSupportTable(File(registryDir, "VanillaBlockSupport.kt"), support)
+
         println(
             "Regenerated ${blockStates.size} block default states, ${items.size} items, " +
                 "${hardness.size} block hardness entries, ${toolRules.size} tool(s), " +
                 "${components.size} data component type(s), ${durability.size} damageable item(s), " +
                 "${shapes.second.size} block state shape(s), ${definitions.size} state definition(s), " +
-                "${armour.size} piece(s) of armour and ${food.size} edible item(s) from $jarPath.",
+                "${armour.size} piece(s) of armour, ${food.size} edible item(s) and " +
+                "${support.rules.size} support rule(s) from $jarPath.",
         )
     }
 }
@@ -443,11 +447,12 @@ fun extractBlockShapes(workDir: File): Pair<List<String>, List<Int>> {
         val columns = line.split('\t')
         val stateId = columns[1].toInt()
         val boxes =
-            columns[9]
+            columns[11]
                 .split(';')
                 .filter { it.isNotEmpty() }
                 .joinToString(";") { box -> box.split(',').joinToString(",") { toThirtySeconds(it) } }
-        val entry = "${columns[3]}|${columns[4]}|${columns[5]}|${columns[6]}|${columns[8]}|$boxes"
+        val entry =
+            "${columns[3]}|${columns[4]}|${columns[5]}|${columns[6]}|${columns[8]}|${columns[9]}|${columns[10]}|$boxes"
         index += stateId to entries.getOrPut(entry) { entries.size }
     }
     check(index.isNotEmpty()) { "The shape harness printed nothing" }
@@ -488,6 +493,7 @@ val DUMP_SHAPES_SOURCE =
     import net.minecraft.server.Bootstrap;
     import net.minecraft.world.level.EmptyBlockGetter;
     import net.minecraft.world.level.block.Block;
+    import net.minecraft.world.level.block.SupportType;
     import net.minecraft.world.level.block.state.BlockState;
     import net.minecraft.world.phys.AABB;
     import net.minecraft.world.phys.shapes.CollisionContext;
@@ -514,14 +520,12 @@ val DUMP_SHAPES_SOURCE =
                              .append(box.maxX).append(',').append(box.maxY).append(',').append(box.maxZ);
                     }
                     StringBuilder sturdy = new StringBuilder();
+                    StringBuilder centre = new StringBuilder();
+                    StringBuilder rigid = new StringBuilder();
                     for (Direction direction : Direction.values()) {
-                        boolean value;
-                        try {
-                            value = state.isFaceSturdy(EmptyBlockGetter.INSTANCE, BlockPos.ZERO, direction);
-                        } catch (Throwable t) {
-                            value = false;
-                        }
-                        sturdy.append(value ? '1' : '0');
+                        sturdy.append(supports(state, direction, SupportType.FULL) ? '1' : '0');
+                        centre.append(supports(state, direction, SupportType.CENTER) ? '1' : '0');
+                        rigid.append(supports(state, direction, SupportType.RIGID) ? '1' : '0');
                     }
                     out.append("SHAPE\t").append(Block.getId(state)).append('\t')
                        .append(BuiltInRegistries.BLOCK.getKey(block)).append('\t')
@@ -531,10 +535,21 @@ val DUMP_SHAPES_SOURCE =
                        .append(state.isSolid() ? 1 : 0).append('\t')
                        .append(state.propagatesSkylightDown() ? 1 : 0).append('\t')
                        .append(sturdy).append('\t')
+                       .append(centre).append('\t')
+                       .append(rigid).append('\t')
                        .append(boxes).append('\n');
                 }
             }
             System.out.print(out);
+        }
+
+        /** A face that cannot be asked supports nothing, which is what an empty shape answers anyway. */
+        private static boolean supports(BlockState state, Direction direction, SupportType support) {
+            try {
+                return state.isFaceSturdy(EmptyBlockGetter.INSTANCE, BlockPos.ZERO, direction, support);
+            } catch (Throwable t) {
+                return false;
+            }
         }
     }
     """.trimIndent()
@@ -562,8 +577,9 @@ fun writeShapeTable(
         /**
          * Every distinct block shape, from the real server jar's own block classes: light
          * dampening, whether it blocks movement, whether something placed there replaces it,
-         * whether it counts as solid, which faces are sturdy (down, up, north, south, west, east)
-         * and the boxes of the collision shape in thirty-seconds of a block.
+         * whether it counts as solid, which faces are sturdy, which support a centre and which
+         * support a rigid block (down, up, north, south, west, east each time) and the boxes of the
+         * collision shape in thirty-seconds of a block.
          */
         internal val ALL_BLOCK_SHAPES: List<String> =
             listOf(
@@ -805,3 +821,374 @@ fun writeFoodTable(
         """.trimIndent().replace("FOOD_BODY", body) + "\n",
     )
 }
+
+/** What each block state needs around it to stay where it is, plus which states tick at random. */
+class BlockSupportData(
+    val sets: List<String>,
+    val rules: List<String>,
+    val index: List<Int>,
+    val randomTick: List<Int>,
+)
+
+/**
+ * Runs [DUMP_BLOCK_SUPPORT_SOURCE] and folds its answers into distinct rules.
+ *
+ * `canSurvive` is code, not data, so the harness calls it for real, one neighbour at a time. What
+ * comes back per direction is either "any block with a sturdy face", "any block that supports a
+ * centre", or a list of blocks; identical tuples of those six answers collapse into one rule.
+ */
+fun extractBlockSupport(workDir: File): BlockSupportData {
+    val classpath = harnessClasspath(workDir)
+    val harnessDir = File(workDir, "harness")
+    harnessDir.mkdirs()
+    File(harnessDir, "DumpBlockSupport.java").writeText(DUMP_BLOCK_SUPPORT_SOURCE)
+    runHarness(
+        listOf(
+            "javac", "-nowarn", "-cp", classpath, "-d", harnessDir.absolutePath,
+            File(harnessDir, "DumpBlockSupport.java").absolutePath,
+        ),
+        workDir,
+    )
+    val output = File(harnessDir, "support.tsv")
+    runHarness(
+        listOf("java", "-cp", "${harnessDir.absolutePath}${File.pathSeparator}$classpath", "DumpBlockSupport"),
+        workDir,
+        output,
+    )
+
+    val wetByState = HashMap<Int, List<String>>()
+    val supportLines = mutableListOf<List<String>>()
+    val randomTick = mutableListOf<Int>()
+    for (line in output.readLines()) {
+        val columns = line.split('\t')
+        when (columns.firstOrNull()) {
+            "RANDOMTICK" -> randomTick += columns[1].toInt()
+            "WET" -> wetByState[columns[1].toInt()] = columns.drop(2).map { it.substringAfter('=') }
+            "SUPPORT" -> supportLines += columns
+        }
+    }
+    check(supportLines.isNotEmpty()) { "The support harness printed nothing" }
+
+    val sets = LinkedHashMap<String, Int>()
+    val rules = LinkedHashMap<String, Int>()
+    val index = IntArray(supportLines.maxOf { it[1].toInt() } + 1)
+    for (columns in supportLines) {
+        val stateId = columns[1].toInt()
+        // No single neighbour holds it up, or something must *not* be beside it: either way this
+        // build cannot express the rule, and a rule it cannot express must never break a block.
+        if (columns[3] == "0" || columns[4] == "0") {
+            index[stateId] = UNKNOWN_SUPPORT
+            continue
+        }
+        val dry = columns.drop(5).map { it.substringAfter('=') }
+        val wet = wetByState[stateId] ?: List(dry.size) { "" }
+        val rule = (dry + wet).joinToString("|") { token -> encodeSupportToken(token, sets) }
+        index[stateId] = FIRST_SUPPORT_RULE + rules.getOrPut(rule) { rules.size }
+    }
+    return BlockSupportData(sets.keys.map { encodeBlockSet(it) }, rules.keys.toList(), index.toList(), randomTick)
+}
+
+/** 0 means nothing holds this state up; 1 means the rule is one this build does not model. */
+val UNKNOWN_SUPPORT = 1
+val FIRST_SUPPORT_RULE = 2
+
+fun encodeSupportToken(
+    token: String,
+    sets: LinkedHashMap<String, Int>,
+): String =
+    when (token) {
+        "", "*", "c", "r" -> token
+        else -> "#" + sets.getOrPut(token) { sets.size }
+    }
+
+/** A block-id list as a base64 bitset, which is far shorter than the list once a set is large. */
+fun encodeBlockSet(members: String): String {
+    val ids = members.split(',').filter { it.isNotEmpty() }.map { it.toInt() }
+    val bytes = ByteArray(ids.max() / 8 + 1)
+    for (id in ids) bytes[id / 8] = (bytes[id / 8].toInt() or (1 shl (id % 8))).toByte()
+    return java.util.Base64.getEncoder().encodeToString(bytes)
+}
+
+val SUPPORT_KDOC =
+    """
+    /**
+     * What each block state needs around it to stay put, asked of the real block classes.
+     *
+     * One rule per distinct answer. Each rule is twelve fields: six directions dry, then the same
+     * six with water at and around the position, and a field is empty when that side holds nothing
+     * up, `*` for any block whose face towards it is sturdy, `c` for one that supports a centre,
+     * and `#n` for a member of set n. A state survives when any one of its fields is satisfied.
+     */
+    """.trimIndent()
+
+/** Writes the rules, their sets, one index per block state and the states that tick at random. */
+fun writeSupportTable(
+    file: File,
+    support: BlockSupportData,
+) {
+    val setsBody = support.sets.joinToString(",\n") { "        \"$it\"" }
+    val rulesBody = support.rules.joinToString(",\n") { "        \"$it\"" }
+    val encoded =
+        buildString {
+            for (rule in support.index) {
+                append(SHAPE_INDEX_ALPHABET[rule / SHAPE_INDEX_ALPHABET.length])
+                append(SHAPE_INDEX_ALPHABET[rule % SHAPE_INDEX_ALPHABET.length])
+            }
+        }
+    val indexBody = encoded.chunked(100).joinToString(" +\n") { "        \"$it\"" }
+    val tickBody = support.randomTick.chunked(20).joinToString(",\n") { row -> "        " + row.joinToString(", ") }
+    file.writeText(
+        """
+        package org.basaltmc.server.registry
+
+        SUPPORT_KDOC
+        internal val ALL_SUPPORT_RULES: List<String> =
+            listOf(
+        RULES_BODY,
+            )
+
+        /** Each rule's block sets, as base64 bitsets over block registry ids (not state ids). */
+        internal val ALL_SUPPORT_SETS: List<String> =
+            listOf(
+        SETS_BODY,
+            )
+
+        /** Two characters per block state id: 0 for "nothing holds it up", 1 for a rule not modelled here. */
+        internal const val BLOCK_SUPPORT_INDEX: String =
+        INDEX_BODY
+
+        /** The states vanilla ticks at random, which is what makes crops grow and ice melt. */
+        internal val RANDOM_TICKING_STATES: IntArray =
+            intArrayOf(
+        TICK_BODY,
+            )
+        """.trimIndent()
+            .replace("SUPPORT_KDOC", SUPPORT_KDOC)
+            .replace("RULES_BODY", rulesBody)
+            .replace("SETS_BODY", setsBody)
+            .replace("INDEX_BODY", indexBody)
+            .replace("TICK_BODY", tickBody) + "\n",
+    )
+}
+
+val DUMP_BLOCK_SUPPORT_SOURCE =
+    """
+    import java.lang.reflect.InvocationHandler;
+    import java.lang.reflect.Method;
+    import java.lang.reflect.Proxy;
+    import java.util.ArrayList;
+    import java.util.HashMap;
+    import java.util.List;
+    import java.util.Map;
+
+    import net.minecraft.SharedConstants;
+    import net.minecraft.core.BlockPos;
+    import net.minecraft.core.Direction;
+    import net.minecraft.core.Registry;
+    import net.minecraft.core.RegistryAccess;
+    import net.minecraft.core.registries.BuiltInRegistries;
+    import net.minecraft.server.Bootstrap;
+    import net.minecraft.server.packs.PackType;
+    import net.minecraft.server.packs.repository.ServerPacksSource;
+    import net.minecraft.server.packs.resources.MultiPackResourceManager;
+    import net.minecraft.tags.TagLoader;
+    import net.minecraft.world.level.LevelReader;
+    import net.minecraft.world.level.block.Block;
+    import net.minecraft.world.level.block.Blocks;
+    import net.minecraft.world.level.block.SupportType;
+    import net.minecraft.world.level.block.state.BlockState;
+    import net.minecraft.world.level.material.Fluids;
+
+    /**
+     * Asks the real block classes what each state needs under or beside it to stay put.
+     *
+     * canSurvive is code, not data, so the only honest way to get it is to call it. The level it is
+     * called against is a proxy holding a handful of positions: default methods run their own bodies,
+     * the few abstract ones answer from that map.
+     */
+    public final class DumpBlockSupport {
+        private static final Map<Long, BlockState> WORLD = new HashMap<>();
+        private static final BlockPos ORIGIN = new BlockPos(0, 64, 0);
+
+        public static void main(String[] args) {
+            SharedConstants.tryDetectVersion();
+            Bootstrap.bootStrap();
+            bindVanillaTags();
+
+            LevelReader level = (LevelReader) Proxy.newProxyInstance(
+                    DumpBlockSupport.class.getClassLoader(),
+                    new Class<?>[] { LevelReader.class },
+                    DumpBlockSupport::handle);
+
+            List<Block> blocks = new ArrayList<>();
+            for (Block block : BuiltInRegistries.BLOCK) blocks.add(block);
+
+            StringBuilder out = new StringBuilder();
+            int always = 0;
+            int composite = 0;
+            for (Block block : blocks) {
+                for (BlockState state : block.getStateDefinition().getPossibleStates()) {
+                    int id = Block.getId(state);
+                    if (state.isRandomlyTicking()) out.append("RANDOMTICK\t").append(id).append('\n');
+                    WORLD.clear();
+                    if (survives(state, level)) {
+                        always++;
+                        continue;
+                    }
+                    StringBuilder line = new StringBuilder();
+                    StringBuilder wetLine = new StringBuilder();
+                    boolean any = false;
+                    boolean crowded = true;
+                    for (Direction direction : Direction.values()) {
+                        StringBuilder members = new StringBuilder();
+                        StringBuilder wetMembers = new StringBuilder();
+                        Block first = null;
+                        for (Block candidate : blocks) {
+                            WORLD.clear();
+                            WORLD.put(ORIGIN.relative(direction).asLong(), candidate.defaultBlockState());
+                            if (survives(state, level)) {
+                                if (members.length() > 0) members.append(',');
+                                members.append(BuiltInRegistries.BLOCK.getId(candidate));
+                                any = true;
+                                if (first == null) first = candidate;
+                            }
+                            // The same question in water: sugar cane wants a river beside it and kelp
+                            // wants to be under one, and a probe of dry neighbours says they can live
+                            // nowhere at all. A block that answers here and not above is never broken
+                            // for standing in the wrong place; it is only kept.
+                            flood(direction, candidate);
+                            if (survives(state, level)) {
+                                if (wetMembers.length() > 0) wetMembers.append(',');
+                                wetMembers.append(BuiltInRegistries.BLOCK.getId(candidate));
+                                any = true;
+                            }
+                        }
+                        if (wetLine.length() > 0) wetLine.append('\t');
+                        wetLine.append(direction.getName()).append('=')
+                               .append(wetMembers.toString().contentEquals(members) ? "" : wetMembers);
+                        // Whether that same support still holds with the other five sides walled in: a
+                        // block that says no here has a condition about what must *not* be next to it,
+                        // and one neighbour at a time cannot see it.
+                        if (first != null) {
+                            WORLD.clear();
+                            for (Direction other : Direction.values()) {
+                                WORLD.put(ORIGIN.relative(other).asLong(),
+                                        (other == direction ? first : Blocks.STONE).defaultBlockState());
+                            }
+                            if (!survives(state, level)) crowded = false;
+                        }
+                        if (line.length() > 0) line.append('\t');
+                        line.append(direction.getName()).append('=').append(shorten(members.toString(), direction, blocks, level));
+                    }
+                    if (!any) composite++;
+                    out.append("SUPPORT\t").append(id).append('\t')
+                       .append(BuiltInRegistries.BLOCK.getKey(block)).append('\t')
+                       .append(any ? "1" : "0").append('\t')
+                       .append(crowded ? "1" : "0").append('\t')
+                       .append(line).append('\n');
+                    if (wetLine.toString().replace("=", "").replace("\t", "")
+                            .replaceAll("[a-z]", "").length() > 0) {
+                        out.append("WET\t").append(id).append('\t').append(wetLine).append('\n');
+                    }
+                }
+            }
+            System.err.println("always=" + always + " composite=" + composite);
+            System.out.print(out);
+        }
+
+        /**
+         * Binds the block tags from the built-in datapack. Without them every `state.is(SOME_TAG)` is
+         * false, and a sapling comes out unable to stand on anything at all.
+         */
+        private static void bindVanillaTags() {
+            MultiPackResourceManager manager = new MultiPackResourceManager(
+                    PackType.SERVER_DATA, List.of(ServerPacksSource.createVanillaPackSource()));
+            RegistryAccess.Frozen registries = RegistryAccess.fromRegistryOfRegistries(BuiltInRegistries.REGISTRY);
+            for (Registry.PendingTags<?> pending : TagLoader.loadTagsForExistingRegistries(manager, registries)) {
+                pending.apply();
+            }
+        }
+
+        /**
+         * Replaces a member list with `*` or `c` when it is exactly the blocks whose face towards this
+         * one is sturdy, or supports its centre. That is the condition most blocks really ask about,
+         * and naming it keeps the answer right for a state the probe never placed: an upside-down slab
+         * holds a torch, its default state does not, and a list of blocks cannot tell them apart.
+         */
+        private static String shorten(String members, Direction direction, List<Block> blocks, LevelReader level) {
+            if (members.isEmpty()) return members;
+            StringBuilder full = new StringBuilder();
+            StringBuilder centre = new StringBuilder();
+            StringBuilder rigid = new StringBuilder();
+            Direction facing = direction.getOpposite();
+            BlockPos pos = ORIGIN.relative(direction);
+            for (Block candidate : blocks) {
+                WORLD.clear();
+                BlockState support = candidate.defaultBlockState();
+                WORLD.put(pos.asLong(), support);
+                int id = BuiltInRegistries.BLOCK.getId(candidate);
+                if (support.isFaceSturdy(level, pos, facing, SupportType.FULL)) {
+                    if (full.length() > 0) full.append(',');
+                    full.append(id);
+                }
+                if (support.isFaceSturdy(level, pos, facing, SupportType.CENTER)) {
+                    if (centre.length() > 0) centre.append(',');
+                    centre.append(id);
+                }
+                if (support.isFaceSturdy(level, pos, facing, SupportType.RIGID)) {
+                    if (rigid.length() > 0) rigid.append(',');
+                    rigid.append(id);
+                }
+            }
+            if (members.contentEquals(full)) return "*";
+            if (members.contentEquals(centre)) return "c";
+            if (members.contentEquals(rigid)) return "r";
+            return members;
+        }
+
+        /** The candidate in place, water at this position and around it: the wet half of every probe. */
+        private static void flood(Direction direction, Block candidate) {
+            WORLD.clear();
+            WORLD.put(ORIGIN.asLong(), Blocks.WATER.defaultBlockState());
+            for (Direction side : Direction.Plane.HORIZONTAL) {
+                WORLD.put(ORIGIN.relative(side).asLong(), Blocks.WATER.defaultBlockState());
+                // Sugar cane looks beside the block it stands on, not beside itself.
+                WORLD.put(ORIGIN.below().relative(side).asLong(), Blocks.WATER.defaultBlockState());
+            }
+            WORLD.put(ORIGIN.relative(direction).asLong(), candidate.defaultBlockState());
+        }
+
+        private static boolean survives(BlockState state, LevelReader level) {
+            try {
+                return state.canSurvive(level, ORIGIN);
+            } catch (Throwable t) {
+                return true;
+            }
+        }
+
+        private static Object handle(Object proxy, Method method, Object[] args) throws Throwable {
+            String name = method.getName();
+            if (name.equals("getBlockState") && args != null && args.length == 1) {
+                BlockState state = WORLD.get(((BlockPos) args[0]).asLong());
+                return state == null ? Blocks.AIR.defaultBlockState() : state;
+            }
+            if (name.equals("getFluidState") && args != null && args.length == 1) {
+                BlockState state = WORLD.get(((BlockPos) args[0]).asLong());
+                return state == null ? Fluids.EMPTY.defaultFluidState() : state.getFluidState();
+            }
+            if (name.equals("getBlockEntity")) return null;
+            if (name.equals("getMinY")) return 0;
+            if (name.equals("getHeight") && method.getParameterCount() == 0) return 384;
+            if (name.equals("isClientSide")) return false;
+            if (method.isDefault()) return InvocationHandler.invokeDefault(proxy, method, args);
+            Class<?> returnType = method.getReturnType();
+            if (returnType == boolean.class) return false;
+            if (returnType == int.class) return 0;
+            if (returnType == long.class) return 0L;
+            if (returnType == float.class) return 0f;
+            if (returnType == double.class) return 0d;
+            if (returnType == void.class) return null;
+            return null;
+        }
+    }
+    """.trimIndent()
