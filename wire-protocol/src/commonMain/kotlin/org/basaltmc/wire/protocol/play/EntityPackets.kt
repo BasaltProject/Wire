@@ -1,5 +1,6 @@
 package org.basaltmc.wire.protocol.play
 
+import org.basaltmc.wire.common.Identifier
 import org.basaltmc.wire.io.ByteBuffer
 import org.basaltmc.wire.protocol.ProtocolException
 import org.basaltmc.wire.protocol.readBoolean
@@ -679,5 +680,151 @@ public data class TrackedWaypointPacket(
                 buffer.readVarInt(),
             )
         }
+    }
+}
+
+/**
+ * Clientbound, id 0x83: an entity's attributes and the modifiers on them. Mirrors
+ * `ClientboundUpdateAttributesPacket`.
+ *
+ * This is how a client learns about mining efficiency: it reads `minecraft:mining_efficiency` off
+ * its own attribute map, which only this packet fills, and not off the item in its hand.
+ */
+public data class UpdateAttributesPacket(
+    val entityId: Int,
+    val attributes: List<AttributeSnapshot>,
+) {
+    public data class AttributeSnapshot(
+        /** The `minecraft:attribute` registry id. */
+        val attribute: Int,
+        val base: Double,
+        val modifiers: List<Modifier> = emptyList(),
+    )
+
+    public data class Modifier(
+        val id: Identifier,
+        val amount: Double,
+        val operation: Operation,
+    )
+
+    /** parity: `AttributeModifier.Operation`, in its own declared order. */
+    public enum class Operation {
+        ADD_VALUE,
+        ADD_MULTIPLIED_BASE,
+        ADD_MULTIPLIED_TOTAL,
+    }
+
+    public fun write(buffer: ByteBuffer) {
+        buffer.writeVarInt(entityId)
+        buffer.writeVarInt(attributes.size)
+        for (attribute in attributes) {
+            buffer.writeVarInt(attribute.attribute)
+            buffer.writeDouble(attribute.base)
+            buffer.writeVarInt(attribute.modifiers.size)
+            for (modifier in attribute.modifiers) {
+                buffer.writeProtocolString(modifier.id.toString())
+                buffer.writeDouble(modifier.amount)
+                buffer.writeVarInt(modifier.operation.ordinal)
+            }
+        }
+    }
+
+    public companion object {
+        public const val ID: Int = 0x83
+
+        public fun read(buffer: ByteBuffer): UpdateAttributesPacket {
+            val entityId = buffer.readVarInt()
+            val attributes =
+                List(buffer.readVarInt()) {
+                    val id = buffer.readVarInt()
+                    val base = buffer.readDouble()
+                    val modifiers =
+                        List(buffer.readVarInt()) {
+                            Modifier(
+                                Identifier.parse(buffer.readProtocolString()),
+                                buffer.readDouble(),
+                                Operation.entries[buffer.readVarInt()],
+                            )
+                        }
+                    AttributeSnapshot(id, base, modifiers)
+                }
+            return UpdateAttributesPacket(entityId, attributes)
+        }
+    }
+}
+
+/**
+ * Clientbound, id 0x84: one status effect on an entity. Mirrors `ClientboundUpdateMobEffectPacket`.
+ *
+ * The effect id travels bare: `MobEffect.STREAM_CODEC` is `holderRegistry`, not `holder`, so there
+ * is no `+1` here. The two are easy to confuse and the wrong one silently shifts every effect.
+ */
+public data class UpdateMobEffectPacket(
+    val entityId: Int,
+    /** The `minecraft:mob_effect` registry id. */
+    val effect: Int,
+    val amplifier: Int,
+    val durationTicks: Int,
+    val ambient: Boolean = false,
+    val visible: Boolean = true,
+    val showIcon: Boolean = true,
+    val blend: Boolean = false,
+) {
+    public fun write(buffer: ByteBuffer) {
+        buffer.writeVarInt(entityId)
+        buffer.writeVarInt(effect)
+        buffer.writeVarInt(amplifier)
+        buffer.writeVarInt(durationTicks)
+        var flags = 0
+        if (ambient) flags = flags or FLAG_AMBIENT
+        if (visible) flags = flags or FLAG_VISIBLE
+        if (showIcon) flags = flags or FLAG_SHOW_ICON
+        if (blend) flags = flags or FLAG_BLEND
+        buffer.writeByte(flags.toByte())
+    }
+
+    public companion object {
+        public const val ID: Int = 0x84
+
+        private const val FLAG_AMBIENT = 1
+        private const val FLAG_VISIBLE = 2
+        private const val FLAG_SHOW_ICON = 4
+        private const val FLAG_BLEND = 8
+
+        public fun read(buffer: ByteBuffer): UpdateMobEffectPacket {
+            val entityId = buffer.readVarInt()
+            val effect = buffer.readVarInt()
+            val amplifier = buffer.readVarInt()
+            val duration = buffer.readVarInt()
+            val flags = buffer.readByte().toInt()
+            return UpdateMobEffectPacket(
+                entityId,
+                effect,
+                amplifier,
+                duration,
+                ambient = flags and FLAG_AMBIENT != 0,
+                visible = flags and FLAG_VISIBLE != 0,
+                showIcon = flags and FLAG_SHOW_ICON != 0,
+                blend = flags and FLAG_BLEND != 0,
+            )
+        }
+    }
+}
+
+/** Clientbound, id 0x4e: one status effect gone. Mirrors `ClientboundRemoveMobEffectPacket`. */
+public data class RemoveMobEffectPacket(
+    val entityId: Int,
+    val effect: Int,
+) {
+    public fun write(buffer: ByteBuffer) {
+        buffer.writeVarInt(entityId)
+        buffer.writeVarInt(effect)
+    }
+
+    public companion object {
+        public const val ID: Int = 0x4e
+
+        public fun read(buffer: ByteBuffer): RemoveMobEffectPacket =
+            RemoveMobEffectPacket(buffer.readVarInt(), buffer.readVarInt())
     }
 }
