@@ -34,3 +34,25 @@ public val Direction.normalZ: Int
             Direction.SOUTH -> 1
             else -> 0
         }
+
+/** parity: `Pose`, whose ordinal is what the wire carries. Only the ones this build sets are used. */
+public enum class Pose {
+    STANDING,
+    FALL_FLYING,
+    SLEEPING,
+    SWIMMING,
+    SPIN_ATTACK,
+    CROUCHING,
+    LONG_JUMPING,
+    DYING,
+    CROAKING,
+    USING_TONGUE,
+    SITTING,
+    ROARING,
+    SNIFFING,
+    EMERGING,
+    DIGGING,
+    SLIDING,
+    SHOOTING,
+    INHALING,
+}

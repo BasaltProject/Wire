@@ -80,12 +80,15 @@ tasks.register("generate") {
         val armour = parseArmourComponents(File(reportsDir, "minecraft/components/item"))
         writeArmourTable(File(registryDir, "VanillaItemArmour.kt"), armour)
 
+        val food = parseFoodComponents(File(reportsDir, "minecraft/components/item"))
+        writeFoodTable(File(registryDir, "VanillaItemFood.kt"), food)
+
         println(
             "Regenerated ${blockStates.size} block default states, ${items.size} items, " +
                 "${hardness.size} block hardness entries, ${toolRules.size} tool(s), " +
                 "${components.size} data component type(s), ${durability.size} damageable item(s), " +
-                "${shapes.second.size} block state shape(s), ${definitions.size} state definition(s) " +
-                "and ${armour.size} piece(s) of armour from $jarPath.",
+                "${shapes.second.size} block state shape(s), ${definitions.size} state definition(s), " +
+                "${armour.size} piece(s) of armour and ${food.size} edible item(s) from $jarPath.",
         )
     }
 }
@@ -709,5 +712,93 @@ fun writeArmourTable(
         ARMOUR_BODY,
             )
         """.trimIndent().replace("ARMOUR_BODY", body) + "\n",
+    )
+}
+
+
+/**
+ * Every edible item: what it feeds, what it saturates, whether it goes down on a full stomach and
+ * how long it takes, from the item component reports' `minecraft:food` and `minecraft:consumable`.
+ *
+ * The effects an item applies when eaten are left alone here: they are a list of effect instances,
+ * which is a different shape and a different problem.
+ */
+fun parseFoodComponents(componentsDir: File): List<String> {
+    if (!componentsDir.isDirectory) return emptyList()
+    val slurper = groovy.json.JsonSlurper()
+    return componentsDir
+        .listFiles { file -> file.extension == "json" }
+        .orEmpty()
+        .sortedBy { it.name }
+        .mapNotNull { file ->
+            @Suppress("UNCHECKED_CAST")
+            val root = slurper.parse(file) as Map<String, Any?>
+            @Suppress("UNCHECKED_CAST")
+            val components = root["components"] as? Map<String, Any?> ?: return@mapNotNull null
+            @Suppress("UNCHECKED_CAST")
+            val consumable = components["minecraft:consumable"] as? Map<String, Any?> ?: return@mapNotNull null
+            @Suppress("UNCHECKED_CAST")
+            val food = components["minecraft:food"] as? Map<String, Any?> ?: emptyMap()
+            // Milk is the reason this is not simply "has a food component": it feeds nobody and
+            // clears every effect. An item that neither feeds nor does anything is left out.
+            if (food.isEmpty() && consumable["on_consume_effects"] == null) return@mapNotNull null
+            val nutrition = (food["nutrition"] as? Number)?.toInt() ?: 0
+            val saturation = (food["saturation"] as? Number)?.toFloat() ?: 0f
+            val alwaysEat = food["can_always_eat"] as? Boolean ?: false
+            // parity: `Consumable.DEFAULT_CONSUME_SECONDS`, the 1.6 seconds eating takes.
+            val seconds = (consumable["consume_seconds"] as? Number)?.toFloat() ?: 1.6f
+            @Suppress("UNCHECKED_CAST")
+            val onConsume = consumable["on_consume_effects"] as? List<Map<String, Any?>> ?: emptyList()
+            @Suppress("UNCHECKED_CAST")
+            val remainder = (components["minecraft:use_remainder"] as? Map<String, Any?>)?.get("id") as? String
+            "${file.nameWithoutExtension}|$nutrition|$saturation|$alwaysEat|$seconds|" +
+                "${encodeConsumeEffects(onConsume)}|${remainder?.removePrefix("minecraft:").orEmpty()}"
+        }
+}
+
+/** parity: `Consumable.onConsumeEffects`, of which only these three shapes act on the eater. */
+fun encodeConsumeEffects(effects: List<Map<String, Any?>>): String =
+    effects
+        .mapNotNull { effect ->
+            when (effect["type"] as? String) {
+                "minecraft:apply_effects" -> {
+                    @Suppress("UNCHECKED_CAST")
+                    val applied = effect["effects"] as? List<Map<String, Any?>> ?: return@mapNotNull null
+                    val probability = (effect["probability"] as? Number)?.toFloat() ?: 1f
+                    applied.joinToString(";") { instance ->
+                        val id = (instance["id"] as? String)?.removePrefix("minecraft:") ?: ""
+                        val duration = (instance["duration"] as? Number)?.toInt() ?: 0
+                        val amplifier = (instance["amplifier"] as? Number)?.toInt() ?: 0
+                        "apply:$id,$duration,$amplifier,$probability"
+                    }
+                }
+                "minecraft:remove_effects" -> "remove:${(effect["effects"] as? String)?.removePrefix("minecraft:")}"
+                "minecraft:clear_all_effects" -> "clear"
+                else -> null
+            }
+        }.joinToString(";")
+
+fun writeFoodTable(
+    file: File,
+    entries: List<String>,
+) {
+    val body = entries.joinToString(",\n") { "        \"$it\"" }
+    file.writeText(
+        """
+        package org.basaltmc.server.registry
+
+        /**
+         * Every edible item: `<item>|<nutrition>|<saturation>|<can always eat>|<seconds to eat>|
+         * <what eating it does>|<what it leaves behind>`, from the real item component reports.
+         *
+         * The last field is `apply:<effect>,<ticks>,<amplifier>,<probability>`, `remove:<effect>`
+         * or `clear`, several separated by `;`: what a golden apple, a bottle of honey and a bucket
+         * of milk respectively do.
+         */
+        internal val ALL_ITEM_FOOD: List<String> =
+            listOf(
+        FOOD_BODY,
+            )
+        """.trimIndent().replace("FOOD_BODY", body) + "\n",
     )
 }
