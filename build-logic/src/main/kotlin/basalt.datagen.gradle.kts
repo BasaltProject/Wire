@@ -443,11 +443,11 @@ fun extractBlockShapes(workDir: File): Pair<List<String>, List<Int>> {
         val columns = line.split('\t')
         val stateId = columns[1].toInt()
         val boxes =
-            columns[7]
+            columns[9]
                 .split(';')
                 .filter { it.isNotEmpty() }
                 .joinToString(";") { box -> box.split(',').joinToString(",") { toThirtySeconds(it) } }
-        val entry = "${columns[3]}|${columns[4]}|${columns[6]}|$boxes"
+        val entry = "${columns[3]}|${columns[4]}|${columns[5]}|${columns[6]}|${columns[8]}|$boxes"
         index += stateId to entries.getOrPut(entry) { entries.size }
     }
     check(index.isNotEmpty()) { "The shape harness printed nothing" }
@@ -527,6 +527,8 @@ val DUMP_SHAPES_SOURCE =
                        .append(BuiltInRegistries.BLOCK.getKey(block)).append('\t')
                        .append(state.getLightDampening()).append('\t')
                        .append(state.blocksMotion() ? 1 : 0).append('\t')
+                       .append(state.canBeReplaced() ? 1 : 0).append('\t')
+                       .append(state.isSolid() ? 1 : 0).append('\t')
                        .append(state.propagatesSkylightDown() ? 1 : 0).append('\t')
                        .append(sturdy).append('\t')
                        .append(boxes).append('\n');
@@ -559,8 +561,9 @@ fun writeShapeTable(
 
         /**
          * Every distinct block shape, from the real server jar's own block classes: light
-         * dampening, whether it blocks movement, which faces are sturdy (down, up, north, south,
-         * west, east) and the boxes of the collision shape in thirty-seconds of a block.
+         * dampening, whether it blocks movement, whether something placed there replaces it,
+         * whether it counts as solid, which faces are sturdy (down, up, north, south, west, east)
+         * and the boxes of the collision shape in thirty-seconds of a block.
          */
         internal val ALL_BLOCK_SHAPES: List<String> =
             listOf(
