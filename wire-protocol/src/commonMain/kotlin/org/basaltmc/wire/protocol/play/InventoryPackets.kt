@@ -353,6 +353,14 @@ public data class OpenScreenPacket(
         /** `minecraft:crafting`, the 3x3 crafting table screen. */
         public const val CRAFTING_MENU: Int = 12
 
+        /** `minecraft:generic_9x3`, the three rows a single chest and a barrel show. */
+        public const val CHEST_MENU: Int = 2
+
+        /** The three cookers, whose screens differ only in which recipes their book offers. */
+        public const val FURNACE_MENU: Int = 14
+        public const val BLAST_FURNACE_MENU: Int = 10
+        public const val SMOKER_MENU: Int = 22
+
         public fun read(buffer: ByteBuffer): OpenScreenPacket =
             OpenScreenPacket(
                 containerId = buffer.readVarInt(),
@@ -379,5 +387,40 @@ public data class ContainerClosePacket(
         public const val SERVERBOUND_ID: Int = 0x13
 
         public fun read(buffer: ByteBuffer): ContainerClosePacket = ContainerClosePacket(buffer.readVarInt())
+    }
+}
+
+/**
+ * Clientbound, id 0x13: one number of an open window, which is how a furnace draws its two bars.
+ *
+ * Mirrors `ClientboundContainerSetDataPacket`. The meaning of [id] is the window's own: for a
+ * furnace, 0 is the fire left, 1 is how long that fuel lasts, 2 is the progress and 3 the total.
+ */
+public data class ContainerSetDataPacket(
+    val containerId: Int,
+    val id: Int,
+    val value: Int,
+) {
+    public fun write(buffer: ByteBuffer) {
+        buffer.writeVarInt(containerId)
+        buffer.writeShort(id.toShort())
+        buffer.writeShort(value.toShort())
+    }
+
+    public companion object {
+        public const val ID: Int = 0x13
+
+        /** parity: `AbstractFurnaceMenu`'s own four data slots. */
+        public const val FURNACE_LIT_TIME: Int = 0
+        public const val FURNACE_LIT_DURATION: Int = 1
+        public const val FURNACE_COOKING_PROGRESS: Int = 2
+        public const val FURNACE_COOKING_TOTAL: Int = 3
+
+        public fun read(buffer: ByteBuffer): ContainerSetDataPacket =
+            ContainerSetDataPacket(
+                containerId = buffer.readVarInt(),
+                id = buffer.readShort().toInt(),
+                value = buffer.readShort().toInt(),
+            )
     }
 }
