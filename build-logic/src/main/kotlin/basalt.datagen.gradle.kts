@@ -86,13 +86,24 @@ tasks.register("generate") {
         val support = extractBlockSupport(workDir)
         writeSupportTable(File(registryDir, "VanillaBlockSupport.kt"), support)
 
+        val movement = extractBlockMovement(workDir)
+        writeMovementTable(File(registryDir, "VanillaBlockMovement.kt"), movement)
+
+        val entityTypes = extractEntityTypes(workDir)
+        writeEntityTypeTable(File(registryDir, "VanillaEntityTypeShapes.kt"), entityTypes)
+
+        val entityAttributes = extractEntityAttributes(workDir)
+        writeEntityAttributeTable(File(registryDir, "VanillaEntityAttributes.kt"), entityAttributes)
+
         println(
             "Regenerated ${blockStates.size} block default states, ${items.size} items, " +
                 "${hardness.size} block hardness entries, ${toolRules.size} tool(s), " +
                 "${components.size} data component type(s), ${durability.size} damageable item(s), " +
                 "${shapes.second.size} block state shape(s), ${definitions.size} state definition(s), " +
-                "${armour.size} piece(s) of armour, ${food.size} edible item(s) and " +
-                "${support.rules.size} support rule(s) from $jarPath.",
+                "${armour.size} piece(s) of armour, ${food.size} edible item(s), " +
+                "${support.rules.size} support rule(s), ${movement.size} block(s) that move " +
+                "entities their own way, ${entityTypes.size} entity type(s) and " +
+                "${entityAttributes.size} entity attribute value(s) from $jarPath.",
         )
     }
 }
@@ -1478,3 +1489,328 @@ val DUMP_BLOCK_SUPPORT_SOURCE =
         }
     }
     """.trimIndent()
+
+/**
+ * Each block's friction, speed factor and jump factor: what ice, soul sand and honey do to whatever
+ * walks on them. Vanilla keeps these in `BlockBehaviour.Properties`, which is code and not data, so
+ * the real classes are asked directly. Only the blocks that differ from the defaults are kept.
+ */
+fun extractBlockMovement(workDir: File): List<BlockMovementRow> {
+    val classpath = harnessClasspath(workDir)
+    val harnessDir = File(workDir, "harness")
+    harnessDir.mkdirs()
+    File(harnessDir, "DumpMovement.java").writeText(
+        """
+        import net.minecraft.SharedConstants;
+        import net.minecraft.core.registries.BuiltInRegistries;
+        import net.minecraft.resources.Identifier;
+        import net.minecraft.server.Bootstrap;
+        import net.minecraft.world.level.block.Block;
+
+        public final class DumpMovement {
+            public static void main(String[] args) {
+                SharedConstants.tryDetectVersion();
+                Bootstrap.bootStrap();
+                for (Block block : BuiltInRegistries.BLOCK) {
+                    Identifier id = BuiltInRegistries.BLOCK.getKey(block);
+                    System.out.println(
+                        id + "\t"
+                            + block.getFriction() + "\t"
+                            + block.getSpeedFactor() + "\t"
+                            + block.getJumpFactor() + "\t"
+                            + block.getBounceRestitution());
+                }
+            }
+        }
+        """.trimIndent(),
+    )
+
+    runHarness(
+        listOf("javac", "-cp", classpath, "-d", harnessDir.absolutePath, File(harnessDir, "DumpMovement.java").absolutePath),
+        workDir,
+    )
+    val output = File(harnessDir, "movement.tsv")
+    runHarness(
+        listOf("java", "-cp", "${harnessDir.absolutePath}${File.pathSeparator}$classpath", "DumpMovement"),
+        workDir,
+        output,
+    )
+
+    return output
+        .readLines()
+        .filter { it.contains('\t') && it.contains("minecraft:") }
+        .map { line ->
+            val columns = line.split('\t')
+            val id = columns[0].substring(columns[0].indexOf("minecraft:"))
+            BlockMovementRow(
+                id,
+                columns[1].toFloat(),
+                columns[2].toFloat(),
+                columns[3].toFloat(),
+                columns[4].toFloat(),
+            )
+        }.filter { it.friction != 0.6f || it.speedFactor != 1.0f || it.jumpFactor != 1.0f || it.bounciness != 0.0f }
+        .sortedBy { it.id }
+}
+
+/** One block's friction, what it does to speed and jump, and how much it bounces what lands on it. */
+class BlockMovementRow(
+    val id: String,
+    val friction: Float,
+    val speedFactor: Float,
+    val jumpFactor: Float,
+    val bounciness: Float,
+)
+
+fun writeMovementTable(
+    file: File,
+    entries: List<BlockMovementRow>,
+) {
+    val body =
+        entries.joinToString(",\n") { row ->
+            "        BlockMovementEntry(\"" + row.id.removePrefix("minecraft:") + "\", " +
+                row.friction + "f, " + row.speedFactor + "f, " + row.jumpFactor + "f, " +
+                row.bounciness + "f)"
+        }
+    file.writeText(
+        """
+        package org.basaltmc.server.registry
+
+        /**
+         * The blocks that move an entity differently from every other block: ice is slippery, soul
+         * sand is slow, honey kills a jump and a bed bounces. Anything absent is the default 0.6
+         * friction, with no change to speed or jump and no bounce at all.
+         *
+         * Not reported by the data generator, so it comes from a harness run against the real
+         * classes (see `basalt.datagen`).
+         */
+        internal val ALL_BLOCK_MOVEMENT: List<BlockMovementEntry> =
+            listOf(
+        ${'$'}body,
+            )
+        """.trimIndent().replace("${'$'}body", body) + "\n",
+    )
+}
+
+/**
+ * Each entity type's box, its spawn category and how far a client tracks it. Vanilla builds these in
+ * `EntityType.Builder`, which is code and not data, so the real registry is asked directly.
+ */
+fun extractEntityTypes(workDir: File): List<EntityTypeRow> {
+    val classpath = harnessClasspath(workDir)
+    val harnessDir = File(workDir, "harness")
+    harnessDir.mkdirs()
+    File(harnessDir, "DumpEntityTypes.java").writeText(
+        """
+        import net.minecraft.SharedConstants;
+        import net.minecraft.core.registries.BuiltInRegistries;
+        import net.minecraft.resources.Identifier;
+        import net.minecraft.server.Bootstrap;
+        import net.minecraft.world.entity.EntityType;
+
+        public final class DumpEntityTypes {
+            public static void main(String[] args) {
+                SharedConstants.tryDetectVersion();
+                Bootstrap.bootStrap();
+                for (EntityType<?> type : BuiltInRegistries.ENTITY_TYPE) {
+                    Identifier id = BuiltInRegistries.ENTITY_TYPE.getKey(type);
+                    System.out.println(
+                        id + "\t"
+                            + type.getWidth() + "\t"
+                            + type.getHeight() + "\t"
+                            + type.getCategory().getName() + "\t"
+                            + type.clientTrackingRange() + "\t"
+                            + type.updateInterval() + "\t"
+                            + type.fireImmune() + "\t"
+                            + type.canSpawnFarFromPlayer());
+                }
+            }
+        }
+        """.trimIndent(),
+    )
+
+    runHarness(
+        listOf(
+            "javac",
+            "-cp",
+            classpath,
+            "-d",
+            harnessDir.absolutePath,
+            File(harnessDir, "DumpEntityTypes.java").absolutePath,
+        ),
+        workDir,
+    )
+    val output = File(harnessDir, "entity-types.tsv")
+    runHarness(
+        listOf("java", "-cp", "${harnessDir.absolutePath}${File.pathSeparator}$classpath", "DumpEntityTypes"),
+        workDir,
+        output,
+    )
+
+    return output
+        .readLines()
+        .filter { it.contains('\t') && it.contains("minecraft:") }
+        .map { line ->
+            val columns = line.split('\t')
+            val id = columns[0].substring(columns[0].indexOf("minecraft:"))
+            EntityTypeRow(
+                id,
+                columns[1].toFloat(),
+                columns[2].toFloat(),
+                columns[3],
+                columns[4].toInt(),
+                columns[5].toInt(),
+                columns[6].toBoolean(),
+                columns[7].toBoolean(),
+            )
+        }.sortedBy { it.id }
+}
+
+/** One entity type's box, spawn category, tracking and the two flags a spawn rule reads. */
+class EntityTypeRow(
+    val id: String,
+    val width: Float,
+    val height: Float,
+    val category: String,
+    val trackingRange: Int,
+    val updateInterval: Int,
+    val fireImmune: Boolean,
+    val farFromPlayer: Boolean,
+)
+
+fun writeEntityTypeTable(
+    file: File,
+    entries: List<EntityTypeRow>,
+) {
+    val body =
+        entries.joinToString(",\n") { row ->
+            "        EntityTypeShape(\"" + row.id.removePrefix("minecraft:") + "\", " +
+                row.width + "f, " + row.height + "f, \"" + row.category + "\", " +
+                row.trackingRange + ", " + row.updateInterval + ", " +
+                row.fireImmune + ", " + row.farFromPlayer + ")"
+        }
+    file.writeText(
+        """
+        package org.basaltmc.server.registry
+
+        /**
+         * Every entity type's box, the category it spawns under, how far a client tracks it and how
+         * often it is told about it.
+         *
+         * Not reported by the data generator: vanilla builds all of it in `EntityType.Builder`, so it
+         * comes from a harness run against the real registry (see `basalt.datagen`).
+         */
+        internal val ALL_ENTITY_TYPE_SHAPES: List<EntityTypeShape> =
+            listOf(
+        ${'$'}body,
+            )
+        """.trimIndent().replace("${'$'}body", body) + "\n",
+    )
+}
+
+/**
+ * Each living entity type's own attribute base values: how much health a cow has, how fast a zombie
+ * walks, how far a creeper notices you. Vanilla builds these in each class's `createAttributes`, so
+ * the real registry is asked instead of reading them off a wiki.
+ */
+fun extractEntityAttributes(workDir: File): List<EntityAttributeRow> {
+    val classpath = harnessClasspath(workDir)
+    val harnessDir = File(workDir, "harness")
+    harnessDir.mkdirs()
+    File(harnessDir, "DumpEntityAttributes.java").writeText(
+        """
+        import net.minecraft.SharedConstants;
+        import net.minecraft.core.Holder;
+        import net.minecraft.core.registries.BuiltInRegistries;
+        import net.minecraft.resources.Identifier;
+        import net.minecraft.server.Bootstrap;
+        import net.minecraft.world.entity.EntityType;
+        import net.minecraft.world.entity.LivingEntity;
+        import net.minecraft.world.entity.ai.attributes.Attribute;
+        import net.minecraft.world.entity.ai.attributes.AttributeSupplier;
+        import net.minecraft.world.entity.ai.attributes.DefaultAttributes;
+
+        public final class DumpEntityAttributes {
+            @SuppressWarnings("unchecked")
+            public static void main(String[] args) {
+                SharedConstants.tryDetectVersion();
+                Bootstrap.bootStrap();
+                for (EntityType<?> type : BuiltInRegistries.ENTITY_TYPE) {
+                    if (!DefaultAttributes.hasSupplier(type)) continue;
+                    Identifier id = BuiltInRegistries.ENTITY_TYPE.getKey(type);
+                    AttributeSupplier supplier = DefaultAttributes.getSupplier((EntityType<? extends LivingEntity>) type);
+                    for (Holder.Reference<Attribute> attribute : BuiltInRegistries.ATTRIBUTE.listElements().toList()) {
+                        if (!supplier.hasAttribute(attribute)) continue;
+                        System.out.println(
+                            id + "\t"
+                                + attribute.key().identifier() + "\t"
+                                + supplier.getBaseValue(attribute));
+                    }
+                }
+            }
+        }
+        """.trimIndent(),
+    )
+
+    runHarness(
+        listOf(
+            "javac",
+            "-cp",
+            classpath,
+            "-d",
+            harnessDir.absolutePath,
+            File(harnessDir, "DumpEntityAttributes.java").absolutePath,
+        ),
+        workDir,
+    )
+    val output = File(harnessDir, "entity-attributes.tsv")
+    runHarness(
+        listOf("java", "-cp", "${harnessDir.absolutePath}${File.pathSeparator}$classpath", "DumpEntityAttributes"),
+        workDir,
+        output,
+    )
+
+    return output
+        .readLines()
+        .filter { it.contains('\t') && it.contains("minecraft:") }
+        .map { line ->
+            val columns = line.split('\t')
+            val id = columns[0].substring(columns[0].indexOf("minecraft:"))
+            EntityAttributeRow(id, columns[1], columns[2].toDouble())
+        }.sortedWith(compareBy({ it.entity }, { it.attribute }))
+}
+
+/** One entity type's base value for one attribute. */
+class EntityAttributeRow(
+    val entity: String,
+    val attribute: String,
+    val value: Double,
+)
+
+fun writeEntityAttributeTable(
+    file: File,
+    entries: List<EntityAttributeRow>,
+) {
+    val body =
+        entries.joinToString(",\n") { row ->
+            "        EntityAttributeEntry(\"" + row.entity.removePrefix("minecraft:") + "\", \"" +
+                row.attribute.removePrefix("minecraft:") + "\", " + row.value + ")"
+        }
+    file.writeText(
+        """
+        package org.basaltmc.server.registry
+
+        /**
+         * Every living entity type's own attribute base values, from the real registry: what each mob
+         * starts with before anything modifies it.
+         *
+         * Vanilla builds these in each class's `createAttributes`, which is code and not data, so they
+         * come from a harness run against the real registry (see `basalt.datagen`).
+         */
+        internal val ALL_ENTITY_ATTRIBUTES: List<EntityAttributeEntry> =
+            listOf(
+        ${'$'}body,
+            )
+        """.trimIndent().replace("${'$'}body", body) + "\n",
+    )
+}
