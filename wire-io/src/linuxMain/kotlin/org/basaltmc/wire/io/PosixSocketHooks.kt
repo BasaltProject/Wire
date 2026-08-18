@@ -12,6 +12,7 @@ import kotlinx.cinterop.reinterpret
 import kotlinx.cinterop.sizeOf
 import kotlinx.cinterop.value
 import platform.posix.AF_INET
+import platform.posix.EBADF
 import platform.posix.ECONNRESET
 import platform.posix.EINTR
 import platform.posix.ENOTCONN
@@ -76,4 +77,6 @@ internal actual fun lastSocketError(): Int = errno
 internal actual fun socketErrorIsInterrupt(error: Int): Boolean = error == EINTR
 
 internal actual fun socketErrorIsPeerGone(error: Int): Boolean =
-    error == ECONNRESET || error == ENOTCONN || error == ETIMEDOUT || error == EPIPE
+    // EBADF is here because a socket closed from another thread is a connection that is gone, not a
+    // fault: reaching a bare thread as an exception ended the process while it was saving.
+    error == ECONNRESET || error == ENOTCONN || error == ETIMEDOUT || error == EPIPE || error == EBADF

@@ -23,6 +23,7 @@ import platform.posix.send
 import platform.posix.sockaddr
 import platform.posix.sockaddr_in
 import platform.posix.socket
+import kotlin.concurrent.Volatile
 
 /**
  * Thrown for any socket syscall failure. Wraps the raw `errno`-adjacent return code rather than
@@ -163,6 +164,19 @@ public class TcpConnection internal constructor(
     public val nativeFd: Int get() = fd.toInt()
 
     /**
+     * Whether [close] has run.
+     *
+     * Read before every syscall because closing and writing come from different threads: a player
+     * being disconnected while a tick still had something to send reached `send()` on a descriptor
+     * that no longer existed, which is an `EBADF` and, uncaught on a bare thread, the end of the
+     * process.
+     */
+    @Volatile
+    private var closed = false
+
+    public val isClosed: Boolean get() = closed
+
+    /**
      * Returns 0 at end of stream, including when the peer reset the connection instead of closing
      * it politely. A client that pings the server list and yanks the socket the moment it has its
      * answer is doing something completely ordinary, not failing, so it must not surface as an
@@ -174,6 +188,7 @@ public class TcpConnection internal constructor(
         offset: Int = 0,
         length: Int = buffer.size - offset,
     ): Int {
+        if (closed) return 0
         while (true) {
             val received =
                 buffer.usePinned { pinned ->
@@ -195,6 +210,7 @@ public class TcpConnection internal constructor(
         offset: Int = 0,
         length: Int = buffer.size - offset,
     ) {
+        if (closed) return
         var written = 0
         while (written < length) {
             val sent =
@@ -214,6 +230,8 @@ public class TcpConnection internal constructor(
     }
 
     public fun close() {
+        if (closed) return
+        closed = true
         closeSocket(fd)
     }
 
