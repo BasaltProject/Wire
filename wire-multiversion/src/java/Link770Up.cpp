@@ -1,3 +1,4 @@
+#include <basalt/wire/multiversion/java/CommandParsers.hpp>
 #include <basalt/wire/multiversion/java/Link770Up.hpp>
 #include <basalt/wire/multiversion/java/NewRegistries771.hpp>
 #include <basalt/wire/multiversion/java/Tables770.hpp>
@@ -27,6 +28,20 @@ constexpr std::int32_t kPressShift = 0;
 constexpr std::int32_t kReleaseShift = 1;
 /// parity: ServerboundPlayerCommandPacket.Action lost its two shift entries, so the rest moved down by two.
 constexpr std::int32_t kActionsRemoved = 2;
+
+constexpr std::int32_t kCommands770 = 16;
+constexpr std::int32_t kHexColorParser = 17;
+constexpr std::int32_t kUuidParser770 = 54;
+constexpr std::int32_t kUuidParser771 = 56;
+constexpr std::int32_t kLastRegistryParser770 = 47;
+
+/// parity: 1.21.6 inserted hex_color after color and appended dialog before uuid.
+std::int32_t parserIn771(std::int32_t parser) {
+    if (parser == kUuidParser770) {
+        return kUuidParser771;
+    }
+    return parser >= kHexColorParser ? parser + 1 : parser;
+}
 
 constexpr std::array<const char*, 4> kModes = {"survival", "creative", "adventure", "spectator"};
 
@@ -79,6 +94,8 @@ bool Link770Up::clientbound(ProtocolState state, MutablePacket& packet) {
                                        std::vector<std::uint8_t>{added[index].begin(), added[index].end()});
         }
         packet.extras.emplace_back(finish, finishBody);
+    } else if (state == ProtocolState::Play && packet.id == kCommands770) {
+        static_cast<void>(commandParsers::remap(packet, kLastRegistryParser770, parserIn771));
     } else if (state == ProtocolState::Play && packet.id == difficulty) {
         rewrite(packet, [](io::ByteBuffer& input, io::ByteBuffer& output) {
             protocol::varInt::write(output, input.readByte());

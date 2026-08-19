@@ -3,6 +3,7 @@ basalt_module(wire-multiversion
         src/CompactBitStorage.cpp
         src/ChunkRewriter.cpp
         src/ComposedTables.cpp
+        src/java/CommandParsers.cpp
         src/IdMap.cpp
         src/LoginShapes.cpp
         src/ProtocolChain.cpp
@@ -12,6 +13,7 @@ basalt_module(wire-multiversion
         src/java/AdvancementLayouts.cpp
         src/java/ContentRewriter.cpp
         src/java/MapLayouts.cpp
+        src/java/Stack769.cpp
         src/java/RegistryMembers.cpp
         src/java/RegistryMembersLookup.cpp
         src/java/JavaTranslators.cpp
@@ -95,8 +97,10 @@ basalt_module(wire-multiversion
         src/java/Link774.cpp
         src/java/Link775.cpp
         src/java/Link776.cpp
+        src/java/Link769Up.cpp
         src/java/Link770Up.cpp
         src/java/Link772Up.cpp
+        src/java/NewRegistries770.cpp
         src/java/NewRegistries771.cpp
         src/java/Link773Up.cpp
         src/java/Link774Up.cpp

@@ -27,6 +27,7 @@
 #include <basalt/wire/multiversion/java/Link767.hpp>
 #include <basalt/wire/multiversion/java/Link768.hpp>
 #include <basalt/wire/multiversion/java/Link769.hpp>
+#include <basalt/wire/multiversion/java/Link769Up.hpp>
 #include <basalt/wire/multiversion/java/Link770Up.hpp>
 #include <basalt/wire/multiversion/java/Link772.hpp>
 #include <basalt/wire/multiversion/java/Link772Up.hpp>
@@ -213,7 +214,7 @@ std::unique_ptr<ProtocolLink> climbing(const VersionTables& upward) {
     return std::make_unique<T>(upward);
 }
 
-constexpr std::array<UpEntry, 7> kUpLinks = {{
+constexpr std::array<UpEntry, 8> kUpLinks = {{
     {protocolVersions::kV26_2, &tables776, &climbing<Link776Up>},
     {protocolVersions::kV26_1, &tables775, &climbing<Link775Up>},
     {protocolVersions::kV1_21_11, &tables774, &climbing<Link774Up>},
@@ -221,6 +222,7 @@ constexpr std::array<UpEntry, 7> kUpLinks = {{
     {protocolVersions::kV1_21_7, &tables772, &climbing<Link772Up>},
     {protocolVersions::kV1_21_6, &tables771, &climbing<RenumberingLink>},
     {protocolVersions::kV1_21_5, &tables770, &climbing<Link770Up>},
+    {protocolVersions::kV1_21_4, &tables769, &climbing<Link769Up>},
 }};
 
 class UpChain final : public JavaChain {
@@ -235,6 +237,9 @@ public:
         std::ranges::reverse(upward_);
         std::vector<std::reference_wrapper<const VersionTables>> tables(upward_.begin(), upward_.end());
         composed_ = std::make_unique<ComposedTables>(tables);
+        if (backendVersion < protocolVersions::kV1_21_5) {
+            composed_->dataComponentType = ComposedIdMap{};
+        }
         content_ =
             std::make_unique<ContentRewriter>(*composed_, nullptr, protocolVersions::kNative,
                                               std::vector<std::int32_t>{}, backendVersion >= protocolVersions::kV26_1);

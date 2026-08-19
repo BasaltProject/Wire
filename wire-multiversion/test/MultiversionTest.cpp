@@ -10,6 +10,7 @@
 #include <basalt/wire/multiversion/java/JavaTranslators.hpp>
 #include <basalt/wire/multiversion/java/LoginFields.hpp>
 #include <basalt/wire/multiversion/java/LongMaskLight.hpp>
+#include <basalt/wire/multiversion/java/Stack769.hpp>
 #include <basalt/wire/multiversion/java/Tables775.hpp>
 #include <basalt/wire/nbt/NbtTag.hpp>
 #include <basalt/wire/protocol/ProtocolBuffer.hpp>
@@ -626,3 +627,4 @@ TEST_CASE("every version the gate admits has an unbroken road of links") {
     }
     CHECK(java::javaTranslators::supported().contains(protocolVersions::kV1_8));
 }
+
