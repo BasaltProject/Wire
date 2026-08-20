@@ -11,7 +11,7 @@ class UpdateRecipesPacketTest {
     fun itWritesWhatTheStonecutterScreenReads() {
         val buffer = ByteBuffer()
         UpdateRecipesPacket(
-            listOf(StonecutterOption(inputItemIds = listOf(1, 2), result = WireItemStack(itemId = 7, count = 2))),
+            listOf(StonecutterOption(inputItemIds = listOf(1, 2), resultItemId = 7, resultCount = 2)),
         ).write(buffer)
 
         assertEquals(0, buffer.readVarInt(), "no item property sets")
@@ -22,8 +22,11 @@ class UpdateRecipesPacketTest {
         assertEquals(1, buffer.readVarInt(), "the first item")
         assertEquals(2, buffer.readVarInt())
         assertEquals(UpdateRecipesPacket.ITEM_STACK_SLOT_DISPLAY, buffer.readVarInt())
-        assertEquals(2, buffer.readVarInt(), "the result's count")
-        assertEquals(7, buffer.readVarInt(), "and its item")
+        // parity: `ItemStackTemplate.STREAM_CODEC`: the item first, then the count, then a patch.
+        assertEquals(7, buffer.readVarInt(), "the result's item")
+        assertEquals(2, buffer.readVarInt(), "and its count")
+        assertEquals(0, buffer.readVarInt(), "no components added")
+        assertEquals(0, buffer.readVarInt(), "none removed")
     }
 
     /** An empty list still has to say so: the client reads both fields either way. */
