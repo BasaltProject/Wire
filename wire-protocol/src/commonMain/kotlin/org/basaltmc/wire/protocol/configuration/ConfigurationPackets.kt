@@ -64,7 +64,7 @@ public data class KnownPack(
  * so [RegistryDataPacket] can omit entries the client already has bundled. Mirrors
  * `(Clientbound|Serverbound)SelectKnownPacksPacket`.
  *
- * Basalt sends an empty pack list: it has no datapacks of its own yet, so every registry
+ * Basalt sends an empty pack list: it has no datapacks of its own, so every registry
  * entry it sends must carry its full value.
  */
 public data class SelectKnownPacksPacket(

@@ -51,7 +51,7 @@ public object NativeThread {
                     threadHandle.ptr,
                     null,
                     staticCFunction { arg: COpaquePointer? ->
-                        val ref = arg!!.asStableRef<() -> Unit>()
+                        val ref = checkNotNull(arg).asStableRef<() -> Unit>()
                         val fn = ref.get()
                         ref.dispose()
                         try {
