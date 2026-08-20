@@ -322,6 +322,12 @@ public data class SetEntityDataPacket(
         /** parity: `LivingEntity.SLEEPING_POS_ID`, the bed they are lying in. */
         public const val SLEEPING_POS_INDEX: Int = 14
 
+        /**
+         * parity: `LivingEntity.DATA_LIVING_ENTITY_FLAGS`, the first entry a living entity adds:
+         * bit one is "using an item", bit two says it is the off hand and bit three is riptide.
+         */
+        public const val LIVING_FLAGS_INDEX: Int = 8
+
         /** parity: `Entity.DATA_SHARED_FLAGS_ID`, whose lowest bit is "this entity is on fire". */
         public const val SHARED_FLAGS_INDEX: Int = 0
 
