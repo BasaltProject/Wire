@@ -80,6 +80,9 @@ tasks.register("generate") {
         val armour = parseArmourComponents(File(reportsDir, "minecraft/components/item"))
         writeArmourTable(File(registryDir, "VanillaItemArmour.kt"), armour)
 
+        val weapons = parseWeaponComponents(File(reportsDir, "minecraft/components/item"))
+        writeWeaponTable(File(registryDir, "VanillaItemWeapons.kt"), weapons)
+
         val food = parseFoodComponents(File(reportsDir, "minecraft/components/item"))
         writeFoodTable(File(registryDir, "VanillaItemFood.kt"), food)
 
@@ -711,6 +714,58 @@ fun writeStateDefinitionTable(
  * Only modifiers that apply to an armour slot count. A weapon's attack damage lives in the same
  * component and is somebody else's business.
  */
+fun parseWeaponComponents(componentsDir: File): List<String> {
+    if (!componentsDir.isDirectory) return emptyList()
+    val slurper = groovy.json.JsonSlurper()
+    return componentsDir
+        .listFiles { file -> file.extension == "json" }
+        .orEmpty()
+        .sortedBy { it.name }
+        .mapNotNull { file ->
+            @Suppress("UNCHECKED_CAST")
+            val root = slurper.parse(file) as Map<String, Any?>
+            @Suppress("UNCHECKED_CAST")
+            val components = root["components"] as? Map<String, Any?> ?: return@mapNotNull null
+            @Suppress("UNCHECKED_CAST")
+            val modifiers = components["minecraft:attribute_modifiers"] as? List<Map<String, Any?>> ?: return@mapNotNull null
+            var damage = 0.0
+            var speed = 0.0
+            for (modifier in modifiers) {
+                if (modifier["slot"] as? String != "mainhand") continue
+                val amount = (modifier["amount"] as? Number)?.toDouble() ?: continue
+                when (modifier["type"] as? String) {
+                    "minecraft:attack_damage" -> damage = amount
+                    "minecraft:attack_speed" -> speed = amount
+                }
+            }
+            if (damage == 0.0 && speed == 0.0) null else "${file.nameWithoutExtension}|$damage|$speed"
+        }
+}
+
+fun writeWeaponTable(
+    file: File,
+    entries: List<String>,
+) {
+    val body = entries.joinToString(",\n") { "        \"$it\"" }
+    file.writeText(
+        """
+        package org.basaltmc.server.registry
+
+        /**
+         * What each item adds to the hand that holds it: attack damage and attack speed, as
+         * `name|damage|speed`. Both are the modifier the item carries, not the total: the player's
+         * own base of one damage and four speed is added on top.
+         *
+         * From the item component report the data generator writes (see `basalt.datagen`).
+         */
+        internal val ALL_ITEM_WEAPONS: List<String> =
+            listOf(
+        ${'$'}body,
+            )
+        """.trimIndent().replace("${'$'}body", body) + "\n",
+    )
+}
+
 fun parseArmourComponents(componentsDir: File): List<String> {
     if (!componentsDir.isDirectory) return emptyList()
     val slurper = groovy.json.JsonSlurper()
