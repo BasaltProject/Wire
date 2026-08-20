@@ -787,6 +787,9 @@ public data class EntityEventPacket(
         /** parity: `EntityEvent.PERMISSION_LEVEL_ALL` and the four above it. */
         public const val PERMISSION_LEVEL_BASE: Int = 24
 
+        /** parity: `EntityEvent.DEATH`, which is what plays the dying animation. */
+        public const val LIVING_DEATH: Int = 3
+
         public fun permissionLevel(
             entityId: Int,
             level: Int,
@@ -1169,5 +1172,56 @@ public data class AttackPacket(
         public const val ID: Int = 0x01
 
         public fun read(buffer: ByteBuffer): AttackPacket = AttackPacket(buffer.readVarInt())
+    }
+}
+
+/**
+ * Clientbound, id 0x65: how fast an entity is going now. Mirrors `ClientboundSetEntityMotionPacket`.
+ *
+ * A client moves its own player, so a push it is not told about never happens: this is what makes
+ * knockback, a piston or a bubble column move the person standing there.
+ */
+public data class SetEntityMotionPacket(
+    val entityId: Int,
+    val velocityX: Double,
+    val velocityY: Double,
+    val velocityZ: Double,
+) {
+    public fun write(buffer: ByteBuffer) {
+        buffer.writeVarInt(entityId)
+        LowPrecisionVec3.write(buffer, velocityX, velocityY, velocityZ)
+    }
+
+    public companion object {
+        public const val ID: Int = 0x65
+
+        public fun read(buffer: ByteBuffer): SetEntityMotionPacket {
+            val entityId = buffer.readVarInt()
+            val velocity = LowPrecisionVec3.read(buffer)
+            return SetEntityMotionPacket(entityId, velocity[0], velocity[1], velocity[2])
+        }
+    }
+}
+
+/**
+ * Clientbound, id 0x2a: the tilt of a hit. Mirrors `ClientboundHurtAnimationPacket`.
+ *
+ * parity: `ServerPlayer.indicateDamage`, where the angle is where the hit came from relative to the
+ * way the player is looking, which is what leans the screen towards it.
+ */
+public data class HurtAnimationPacket(
+    val entityId: Int,
+    val yaw: Float,
+) {
+    public fun write(buffer: ByteBuffer) {
+        buffer.writeVarInt(entityId)
+        buffer.writeFloat(yaw)
+    }
+
+    public companion object {
+        public const val ID: Int = 0x2a
+
+        public fun read(buffer: ByteBuffer): HurtAnimationPacket =
+            HurtAnimationPacket(buffer.readVarInt(), buffer.readFloat())
     }
 }
