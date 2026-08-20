@@ -28,6 +28,20 @@ import platform.posix.pthread_tVar
  * Reported with its stack: the thread is gone either way, and a bare name says nothing about where.
  */
 public object NativeThread {
+    private val nextId = kotlin.concurrent.AtomicLong(0)
+
+    /**
+     * A number for the calling thread, stable for its whole life and unique on this process.
+     *
+     * Handed out on first ask rather than read from the OS: `pthread_t` is a pointer on some of the
+     * five targets and an integer on others, and nothing here needs the OS's own number, only one
+     * that tells two threads apart. Whoever owns a piece of state compares this.
+     */
+    public fun currentId(): Long {
+        if (ThreadIdentity.id == 0L) ThreadIdentity.id = nextId.addAndGet(1)
+        return ThreadIdentity.id
+    }
+
     public fun start(block: () -> Unit) {
         val stableRef = StableRef.create(block)
         memScoped {
@@ -56,4 +70,9 @@ public object NativeThread {
             pthread_detach(threadHandle.value)
         }
     }
+}
+
+@kotlin.native.concurrent.ThreadLocal
+private object ThreadIdentity {
+    var id: Long = 0
 }
