@@ -23,6 +23,9 @@
 namespace basalt::wire::multiversion::java {
 namespace {
 
+constexpr std::int32_t kSetCursorItem = 98;
+constexpr std::int32_t kSetPlayerInventory = 110;
+
 using protocol::ProtocolState;
 namespace play = protocol::play;
 
@@ -305,6 +308,47 @@ bool ContentRewriter::clientbound(ProtocolState state, MutablePacket& packet) {
         }
         content->carriedItem = stack(content->carriedItem);
         encode(packet, [&](io::ByteBuffer& out) { content->write(out); });
+        break;
+    }
+    case kSetCursorItem: {
+        io::ByteBuffer in = io::ByteBuffer::wrap(packet.body);
+        auto item = play::WireItemStack::read(in);
+        if (in.failed()) {
+            return true;
+        }
+        io::ByteBuffer out;
+        play::WireItemStack::writeOptional(out, stack(item));
+        packet.body = out.toVector();
+        break;
+    }
+    case kSetPlayerInventory: {
+        io::ByteBuffer in = io::ByteBuffer::wrap(packet.body);
+        const std::int32_t slot = protocol::varInt::read(in);
+        auto item = play::WireItemStack::read(in);
+        if (in.failed()) {
+            return true;
+        }
+        io::ByteBuffer out;
+        protocol::varInt::write(out, slot);
+        play::WireItemStack::writeOptional(out, stack(item));
+        packet.body = out.toVector();
+        break;
+    }
+    case play::MerchantOffersPacket::kId: {
+        auto offers = decode(packet, [](io::ByteBuffer& in) { return play::MerchantOffersPacket::read(in); });
+        if (!offers.has_value()) {
+            return true;
+        }
+        for (play::MerchantOffer& offer : offers->offers) {
+            offer.costA.itemId = tables_->item.map(offer.costA.itemId);
+            if (offer.costB.has_value()) {
+                offer.costB->itemId = tables_->item.map(offer.costB->itemId);
+            }
+            if (const auto moved = stack(offer.result); moved.has_value()) {
+                offer.result = *moved;
+            }
+        }
+        encode(packet, [&](io::ByteBuffer& out) { offers->write(out); });
         break;
     }
     case play::SetEquipmentPacket::kId: {

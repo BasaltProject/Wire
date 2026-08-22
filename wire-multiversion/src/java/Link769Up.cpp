@@ -36,6 +36,9 @@ constexpr std::int32_t kAddExperienceOrb = 2;
 constexpr std::int32_t kBlockEntityData = 7;
 constexpr std::int32_t kBossEvent = 10;
 constexpr std::int32_t kCommands = 17;
+constexpr std::int32_t kSetEquipment = 96;
+constexpr std::int32_t kMerchantOffers = 46;
+constexpr std::int32_t kRecipeBookAdd = 68;
 constexpr std::int32_t kContainerSetContent = 19;
 constexpr std::int32_t kContainerSetSlot = 21;
 constexpr std::int32_t kDisconnect = 29;
@@ -385,6 +388,59 @@ constexpr std::int32_t kLastRegistryParser = 46;
 
 std::int32_t shiftedParser(std::int32_t parser) { return parser >= kFirstShiftedParser ? parser + 1 : parser; }
 
+bool copyCost(io::ByteBuffer& in, io::ByteBuffer& out) {
+    copyVarInt(in, out);
+    copyVarInt(in, out);
+    const std::int32_t exact = protocol::readCollectionSize(in, 2);
+    protocol::varInt::write(out, exact);
+    for (std::int32_t i = 0; i < exact && !in.failed(); ++i) {
+        copyVarInt(in, out);
+        copyVarInt(in, out);
+    }
+    return !in.failed();
+}
+
+void rewriteMerchantOffers(MutablePacket& packet) {
+    io::ByteBuffer in = io::ByteBuffer::wrap(packet.body);
+    io::ByteBuffer out;
+    copyVarInt(in, out);
+    const std::int32_t offers = protocol::readCollectionSize(in);
+    protocol::varInt::write(out, offers);
+    for (std::int32_t i = 0; i < offers && !in.failed(); ++i) {
+        if (!copyCost(in, out) || !stack769::convert(in, out)) {
+            return;
+        }
+        const bool second = protocol::readBoolean(in);
+        protocol::writeBoolean(out, second);
+        if (second && !copyCost(in, out)) {
+            return;
+        }
+        out.writeBytes(in.readSpan(1 + 4 * 5 + 4));
+    }
+    out.writeBytes(in.readable());
+    if (!in.failed()) {
+        packet.body = out.toVector();
+    }
+}
+
+void rewriteEquipment(MutablePacket& packet) {
+    constexpr std::uint8_t kContinue = 0x80;
+    io::ByteBuffer in = io::ByteBuffer::wrap(packet.body);
+    io::ByteBuffer out;
+    copyVarInt(in, out);
+    std::uint8_t slot = kContinue;
+    while ((slot & kContinue) != 0 && !in.failed()) {
+        slot = in.readByte();
+        out.writeByte(slot);
+        if (!stack769::convert(in, out)) {
+            return;
+        }
+    }
+    if (!in.failed()) {
+        packet.body = out.toVector();
+    }
+}
+
 void rewriteCursor(MutablePacket& packet) {
     io::ByteBuffer in = io::ByteBuffer::wrap(packet.body);
     io::ByteBuffer out;
@@ -497,6 +553,7 @@ bool Link769Up::clientbound(ProtocolState state, MutablePacket& packet) {
         return false;
     }
     if (state == ProtocolState::Configuration) {
+        messageIndex_ = 0;
         if (packet.id == kConfigRegistryData) {
             rewriteRegistry(packet);
         } else if (packet.id == kConfigFinish) {
@@ -546,6 +603,14 @@ bool Link769Up::clientbound(ProtocolState state, MutablePacket& packet) {
     case kCommands:
         static_cast<void>(commandParsers::remap(packet, kLastRegistryParser, shiftedParser));
         break;
+    case kSetEquipment:
+        rewriteEquipment(packet);
+        break;
+    case kMerchantOffers:
+        rewriteMerchantOffers(packet);
+        break;
+    case kRecipeBookAdd:
+        return false;
     case kSetCursorItem:
         rewriteCursor(packet);
         break;

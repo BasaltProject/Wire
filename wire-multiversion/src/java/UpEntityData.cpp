@@ -1,6 +1,7 @@
 #include <basalt/wire/multiversion/ProtocolVersions.hpp>
 #include <basalt/wire/multiversion/java/EntityDataIndexes.hpp>
 #include <basalt/wire/multiversion/java/EntityDataTypes.hpp>
+#include <basalt/wire/multiversion/java/Stack769.hpp>
 #include <basalt/wire/multiversion/java/UpEntityData.hpp>
 #include <basalt/wire/nbt/NbtTag.hpp>
 #include <basalt/wire/protocol/ProtocolBuffer.hpp>
@@ -92,6 +93,11 @@ UpEntityData::UpEntityData(PacketContentRewriter& next, const ComposedTables& ta
         if (older[kind] >= 0) {
             serializers_[static_cast<std::size_t>(older[kind])] = static_cast<std::int32_t>(kind);
         }
+    }
+    constexpr std::size_t kItemKind = 7;
+    if (backendVersion < protocolVersions::kV1_21_5 && older.size() > kItemKind && older[kItemKind] >= 0) {
+        olderItemSerializer_ = older[kItemKind];
+        serializers_[static_cast<std::size_t>(olderItemSerializer_)] = -1;
     }
 }
 
@@ -186,6 +192,13 @@ bool UpEntityData::entityData(MutablePacket& packet) const {
     constexpr std::int32_t kCompoundSerializer1_21_7 = 16;
     const play::SetEntityDataPacket::ForeignValue foreign =
         [this](std::int32_t serializer, io::ByteBuffer& in) -> std::optional<play::SetEntityDataPacket::Value> {
+        if (serializer == olderItemSerializer_) {
+            io::ByteBuffer converted;
+            if (!stack769::convert(in, converted)) {
+                return std::nullopt;
+            }
+            return play::SetEntityDataPacket::ItemValue{play::WireItemStack::read(converted)};
+        }
         if (backendVersion_ > protocolVersions::kV1_21_7 || serializer != kCompoundSerializer1_21_7) {
             return std::nullopt;
         }
