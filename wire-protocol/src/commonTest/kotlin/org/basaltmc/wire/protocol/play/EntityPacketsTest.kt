@@ -2,6 +2,7 @@ package org.basaltmc.wire.protocol.play
 
 import org.basaltmc.wire.io.ByteBuffer
 import org.basaltmc.wire.protocol.writeVarInt
+import org.basaltmc.wire.text.Component
 import kotlin.math.abs
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -57,6 +58,18 @@ class EntityPacketsTest {
     fun setEntityDataRoundTripsEmptyStack() {
         val buffer = ByteBuffer()
         val packet = SetEntityDataPacket.item(entityId = 7, stack = null)
+        packet.write(buffer)
+        assertEquals(packet, SetEntityDataPacket.read(buffer))
+    }
+
+    @Test
+    fun aComponentEntryRoundTripsWhichIsWhatATextDisplayCarries() {
+        val buffer = ByteBuffer()
+        val packet =
+            SetEntityDataPacket(
+                entityId = 11,
+                entries = listOf(SetEntityDataPacket.Entry.Text(23, Component.text("Shop"))),
+            )
         packet.write(buffer)
         assertEquals(packet, SetEntityDataPacket.read(buffer))
     }
