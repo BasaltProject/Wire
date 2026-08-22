@@ -74,6 +74,15 @@ public object Toml {
             if (line.isEmpty()) continue
 
             if (line.startsWith("[")) {
+                // An array of tables is real TOML this parser does not do. Said out loud, because
+                // taken as an ordinary header it becomes a table named "[guides]" and the file
+                // quietly means something nobody wrote.
+                if (line.startsWith("[[")) {
+                    throw TomlFormatException(
+                        "Arrays of tables are not supported here: $line. Write a table per entry " +
+                            "instead, as in [guides.first] and [guides.second].",
+                    )
+                }
                 if (!line.endsWith("]")) throw TomlFormatException("Malformed table header: $line")
                 val path = line.substring(1, line.length - 1).trim()
                 current = navigateToTable(root, path)
