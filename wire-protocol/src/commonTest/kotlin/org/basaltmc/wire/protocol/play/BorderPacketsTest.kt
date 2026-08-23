@@ -13,7 +13,7 @@ class BorderPacketsTest {
                 centerZ = -20.0,
                 oldSize = 100.0,
                 newSize = 50.0,
-                lerpTimeMillis = 5000L,
+                lerpTimeTicks = 5000L,
                 absoluteMaxSize = InitializeBorderPacket.ABSOLUTE_MAX_SIZE,
                 warningBlocks = 5,
                 warningSeconds = 15,

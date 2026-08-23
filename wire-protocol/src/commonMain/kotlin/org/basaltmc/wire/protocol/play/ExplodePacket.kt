@@ -1,6 +1,9 @@
 package org.basaltmc.wire.protocol.play
 
 import org.basaltmc.wire.io.ByteBuffer
+import org.basaltmc.wire.protocol.readBoolean
+import org.basaltmc.wire.protocol.readProtocolString
+import org.basaltmc.wire.protocol.readVarInt
 import org.basaltmc.wire.protocol.writeBoolean
 import org.basaltmc.wire.protocol.writeProtocolString
 import org.basaltmc.wire.protocol.writeVarInt
@@ -68,6 +71,45 @@ public data class ExplodePacket(
 
     public companion object {
         public const val ID: Int = 0x24
+
+        /** Only the sound holder written by [write] is understood: a direct name, never a registry id. */
+        public fun read(buffer: ByteBuffer): ExplodePacket {
+            val x = buffer.readDouble()
+            val y = buffer.readDouble()
+            val z = buffer.readDouble()
+            val radius = buffer.readFloat()
+            val blockCount = buffer.readInt()
+            val hasKnockback = buffer.readBoolean()
+            val knockbackX = if (hasKnockback) buffer.readDouble() else null
+            val knockbackY = if (hasKnockback) buffer.readDouble() else 0.0
+            val knockbackZ = if (hasKnockback) buffer.readDouble() else 0.0
+            val particleId = buffer.readVarInt()
+            buffer.readVarInt()
+            val sound = buffer.readProtocolString()
+            buffer.readBoolean()
+            val blockParticles =
+                List(buffer.readVarInt()) {
+                    ExplosionParticle(
+                        particleId = buffer.readVarInt(),
+                        scaling = buffer.readFloat(),
+                        speed = buffer.readFloat(),
+                        weight = buffer.readVarInt(),
+                    )
+                }
+            return ExplodePacket(
+                x = x,
+                y = y,
+                z = z,
+                radius = radius,
+                blockCount = blockCount,
+                knockbackX = knockbackX,
+                knockbackY = knockbackY,
+                knockbackZ = knockbackZ,
+                particleId = particleId,
+                sound = sound,
+                blockParticles = blockParticles,
+            )
+        }
 
         /** parity: `Level.DEFAULT_EXPLOSION_BLOCK_PARTICLES`, a poof and some smoke, evenly weighted. */
         public const val POOF_SCALING: Float = 0.5f

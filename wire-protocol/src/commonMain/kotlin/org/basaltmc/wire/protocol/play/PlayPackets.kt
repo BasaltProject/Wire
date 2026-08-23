@@ -644,8 +644,8 @@ public data class PlayerInfoEntry(
  * [Action.UPDATE_GAME_MODE] is not cosmetic: a client reads its own tab-list entry to decide it is
  * a spectator, so the `game_event` alone switches the HUD while the player still collides.
  *
- * [Action.INITIALIZE_CHAT], [Action.UPDATE_DISPLAY_NAME], [Action.UPDATE_LIST_ORDER] and
- * [Action.UPDATE_HAT] exist to hold their bitset positions; writing one throws.
+ * [Action.INITIALIZE_CHAT], [Action.UPDATE_DISPLAY_NAME], [Action.UPDATE_HAT] and
+ * [Action.UPDATE_LIST_ORDER] exist to hold their bitset positions; writing one throws.
  */
 @OptIn(ExperimentalUuidApi::class)
 public data class PlayerInfoUpdatePacket(
@@ -659,8 +659,8 @@ public data class PlayerInfoUpdatePacket(
         UPDATE_LISTED,
         UPDATE_LATENCY,
         UPDATE_DISPLAY_NAME,
-        UPDATE_LIST_ORDER,
         UPDATE_HAT,
+        UPDATE_LIST_ORDER,
     }
 
     public fun write(buffer: ByteBuffer) {
