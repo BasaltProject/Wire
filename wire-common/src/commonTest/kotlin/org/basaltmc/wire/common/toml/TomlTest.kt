@@ -8,6 +8,21 @@ import kotlin.test.assertTrue
 
 class TomlTest {
     @Test
+    fun anArrayWrittenAcrossLinesReadsTheSame() {
+        // How a hand-edited file writes a list of two or three things, trailing comma and all.
+        val across =
+            Toml.parse(
+                """
+                name = [
+                    "first",
+                    "second",
+                ]
+                """.trimIndent(),
+            )
+        assertEquals(listOf("first", "second"), across.stringListOrNull("name"))
+    }
+
+    @Test
     fun anArrayOfTablesIsRefusedRatherThanMisread() {
         // Taken as an ordinary header it would become a table called "[guides]", which is a file
         // that means something nobody wrote.
