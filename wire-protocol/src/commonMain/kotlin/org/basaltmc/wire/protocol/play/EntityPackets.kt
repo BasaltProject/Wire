@@ -245,7 +245,32 @@ public data class SetEntityDataPacket(
         public data class RegistryId(
             override val index: Int,
             val value: Int,
+            val registry: RegistryHolder = RegistryHolder.CAT_VARIANT,
         ) : Entry
+    }
+
+    /** The registry-specific holder serializers in Minecraft 26.2's registration order. */
+    public enum class RegistryHolder(
+        internal val serializerId: Int,
+    ) {
+        CAT_VARIANT(21),
+        CAT_SOUND_VARIANT(22),
+        COW_VARIANT(23),
+        COW_SOUND_VARIANT(24),
+        WOLF_VARIANT(25),
+        WOLF_SOUND_VARIANT(26),
+        FROG_VARIANT(27),
+        PIG_VARIANT(28),
+        PIG_SOUND_VARIANT(29),
+        CHICKEN_VARIANT(30),
+        CHICKEN_SOUND_VARIANT(31),
+        ZOMBIE_NAUTILUS_VARIANT(32),
+        PAINTING_VARIANT(34),
+        ;
+
+        internal companion object {
+            fun fromSerializerId(id: Int): RegistryHolder? = entries.firstOrNull { it.serializerId == id }
+        }
     }
 
     public fun write(buffer: ByteBuffer) {
@@ -299,7 +324,7 @@ public data class SetEntityDataPacket(
                     buffer.writeVarInt(entry.pose.ordinal)
                 }
                 is Entry.RegistryId -> {
-                    buffer.writeVarInt(CAT_VARIANT_SERIALIZER)
+                    buffer.writeVarInt(entry.registry.serializerId)
                     buffer.writeVarInt(entry.value)
                 }
             }
@@ -367,7 +392,6 @@ public data class SetEntityDataPacket(
         private const val POSE_SERIALIZER = 20
         private const val ROTATIONS_SERIALIZER = 9
         private const val VILLAGER_DATA_SERIALIZER = 18
-        private const val CAT_VARIANT_SERIALIZER = 21
         private const val END_OF_METADATA = 0xFF
 
         /** The one entry a dropped item needs. */
@@ -471,10 +495,16 @@ public data class SetEntityDataPacket(
                                 buffer.readVarInt(),
                                 buffer.readVarInt(),
                             )
-                        CAT_VARIANT_SERIALIZER -> Entry.RegistryId(index, buffer.readVarInt())
-                        else -> throw ProtocolException(
-                            "Unsupported entity metadata serializer $serializer at index $index",
-                        )
+                        else -> {
+                            val registry = RegistryHolder.fromSerializerId(serializer)
+                            if (registry != null) {
+                                Entry.RegistryId(index, buffer.readVarInt(), registry)
+                            } else {
+                                throw ProtocolException(
+                                    "Unsupported entity metadata serializer $serializer at index $index",
+                                )
+                            }
+                        }
                     }
             }
             return SetEntityDataPacket(entityId, entries)
