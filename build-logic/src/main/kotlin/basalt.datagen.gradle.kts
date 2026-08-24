@@ -489,12 +489,12 @@ fun extractBlockShapes(workDir: File): Pair<List<String>, List<Int>> {
         val columns = line.split('\t')
         val stateId = columns[1].toInt()
         val boxes =
-            columns[11]
+            columns[12]
                 .split(';')
                 .filter { it.isNotEmpty() }
                 .joinToString(";") { box -> box.split(',').joinToString(",") { toThirtySeconds(it) } }
         val entry =
-            "${columns[3]}|${columns[4]}|${columns[5]}|${columns[6]}|${columns[7]}|${columns[8]}|${columns[9]}|${columns[10]}|$boxes"
+            "${columns[3]}|${columns[4]}|${columns[5]}|${columns[6]}|${columns[7]}|${columns[8]}|${columns[9]}|${columns[10]}|${columns[11]}|$boxes"
         index += stateId to entries.getOrPut(entry) { entries.size }
     }
     check(index.isNotEmpty()) { "The shape harness printed nothing" }
@@ -565,10 +565,12 @@ val DUMP_SHAPES_SOURCE =
                     StringBuilder sturdy = new StringBuilder();
                     StringBuilder centre = new StringBuilder();
                     StringBuilder rigid = new StringBuilder();
+                    StringBuilder occlusionFull = new StringBuilder();
                     for (Direction direction : Direction.values()) {
                         sturdy.append(supports(state, direction, SupportType.FULL) ? '1' : '0');
                         centre.append(supports(state, direction, SupportType.CENTER) ? '1' : '0');
                         rigid.append(supports(state, direction, SupportType.RIGID) ? '1' : '0');
+                        occlusionFull.append(Block.isShapeFullBlock(state.getFaceOcclusionShape(direction)) ? '1' : '0');
                     }
                     out.append("SHAPE\t").append(Block.getId(state)).append('\t')
                        .append(BuiltInRegistries.BLOCK.getKey(block)).append('\t')
@@ -580,6 +582,7 @@ val DUMP_SHAPES_SOURCE =
                        .append(sturdy).append('\t')
                        .append(centre).append('\t')
                        .append(rigid).append('\t')
+                       .append(occlusionFull).append('\t')
                        .append(boxes).append('\n');
                 }
             }
@@ -621,8 +624,9 @@ fun writeShapeTable(
          * Every distinct block shape, from the real server jar's own block classes: light
          * dampening, whether it blocks movement, whether something placed there replaces it,
          * whether it counts as solid, whether its occlusion shape renders solid, which faces are
-         * sturdy, which support a centre and which support a rigid block (down, up, north, south,
-         * west, east each time) and the boxes of the collision shape in thirty-seconds of a block.
+         * sturdy, which support a centre and which support a rigid block, which face-occlusion
+         * shapes are full (down, up, north, south, west, east each time), and the boxes of the
+         * collision shape in thirty-seconds of a block.
          */
         internal val ALL_BLOCK_SHAPES: List<String> =
             listOf(
