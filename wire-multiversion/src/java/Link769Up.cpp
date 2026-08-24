@@ -1,3 +1,4 @@
+#include <basalt/wire/multiversion/ProtocolVersions.hpp>
 #include <basalt/wire/multiversion/java/CommandParsers.hpp>
 #include <basalt/wire/multiversion/java/Link769Up.hpp>
 #include <basalt/wire/multiversion/java/NewRegistries770.hpp>
@@ -548,7 +549,11 @@ void rewriteRegistry(MutablePacket& packet) {
 
 } // namespace
 
+Link769Up::Link769Up(const VersionTables& upward, std::int32_t backendVersion)
+    : RenumberingLink(upward), intModelData_(backendVersion < protocolVersions::kV1_21_4) {}
+
 bool Link769Up::clientbound(ProtocolState state, MutablePacket& packet) {
+    const stack769::IntModelDataScope scope(intModelData_);
     if (!RenumberingLink::clientbound(state, packet)) {
         return false;
     }

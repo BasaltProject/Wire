@@ -387,6 +387,10 @@ void trim(Buffer& in, Buffer& out) {
     static_cast<void>(pv::readBoolean(in));
 }
 
+thread_local bool gIntModelData = false;
+
+void intModelData(Buffer& in, Buffer&) { static_cast<void>(pv::varInt::read(in)); }
+
 struct Entry {
     std::int32_t nativeId;
     Copier copy;
@@ -484,7 +488,9 @@ void stackCopy(Buffer& in, Buffer& out, std::int32_t depth) {
             in.markFailed();
             return;
         }
-        const Entry& entry = kEntries[static_cast<std::size_t>(id)];
+        constexpr std::int32_t kCustomModelData = 14;
+        const Entry entry = gIntModelData && id == kCustomModelData ? Entry{kNoComponent, intModelData}
+                                                                    : kEntries[static_cast<std::size_t>(id)];
         Buffer payload;
         entry.copy(in, payload);
         if (entry.nativeId != kNoComponent) {
@@ -511,6 +517,10 @@ void stackCopy(Buffer& in, Buffer& out, std::int32_t depth) {
 }
 
 } // namespace
+
+IntModelDataScope::IntModelDataScope(bool enabled) : previous_(gIntModelData) { gIntModelData = enabled; }
+
+IntModelDataScope::~IntModelDataScope() { gIntModelData = previous_; }
 
 bool convert(Buffer& in, Buffer& out) {
     stackCopy(in, out, kMaxDepth);

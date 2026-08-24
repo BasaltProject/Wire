@@ -72,6 +72,10 @@ struct RetypedField {
     std::int32_t index;
 };
 
+/// parity: 1.21.2 sent a salmon's size as a string; 1.21.4 sends its number.
+constexpr std::int32_t kSalmonIn1_21_2 = 104;
+constexpr std::int32_t kSalmonSizeIndex = 17;
+
 constexpr std::array<RetypedField, 4> kRetypedIn1_21_11 = {{
     {152, 21}, // a wolf's anger end time went from remaining ticks to an absolute game time
     {11, 18},  // so did a bee's
@@ -194,6 +198,7 @@ bool UpEntityData::entityData(MutablePacket& packet) const {
         [this](std::int32_t serializer, io::ByteBuffer& in) -> std::optional<play::SetEntityDataPacket::Value> {
         if (serializer == olderItemSerializer_) {
             io::ByteBuffer converted;
+            const stack769::IntModelDataScope scope(backendVersion_ < protocolVersions::kV1_21_4);
             if (!stack769::convert(in, converted)) {
                 return std::nullopt;
             }
@@ -216,7 +221,16 @@ bool UpEntityData::entityData(MutablePacket& packet) const {
     }
     const auto known = types_.find(data->entityId);
     const std::int32_t type = known == types_.end() ? kUnknownType : known->second;
+    const std::int32_t salmon =
+        backendVersion_ < protocolVersions::kV1_21_4 ? tables_->entityType.map(kSalmonIn1_21_2) : IdMap::kNone;
     std::erase_if(data->entries, [&](play::SetEntityDataPacket::Entry& entry) {
+        if (type == salmon && salmon != IdMap::kNone && entry.index == kSalmonSizeIndex) {
+            if (const auto* size = std::get_if<play::SetEntityDataPacket::StringValue>(&entry.value)) {
+                entry.value = play::SetEntityDataPacket::IntValue{size->value == "small"   ? 0
+                                                                  : size->value == "large" ? 2
+                                                                                           : 1};
+            }
+        }
         const std::int32_t index = nativeIndex(type, entry.index);
         entry.index = static_cast<std::uint8_t>(index);
         if (index < 0) {
