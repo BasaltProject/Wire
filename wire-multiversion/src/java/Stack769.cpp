@@ -1,3 +1,4 @@
+#include <basalt/wire/multiversion/ProtocolVersions.hpp>
 #include <basalt/wire/multiversion/java/Stack769.hpp>
 #include <basalt/wire/protocol/ProtocolBuffer.hpp>
 #include <basalt/wire/protocol/VarInt.hpp>
@@ -408,6 +409,28 @@ void foodOlder(Buffer& in, Buffer& out) {
     list<pair<mobEffect, float4>>(in, out);
 }
 
+void foodOldest(Buffer& in, Buffer& out) {
+    vi(in, out);
+    float4(in, out);
+    byte1(in, out);
+    float4(in, out);
+    list<pair<mobEffect, float4>>(in, out);
+}
+
+void attributeModifierOldest(Buffer& in, Buffer& out) {
+    vi(in, out);
+    uuid16(in, out);
+    str(in, out);
+    double8(in, out);
+    vi(in, out);
+    vi(in, out);
+}
+
+void attributeModifiersOldest(Buffer& in, Buffer& out) {
+    list<attributeModifierOldest>(in, out);
+    static_cast<void>(pv::readBoolean(in));
+}
+
 void potionContentsOlder(Buffer& in, Buffer& out) {
     opt<vi>(in, out);
     opt<int4>(in, out);
@@ -499,12 +522,29 @@ constexpr std::size_t kPotionContents = 41;
 constexpr std::size_t kInstrument = 50;
 constexpr std::size_t kCustomModelDataIndex = 14;
 
+constexpr std::array<std::int8_t, 56> kFrom1_20_5 = {0,  1,  2,  3,  4,  5,  6,  8,  9,  10, 11, 12, 13, 14,
+                                                     15, 16, 17, 18, 19, 20, 21, -1, 26, 33, 34, 35, 36, 37,
+                                                     38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51,
+                                                     53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66};
+
+constexpr std::size_t kAttributeModifiersIndex = 13;
+
 bool lookup(std::int32_t id, Entry& entry) {
     if (id < 0) {
         return false;
     }
     std::size_t index = static_cast<std::size_t>(id);
-    if (gSource == Source::k1_21) {
+    const bool oldest = gSource == Source::k1_20_5;
+    if (oldest) {
+        if (index >= kFrom1_20_5.size()) {
+            return false;
+        }
+        if (kFrom1_20_5[index] < 0) {
+            entry = Entry{kNoComponent, nothing};
+            return true;
+        }
+        index = static_cast<std::size_t>(kFrom1_20_5[index]);
+    } else if (gSource == Source::k1_21) {
         if (index >= kFrom1_21.size()) {
             return false;
         }
@@ -523,9 +563,11 @@ bool lookup(std::int32_t id, Entry& entry) {
             entry = Entry{kNoComponent, intModelData};
         }
     }
-    if (gSource == Source::k1_21) {
+    if (gSource == Source::k1_21 || oldest) {
         if (index == kFood) {
-            entry = Entry{kNoComponent, foodOlder};
+            entry = Entry{kNoComponent, oldest ? foodOldest : foodOlder};
+        } else if (oldest && index == kAttributeModifiersIndex) {
+            entry = Entry{kNoComponent, attributeModifiersOldest};
         } else if (index == kPotionContents) {
             entry = Entry{kNoComponent, potionContentsOlder};
         } else if (index == kInstrument) {
@@ -536,11 +578,13 @@ bool lookup(std::int32_t id, Entry& entry) {
 }
 
 std::int32_t idInSource(std::int32_t id) {
-    if (gSource != Source::k1_21) {
+    if (gSource == Source::k1_21_4 || gSource == Source::k1_21_2) {
         return id;
     }
-    for (std::size_t i = 0; i < kFrom1_21.size(); ++i) {
-        if (kFrom1_21[i] == id) {
+    const std::span<const std::int8_t> table = gSource == Source::k1_21 ? std::span<const std::int8_t>{kFrom1_21}
+                                                                         : std::span<const std::int8_t>{kFrom1_20_5};
+    for (std::size_t i = 0; i < table.size(); ++i) {
+        if (table[i] == id) {
             return static_cast<std::int32_t>(i);
         }
     }
@@ -595,6 +639,16 @@ void stackCopy(Buffer& in, Buffer& out, std::int32_t depth) {
 }
 
 } // namespace
+
+Source sourceFor(std::int32_t backendVersion) {
+    if (backendVersion < protocolVersions::kV1_21) {
+        return Source::k1_20_5;
+    }
+    if (backendVersion < protocolVersions::kV1_21_2) {
+        return Source::k1_21;
+    }
+    return backendVersion < protocolVersions::kV1_21_4 ? Source::k1_21_2 : Source::k1_21_4;
+}
 
 SourceScope::SourceScope(Source source) : previous_(gSource) { gSource = source; }
 

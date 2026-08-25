@@ -198,10 +198,7 @@ bool UpEntityData::entityData(MutablePacket& packet) const {
         [this](std::int32_t serializer, io::ByteBuffer& in) -> std::optional<play::SetEntityDataPacket::Value> {
         if (serializer == olderItemSerializer_) {
             io::ByteBuffer converted;
-            const stack769::SourceScope scope(backendVersion_ < protocolVersions::kV1_21_2 ? stack769::Source::k1_21
-                                              : backendVersion_ < protocolVersions::kV1_21_4
-                                                  ? stack769::Source::k1_21_2
-                                                  : stack769::Source::k1_21_4);
+            const stack769::SourceScope scope(stack769::sourceFor(backendVersion_));
             if (!stack769::convert(in, converted)) {
                 return std::nullopt;
             }
@@ -238,6 +235,12 @@ bool UpEntityData::entityData(MutablePacket& packet) const {
         entry.index = static_cast<std::uint8_t>(index);
         if (index < 0) {
             return true;
+        }
+        if (backendVersion_ < protocolVersions::kV1_21) {
+            if (auto* id = std::get_if<play::SetEntityDataPacket::RegistryIdValue>(&entry.value);
+                id != nullptr && id->registry == protocol::play::RegistryHolder::PaintingVariant) {
+                id->value += 1;
+            }
         }
         // The content rewriter cannot read these, so their particle ids are renumbered here.
         if (auto* particle = std::get_if<play::SetEntityDataPacket::ParticleValue>(&entry.value)) {

@@ -5,6 +5,7 @@
 #include <basalt/wire/protocol/configuration/ConfigurationPackets.hpp>
 
 #include <cstdint>
+#include <tuple>
 
 namespace basalt::wire::multiversion {
 namespace {
@@ -185,6 +186,7 @@ void MutablePacket::reset(std::int32_t newId, std::int32_t newNativeId, std::vec
     body = std::move(newBody);
     idOverridden_ = false;
     extras.clear();
+    forwarded.clear();
 }
 
 bool MutablePacket::takeOverride() noexcept {
@@ -202,11 +204,17 @@ const RegistryRemovals& ProtocolLink::registryRemovals() const {
 
 void ProtocolChain::clientbound(protocol::ProtocolState state, std::int32_t id, std::span<const std::uint8_t> body,
                                 const Emit& emit) const {
+    clientboundFrom(0, state, id, body, emit);
+}
+
+void ProtocolChain::clientboundFrom(std::size_t first, protocol::ProtocolState state, std::int32_t id,
+                                    std::span<const std::uint8_t> body, const Emit& emit) const {
     MutablePacket packet;
     Carried carried;
     packet.reset(id, id, std::vector<std::uint8_t>{body.begin(), body.end()});
+    std::vector<std::tuple<std::size_t, std::int32_t, std::vector<std::uint8_t>>> later;
 
-    if (content_ != nullptr && !content_->clientbound(state, packet)) {
+    if (first == 0 && content_ != nullptr && !content_->clientbound(state, packet)) {
         return;
     }
     if (!packet.extras.empty()) {
@@ -217,13 +225,18 @@ void ProtocolChain::clientbound(protocol::ProtocolState state, std::int32_t id, 
 
     std::int32_t current = id;
     bool dropped = false;
-    for (ProtocolLink& link : links_) {
+    for (std::size_t index = first; index < links_.size(); ++index) {
+        ProtocolLink& link = links_[index];
         if (!dropped && !stripRegistry(state, packet, link)) {
             dropped = true;
         }
         if (!dropped && !link.clientbound(state, packet)) {
             dropped = true;
         }
+        for (auto& [forwardedId, forwardedBody] : packet.forwarded) {
+            later.emplace_back(index + 1, forwardedId, std::move(forwardedBody));
+        }
+        packet.forwarded.clear();
         if (!dropped) {
             stripUnknownMembers(state, packet, link);
         }
@@ -261,6 +274,9 @@ void ProtocolChain::clientbound(protocol::ProtocolState state, std::int32_t id, 
     }
     for (const auto& [extraId, extraBody] : carried) {
         emit(extraId, extraBody);
+    }
+    for (const auto& [from, laterId, laterBody] : later) {
+        clientboundFrom(from, state, laterId, laterBody, emit);
     }
 }
 

@@ -550,9 +550,7 @@ void rewriteRegistry(MutablePacket& packet) {
 } // namespace
 
 Link769Up::Link769Up(const VersionTables& upward, std::int32_t backendVersion)
-    : RenumberingLink(upward), source_(backendVersion < protocolVersions::kV1_21_2   ? stack769::Source::k1_21
-                                       : backendVersion < protocolVersions::kV1_21_4 ? stack769::Source::k1_21_2
-                                                                                     : stack769::Source::k1_21_4) {}
+    : RenumberingLink(upward), source_(stack769::sourceFor(backendVersion)) {}
 
 bool Link769Up::clientbound(ProtocolState state, MutablePacket& packet) {
     const stack769::SourceScope scope(source_);

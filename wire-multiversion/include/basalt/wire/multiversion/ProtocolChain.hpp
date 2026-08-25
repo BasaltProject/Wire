@@ -29,6 +29,9 @@ public:
 
     std::vector<std::pair<std::int32_t, std::vector<std::uint8_t>>> extras;
 
+    /// Like extras, but they run through the links after this one too, so they are in this link's output shape.
+    std::vector<std::pair<std::int32_t, std::vector<std::uint8_t>>> forwarded;
+
     void reset(std::int32_t newId, std::int32_t newNativeId, std::vector<std::uint8_t> newBody);
 
     [[nodiscard]] bool takeOverride() noexcept;
@@ -117,6 +120,8 @@ public:
 
 private:
     std::vector<std::reference_wrapper<ProtocolLink>> links_;
+    void clientboundFrom(std::size_t first, protocol::ProtocolState state, std::int32_t id,
+                         std::span<const std::uint8_t> body, const Emit& emit) const;
     void serverboundStepwise(protocol::ProtocolState state, std::size_t remaining, std::int32_t id,
                              std::span<const std::uint8_t> body, const Emit& emit) const;
 
