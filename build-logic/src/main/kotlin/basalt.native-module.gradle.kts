@@ -59,3 +59,24 @@ kotlin {
     }
 
 }
+
+// Kotlin/Native cannot link a test binary with zero test sources: the module still compiles, but
+// a module without a single packet codec or binary format has nothing left to round-trip test
+// against, and the link task fails outright rather than producing an empty runner. Skip the
+// native test compile/link/run tasks entirely when this module currently has no test source.
+afterEvaluate {
+    val hasTestSource =
+        kotlin.sourceSets
+            .filter { it.name.contains("Test", ignoreCase = true) }
+            .any { it.kotlin.files.isNotEmpty() }
+    if (!hasTestSource) {
+        tasks
+            .matching { task ->
+                task.name.matches(Regex("compileTestKotlin\\w+")) ||
+                    task.name.matches(Regex("link(Debug|Release)Test\\w+")) ||
+                    (task.group == "verification" && task.name.matches(Regex("\\w+Test")))
+            }.configureEach {
+                onlyIf { false }
+            }
+    }
+}
