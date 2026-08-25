@@ -292,6 +292,14 @@ void instrument(Buffer& in, Buffer& out) {
     holder<instrumentDirect>(in, out);
 }
 
+void instrumentDirectOlder(Buffer& in, Buffer& out) {
+    holder<soundDirect>(in, out);
+    vi(in, out);
+    float4(in, out);
+}
+
+void instrumentOlder(Buffer& in, Buffer& out) { holder<instrumentDirectOlder>(in, out); }
+
 void jukeboxSong(Buffer& in, Buffer& out) {
     holder<soundDirect>(in, out);
     nbtTag(in, out);
@@ -387,9 +395,24 @@ void trim(Buffer& in, Buffer& out) {
     static_cast<void>(pv::readBoolean(in));
 }
 
-thread_local bool gIntModelData = false;
+thread_local Source gSource = Source::k1_21_4;
 
 void intModelData(Buffer& in, Buffer&) { static_cast<void>(pv::varInt::read(in)); }
+
+void foodOlder(Buffer& in, Buffer& out) {
+    vi(in, out);
+    float4(in, out);
+    byte1(in, out);
+    float4(in, out);
+    nestedStack(in, out);
+    list<pair<mobEffect, float4>>(in, out);
+}
+
+void potionContentsOlder(Buffer& in, Buffer& out) {
+    opt<vi>(in, out);
+    opt<int4>(in, out);
+    list<mobEffect>(in, out);
+}
 
 struct Entry {
     std::int32_t nativeId;
@@ -467,6 +490,63 @@ constexpr std::array<Entry, 67> kEntries = {{
     {kNoComponent, nbtTag},
 }};
 
+constexpr std::array<std::int8_t, 57> kFrom1_21 = {
+    0,  1,  2,  3,  4,  5,  6,  8,  9,  10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, -1, 26, 33, 34, 35, 36, 37, 38,
+    39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66};
+
+constexpr std::size_t kFood = 21;
+constexpr std::size_t kPotionContents = 41;
+constexpr std::size_t kInstrument = 50;
+constexpr std::size_t kCustomModelDataIndex = 14;
+
+bool lookup(std::int32_t id, Entry& entry) {
+    if (id < 0) {
+        return false;
+    }
+    std::size_t index = static_cast<std::size_t>(id);
+    if (gSource == Source::k1_21) {
+        if (index >= kFrom1_21.size()) {
+            return false;
+        }
+        if (kFrom1_21[index] < 0) {
+            entry = Entry{kNoComponent, nothing};
+            return true;
+        }
+        index = static_cast<std::size_t>(kFrom1_21[index]);
+    }
+    if (index >= kEntries.size()) {
+        return false;
+    }
+    entry = kEntries[index];
+    if (gSource != Source::k1_21_4) {
+        if (index == kCustomModelDataIndex) {
+            entry = Entry{kNoComponent, intModelData};
+        }
+    }
+    if (gSource == Source::k1_21) {
+        if (index == kFood) {
+            entry = Entry{kNoComponent, foodOlder};
+        } else if (index == kPotionContents) {
+            entry = Entry{kNoComponent, potionContentsOlder};
+        } else if (index == kInstrument) {
+            entry = Entry{kNoComponent, instrumentOlder};
+        }
+    }
+    return true;
+}
+
+std::int32_t idInSource(std::int32_t id) {
+    if (gSource != Source::k1_21) {
+        return id;
+    }
+    for (std::size_t i = 0; i < kFrom1_21.size(); ++i) {
+        if (kFrom1_21[i] == id) {
+            return static_cast<std::int32_t>(i);
+        }
+    }
+    return kNoComponent;
+}
+
 void stackCopy(Buffer& in, Buffer& out, std::int32_t depth) {
     const std::int32_t count = pv::varInt::read(in);
     if (in.failed() || depth <= 0) {
@@ -484,13 +564,11 @@ void stackCopy(Buffer& in, Buffer& out, std::int32_t depth) {
     std::vector<std::pair<std::int32_t, std::vector<std::uint8_t>>> kept;
     for (std::int32_t i = 0; i < added && !in.failed(); ++i) {
         const std::int32_t id = pv::varInt::read(in);
-        if (id < 0 || static_cast<std::size_t>(id) >= kEntries.size()) {
+        Entry entry{};
+        if (!lookup(id, entry)) {
             in.markFailed();
             return;
         }
-        constexpr std::int32_t kCustomModelData = 14;
-        const Entry entry = gIntModelData && id == kCustomModelData ? Entry{kNoComponent, intModelData}
-                                                                    : kEntries[static_cast<std::size_t>(id)];
         Buffer payload;
         entry.copy(in, payload);
         if (entry.nativeId != kNoComponent) {
@@ -500,9 +578,9 @@ void stackCopy(Buffer& in, Buffer& out, std::int32_t depth) {
     std::vector<std::int32_t> gone;
     for (std::int32_t i = 0; i < removed && !in.failed(); ++i) {
         const std::int32_t id = pv::varInt::read(in);
-        if (id >= 0 && static_cast<std::size_t>(id) < kEntries.size() &&
-            kEntries[static_cast<std::size_t>(id)].nativeId != kNoComponent) {
-            gone.push_back(kEntries[static_cast<std::size_t>(id)].nativeId);
+        Entry entry{};
+        if (lookup(id, entry) && entry.nativeId != kNoComponent) {
+            gone.push_back(entry.nativeId);
         }
     }
     pv::varInt::write(out, static_cast<std::int32_t>(kept.size()));
@@ -518,9 +596,9 @@ void stackCopy(Buffer& in, Buffer& out, std::int32_t depth) {
 
 } // namespace
 
-IntModelDataScope::IntModelDataScope(bool enabled) : previous_(gIntModelData) { gIntModelData = enabled; }
+SourceScope::SourceScope(Source source) : previous_(gSource) { gSource = source; }
 
-IntModelDataScope::~IntModelDataScope() { gIntModelData = previous_; }
+SourceScope::~SourceScope() { gSource = previous_; }
 
 bool convert(Buffer& in, Buffer& out) {
     stackCopy(in, out, kMaxDepth);
@@ -620,7 +698,10 @@ bool convertToServer(Buffer& in, Buffer& out) {
             break;
         }
         if (!lost) {
-            kept.emplace_back(serverId, payload.toVector());
+            const std::int32_t sourceId = idInSource(serverId);
+            if (sourceId != kNoComponent) {
+                kept.emplace_back(sourceId, payload.toVector());
+            }
         }
     }
     if (in.failed()) {

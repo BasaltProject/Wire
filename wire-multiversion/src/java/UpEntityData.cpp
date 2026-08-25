@@ -198,7 +198,10 @@ bool UpEntityData::entityData(MutablePacket& packet) const {
         [this](std::int32_t serializer, io::ByteBuffer& in) -> std::optional<play::SetEntityDataPacket::Value> {
         if (serializer == olderItemSerializer_) {
             io::ByteBuffer converted;
-            const stack769::IntModelDataScope scope(backendVersion_ < protocolVersions::kV1_21_4);
+            const stack769::SourceScope scope(backendVersion_ < protocolVersions::kV1_21_2 ? stack769::Source::k1_21
+                                              : backendVersion_ < protocolVersions::kV1_21_4
+                                                  ? stack769::Source::k1_21_2
+                                                  : stack769::Source::k1_21_4);
             if (!stack769::convert(in, converted)) {
                 return std::nullopt;
             }

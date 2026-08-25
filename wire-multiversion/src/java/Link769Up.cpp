@@ -550,10 +550,12 @@ void rewriteRegistry(MutablePacket& packet) {
 } // namespace
 
 Link769Up::Link769Up(const VersionTables& upward, std::int32_t backendVersion)
-    : RenumberingLink(upward), intModelData_(backendVersion < protocolVersions::kV1_21_4) {}
+    : RenumberingLink(upward), source_(backendVersion < protocolVersions::kV1_21_2   ? stack769::Source::k1_21
+                                       : backendVersion < protocolVersions::kV1_21_4 ? stack769::Source::k1_21_2
+                                                                                     : stack769::Source::k1_21_4) {}
 
 bool Link769Up::clientbound(ProtocolState state, MutablePacket& packet) {
-    const stack769::IntModelDataScope scope(intModelData_);
+    const stack769::SourceScope scope(source_);
     if (!RenumberingLink::clientbound(state, packet)) {
         return false;
     }
@@ -670,6 +672,7 @@ bool Link769Up::serverbound(ProtocolState state, MutablePacket& packet) {
     if (!RenumberingLink::serverbound(state, packet) || state != ProtocolState::Play) {
         return true;
     }
+    const stack769::SourceScope scope(source_);
     switch (packet.nativeId()) {
     case kChat:
     case kChatCommandSigned:

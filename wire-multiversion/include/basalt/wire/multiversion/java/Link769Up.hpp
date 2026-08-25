@@ -1,6 +1,7 @@
 #pragma once
 
 #include <basalt/wire/multiversion/java/RenumberingLink.hpp>
+#include <basalt/wire/multiversion/java/Stack769.hpp>
 
 #include <cstdint>
 
@@ -17,7 +18,7 @@ public:
 
 private:
     std::int32_t messageIndex_ = 0;
-    bool intModelData_;
+    stack769::Source source_;
 };
 
 } // namespace basalt::wire::multiversion::java

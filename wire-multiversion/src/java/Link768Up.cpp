@@ -73,8 +73,9 @@ bool Link768Up::clientbound(protocol::ProtocolState state, MutablePacket& packet
 }
 
 bool Link768Up::serverbound(protocol::ProtocolState state, MutablePacket& packet) {
-    if (state == protocol::ProtocolState::Play && packet.nativeId() == play::ServerboundMoveVehiclePacket::kId &&
-        !packet.body.empty()) {
+    static const std::int32_t kMoveVehicle = javaTranslators::packetIdAt(
+        protocolVersions::kV1_21_2, protocol::ProtocolState::Play, false, play::ServerboundMoveVehiclePacket::kId);
+    if (state == protocol::ProtocolState::Play && packet.nativeId() == kMoveVehicle && !packet.body.empty()) {
         packet.body.pop_back();
     }
     return RenumberingLink::serverbound(state, packet);
