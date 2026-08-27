@@ -19,15 +19,12 @@ constexpr std::int32_t kInteger = 3;
 constexpr std::int32_t kLong = 4;
 constexpr std::int32_t kString = 5;
 constexpr std::int32_t kEntity = 6;
-constexpr std::int32_t kScoreHolder = 30;
-constexpr std::int32_t kTime = 42;
-constexpr std::int32_t kFirstRegistry = 43;
 
 void copyVarInt(io::ByteBuffer& in, io::ByteBuffer& out) { protocol::varInt::write(out, protocol::varInt::read(in)); }
 
 void copyString(io::ByteBuffer& in, io::ByteBuffer& out) { protocol::writeString(out, protocol::readString(in)); }
 
-void copyProperties(io::ByteBuffer& in, io::ByteBuffer& out, std::int32_t parser, std::int32_t lastRegistry) {
+void copyProperties(io::ByteBuffer& in, io::ByteBuffer& out, std::int32_t parser, const Layout& layout) {
     if (parser == kFloat || parser == kInteger || parser == kDouble || parser == kLong) {
         const std::uint8_t flags = in.readByte();
         out.writeByte(flags);
@@ -44,11 +41,11 @@ void copyProperties(io::ByteBuffer& in, io::ByteBuffer& out, std::int32_t parser
         }
     } else if (parser == kString) {
         copyVarInt(in, out);
-    } else if (parser == kEntity || parser == kScoreHolder) {
+    } else if (parser == kEntity || parser == layout.scoreHolder) {
         out.writeByte(in.readByte());
-    } else if (parser == kTime) {
+    } else if (parser == layout.time) {
         out.writeInt(in.readInt());
-    } else if (parser >= kFirstRegistry && parser <= lastRegistry) {
+    } else if (parser >= layout.firstRegistry && parser <= layout.lastRegistry) {
         copyString(in, out);
     }
 }
@@ -56,6 +53,12 @@ void copyProperties(io::ByteBuffer& in, io::ByteBuffer& out, std::int32_t parser
 } // namespace
 
 bool remap(MutablePacket& packet, std::int32_t lastRegistry, std::int32_t (*newId)(std::int32_t)) {
+    Layout layout;
+    layout.lastRegistry = lastRegistry;
+    return remap(packet, layout, newId);
+}
+
+bool remap(MutablePacket& packet, const Layout& layout, std::int32_t (*newId)(std::int32_t)) {
     io::ByteBuffer in = io::ByteBuffer::wrap(packet.body);
     io::ByteBuffer out;
     const std::int32_t nodes = protocol::readCollectionSize(in, 2);
@@ -80,7 +83,7 @@ bool remap(MutablePacket& packet, std::int32_t lastRegistry, std::int32_t (*newI
         }
         const std::int32_t parser = protocol::varInt::read(in);
         protocol::varInt::write(out, newId(parser));
-        copyProperties(in, out, parser, lastRegistry);
+        copyProperties(in, out, parser, layout);
         if ((flags & kSuggestions) != 0) {
             copyString(in, out);
         }

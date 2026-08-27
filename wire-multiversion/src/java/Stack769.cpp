@@ -522,10 +522,9 @@ constexpr std::size_t kPotionContents = 41;
 constexpr std::size_t kInstrument = 50;
 constexpr std::size_t kCustomModelDataIndex = 14;
 
-constexpr std::array<std::int8_t, 56> kFrom1_20_5 = {0,  1,  2,  3,  4,  5,  6,  8,  9,  10, 11, 12, 13, 14,
-                                                     15, 16, 17, 18, 19, 20, 21, -1, 26, 33, 34, 35, 36, 37,
-                                                     38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51,
-                                                     53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66};
+constexpr std::array<std::int8_t, 56> kFrom1_20_5 = {
+    0,  1,  2,  3,  4,  5,  6,  8,  9,  10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, -1, 26, 33, 34, 35, 36, 37,
+    38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66};
 
 constexpr std::size_t kAttributeModifiersIndex = 13;
 
@@ -581,8 +580,8 @@ std::int32_t idInSource(std::int32_t id) {
     if (gSource == Source::k1_21_4 || gSource == Source::k1_21_2) {
         return id;
     }
-    const std::span<const std::int8_t> table = gSource == Source::k1_21 ? std::span<const std::int8_t>{kFrom1_21}
-                                                                         : std::span<const std::int8_t>{kFrom1_20_5};
+    const std::span<const std::int8_t> table =
+        gSource == Source::k1_21 ? std::span<const std::int8_t>{kFrom1_21} : std::span<const std::int8_t>{kFrom1_20_5};
     for (std::size_t i = 0; i < table.size(); ++i) {
         if (table[i] == id) {
             return static_cast<std::int32_t>(i);

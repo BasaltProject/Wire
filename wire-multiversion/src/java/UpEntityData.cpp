@@ -1,6 +1,7 @@
 #include <basalt/wire/multiversion/ProtocolVersions.hpp>
 #include <basalt/wire/multiversion/java/EntityDataIndexes.hpp>
 #include <basalt/wire/multiversion/java/EntityDataTypes.hpp>
+#include <basalt/wire/multiversion/java/Stack765.hpp>
 #include <basalt/wire/multiversion/java/Stack769.hpp>
 #include <basalt/wire/multiversion/java/UpEntityData.hpp>
 #include <basalt/wire/nbt/NbtTag.hpp>
@@ -197,9 +198,16 @@ bool UpEntityData::entityData(MutablePacket& packet) const {
     const play::SetEntityDataPacket::ForeignValue foreign =
         [this](std::int32_t serializer, io::ByteBuffer& in) -> std::optional<play::SetEntityDataPacket::Value> {
         if (serializer == olderItemSerializer_) {
+            io::ByteBuffer components;
+            if (backendVersion_ < protocolVersions::kV1_20_5) {
+                if (!stack765::toComponents(in, components)) {
+                    return std::nullopt;
+                }
+            }
             io::ByteBuffer converted;
             const stack769::SourceScope scope(stack769::sourceFor(backendVersion_));
-            if (!stack769::convert(in, converted)) {
+            io::ByteBuffer& source = backendVersion_ < protocolVersions::kV1_20_5 ? components : in;
+            if (!stack769::convert(source, converted)) {
                 return std::nullopt;
             }
             return play::SetEntityDataPacket::ItemValue{play::WireItemStack::read(converted)};

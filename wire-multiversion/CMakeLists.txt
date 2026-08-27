@@ -13,6 +13,7 @@ basalt_module(wire-multiversion
         src/java/AdvancementLayouts.cpp
         src/java/ContentRewriter.cpp
         src/java/MapLayouts.cpp
+        src/java/Stack765.cpp
         src/java/Stack769.cpp
         src/java/RegistryMembers.cpp
         src/java/RegistryMembersLookup.cpp
@@ -97,12 +98,14 @@ basalt_module(wire-multiversion
         src/java/Link774.cpp
         src/java/Link775.cpp
         src/java/Link776.cpp
+        src/java/Link765Up.cpp
         src/java/Link766Up.cpp
         src/java/Link767Up.cpp
     src/java/Link768Up.cpp
         src/java/Link769Up.cpp
         src/java/Link770Up.cpp
         src/java/Link772Up.cpp
+        src/java/NewRegistries766.cpp
         src/java/NewRegistries767.cpp
         src/java/NewRegistries768.cpp
     src/java/NewRegistries770.cpp

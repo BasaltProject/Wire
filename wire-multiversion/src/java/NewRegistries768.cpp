@@ -1,4 +1,4 @@
-// Regenerate rather than edit: the registries 1.21.2 added or reshaped, as a 1.21.2 server sends them in the configuration phase.
+// Regenerate rather than edit: the registries 1.21.2 added or reshaped.
 
 #include <basalt/wire/multiversion/java/NewRegistries768.hpp>
 

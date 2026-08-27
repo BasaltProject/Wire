@@ -1,7 +1,10 @@
+#include <basalt/wire/multiversion/ProtocolVersions.hpp>
+#include <basalt/wire/multiversion/java/JavaTranslators.hpp>
 #include <basalt/wire/multiversion/java/Link766Up.hpp>
 #include <basalt/wire/multiversion/java/NewRegistries767.hpp>
 #include <basalt/wire/protocol/ProtocolBuffer.hpp>
 #include <basalt/wire/protocol/VarInt.hpp>
+#include <basalt/wire/protocol/play/PlayPackets.hpp>
 
 #include <array>
 #include <cmath>
@@ -226,6 +229,16 @@ bool Link766Up::clientbound(ProtocolState state, MutablePacket& packet) {
         break;
     default:
         break;
+    }
+    return true;
+}
+
+bool Link766Up::serverbound(ProtocolState state, MutablePacket& packet) {
+    static const std::int32_t kUseItem = javaTranslators::packetIdAt(
+        protocolVersions::kV1_20_5, ProtocolState::Play, false, protocol::play::ServerboundUseItemPacket::kId);
+    constexpr std::size_t kRotationBytes = 8;
+    if (state == ProtocolState::Play && packet.nativeId() == kUseItem && packet.body.size() >= kRotationBytes) {
+        packet.body.resize(packet.body.size() - kRotationBytes);
     }
     return true;
 }
