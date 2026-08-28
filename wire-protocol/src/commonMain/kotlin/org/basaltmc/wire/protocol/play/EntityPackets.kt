@@ -201,6 +201,16 @@ public data class SetEntityDataPacket(
             val value: Component,
         ) : Entry
 
+        /**
+         * `EntityDataSerializers.OPTIONAL_COMPONENT` (serializer 6): the name over an entity's head.
+         *
+         * Null is the name being taken off again, which is not the same as never having sent one.
+         */
+        public data class OptionalText(
+            override val index: Int,
+            val value: Component?,
+        ) : Entry
+
         /** An item stack, `EntityDataSerializers.ITEM_STACK` (serializer 7). */
         public data class Item(
             override val index: Int,
@@ -294,6 +304,11 @@ public data class SetEntityDataPacket(
                     buffer.writeVarInt(COMPONENT_SERIALIZER)
                     buffer.writeAnonymousNbt(ComponentNbt.serialize(entry.value))
                 }
+                is Entry.OptionalText -> {
+                    buffer.writeVarInt(OPTIONAL_COMPONENT_SERIALIZER)
+                    buffer.writeBoolean(entry.value != null)
+                    entry.value?.let { buffer.writeAnonymousNbt(ComponentNbt.serialize(it)) }
+                }
                 is Entry.Item -> {
                     buffer.writeVarInt(ITEM_STACK_SERIALIZER)
                     WireItemStack.write(buffer, entry.stack)
@@ -358,6 +373,13 @@ public data class SetEntityDataPacket(
         /** parity: `Entity.DATA_POSE`, which is what draws a player lying in a bed. */
         public const val POSE_INDEX: Int = 6
 
+        /** parity: `Entity.DATA_CUSTOM_NAME`, the floating name, and whether it is drawn. */
+        public const val CUSTOM_NAME_INDEX: Int = 2
+        public const val CUSTOM_NAME_VISIBLE_INDEX: Int = 3
+
+        /** Entity's own entries, which every entity has whatever it is. */
+        public const val LAST_SHARED_INDEX: Int = 7
+
         /** parity: `LivingEntity.SLEEPING_POS_ID`, the bed they are lying in. */
         public const val SLEEPING_POS_INDEX: Int = 14
 
@@ -386,6 +408,7 @@ public data class SetEntityDataPacket(
         private const val INT_SERIALIZER = 1
         private const val FLOAT_SERIALIZER = 3
         private const val COMPONENT_SERIALIZER = 5
+        private const val OPTIONAL_COMPONENT_SERIALIZER = 6
         private const val ITEM_STACK_SERIALIZER = 7
         private const val BOOLEAN_SERIALIZER = 8
         private const val OPTIONAL_BLOCK_POS_SERIALIZER = 11
@@ -478,6 +501,11 @@ public data class SetEntityDataPacket(
                         INT_SERIALIZER -> Entry.Ints(index, buffer.readVarInt())
                         FLOAT_SERIALIZER -> Entry.Floats(index, buffer.readFloat())
                         COMPONENT_SERIALIZER -> Entry.Text(index, ComponentNbt.deserialize(buffer.readAnonymousNbt()))
+                        OPTIONAL_COMPONENT_SERIALIZER ->
+                            Entry.OptionalText(
+                                index,
+                                if (buffer.readBoolean()) ComponentNbt.deserialize(buffer.readAnonymousNbt()) else null,
+                            )
                         ITEM_STACK_SERIALIZER -> Entry.Item(index, WireItemStack.read(buffer))
                         BOOLEAN_SERIALIZER -> Entry.Booleans(index, buffer.readBoolean())
                         OPTIONAL_BLOCK_POS_SERIALIZER ->

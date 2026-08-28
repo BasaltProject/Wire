@@ -185,6 +185,12 @@ public class ProtocolChain(
         val carried = mutableListOf<Pair<Int, ByteArray>>()
         packet.reset(id, id, body)
         if (content?.clientbound(state, packet) == false) return
+        // The rewriter's own extras are in this server's numbering, so they are carried before the
+        // first link rather than after it: every link renumbers them, the same as the packet itself.
+        if (packet.extras.isNotEmpty()) {
+            carried += packet.extras
+            packet.extras.clear()
+        }
         var current = id
         var dropped = false
         for (link in links) {

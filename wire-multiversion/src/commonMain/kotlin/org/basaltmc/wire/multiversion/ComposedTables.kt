@@ -20,6 +20,17 @@ public class ComposedIdMap(
         return current
     }
 
+    /** True as soon as one step had to stand something else in, which the whole walk inherits. */
+    override fun substitutes(id: Int): Boolean {
+        var current = id
+        for (step in steps) {
+            if (step.substitutes(current)) return true
+            current = step.map(current)
+            if (current == IdMap.NONE) return false
+        }
+        return false
+    }
+
     /** The same walk backwards, for an id arriving from the client. */
     override fun unmap(id: Int): Int {
         var current = id
