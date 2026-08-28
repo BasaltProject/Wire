@@ -7,6 +7,7 @@ kotlin {
         commonMain.dependencies {
             api(project(":wire-common"))
             api(project(":wire-io"))
+            api(project(":wire-protocol"))
             implementation(libs.cryptography.core)
             implementation(libs.cryptography.provider.optimal)
             implementation(libs.ktor.client.core)

@@ -44,9 +44,15 @@ public data class HandshakePacket(
         public const val ID: Int = 0
         private const val MAX_HOST_LENGTH = 255
 
-        public fun read(buffer: ByteBuffer): HandshakePacket {
+        /** What a host may run to under BungeeCord forwarding: a signed skin alone is over vanilla's 255. */
+        public const val FORWARDED_HOST_LENGTH: Int = 4096
+
+        public fun read(
+            buffer: ByteBuffer,
+            maxHostLength: Int = MAX_HOST_LENGTH,
+        ): HandshakePacket {
             val protocolVersion = buffer.readVarInt()
-            val hostName = buffer.readProtocolString(MAX_HOST_LENGTH)
+            val hostName = buffer.readProtocolString(maxHostLength)
             val port = buffer.readShort().toInt() and 0xFFFF
             val intent = ClientIntent.fromId(buffer.readVarInt())
             return HandshakePacket(protocolVersion, hostName, port, intent)
