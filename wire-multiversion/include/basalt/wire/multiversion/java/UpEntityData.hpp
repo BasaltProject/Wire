@@ -27,6 +27,8 @@ private:
     std::int32_t backendVersion_;
     std::vector<std::int32_t> serializers_;
     std::int32_t olderItemSerializer_ = -1;
+    std::int32_t olderTextSerializer_ = -1;
+    std::int32_t olderOptionalTextSerializer_ = -1;
     std::unordered_map<std::int32_t, std::int32_t> types_;
 };
 

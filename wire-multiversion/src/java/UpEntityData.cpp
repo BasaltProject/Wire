@@ -1,3 +1,4 @@
+#include <basalt/wire/common/json/Json.hpp>
 #include <basalt/wire/multiversion/ProtocolVersions.hpp>
 #include <basalt/wire/multiversion/java/EntityDataIndexes.hpp>
 #include <basalt/wire/multiversion/java/EntityDataTypes.hpp>
@@ -12,6 +13,7 @@
 #include <basalt/wire/protocol/play/PlayPackets.hpp>
 #include <basalt/wire/protocol/play/PlayerStatePackets.hpp>
 #include <basalt/wire/protocol/play/RecipePackets.hpp>
+#include <basalt/wire/text/ComponentJson.hpp>
 
 #include <algorithm>
 #include <array>
@@ -103,6 +105,17 @@ UpEntityData::UpEntityData(PacketContentRewriter& next, const ComposedTables& ta
     if (backendVersion < protocolVersions::kV1_21_5 && older.size() > kItemKind && older[kItemKind] >= 0) {
         olderItemSerializer_ = older[kItemKind];
         serializers_[static_cast<std::size_t>(olderItemSerializer_)] = -1;
+    }
+    constexpr std::size_t kTextKind = 5;
+    constexpr std::size_t kOptionalTextKind = 6;
+    if (backendVersion < protocolVersions::kV1_20_3 && older.size() > kOptionalTextKind) {
+        olderTextSerializer_ = older[kTextKind];
+        olderOptionalTextSerializer_ = older[kOptionalTextKind];
+        for (const std::int32_t serializer : {olderTextSerializer_, olderOptionalTextSerializer_}) {
+            if (serializer >= 0) {
+                serializers_[static_cast<std::size_t>(serializer)] = -1;
+            }
+        }
     }
 }
 
@@ -197,6 +210,21 @@ bool UpEntityData::entityData(MutablePacket& packet) const {
     constexpr std::int32_t kCompoundSerializer1_21_7 = 16;
     const play::SetEntityDataPacket::ForeignValue foreign =
         [this](std::int32_t serializer, io::ByteBuffer& in) -> std::optional<play::SetEntityDataPacket::Value> {
+        if (serializer >= 0 && (serializer == olderTextSerializer_ || serializer == olderOptionalTextSerializer_)) {
+            const bool optional = serializer == olderOptionalTextSerializer_;
+            if (optional && !protocol::readBoolean(in)) {
+                return play::SetEntityDataPacket::OptionalTextValue{std::nullopt};
+            }
+            const auto parsed = common::parseJson(protocol::readString(in));
+            if (!parsed.has_value()) {
+                return std::nullopt;
+            }
+            text::Component component = text::componentJson::deserialize(*parsed);
+            if (optional) {
+                return play::SetEntityDataPacket::OptionalTextValue{std::move(component)};
+            }
+            return play::SetEntityDataPacket::TextValue{std::move(component)};
+        }
         if (serializer == olderItemSerializer_) {
             io::ByteBuffer components;
             if (backendVersion_ < protocolVersions::kV1_20_5) {
