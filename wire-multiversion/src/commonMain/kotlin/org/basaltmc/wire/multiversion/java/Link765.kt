@@ -1,14 +1,11 @@
 package org.basaltmc.wire.multiversion.java
 
-import org.basaltmc.wire.io.ByteBuffer
 import org.basaltmc.wire.multiversion.ComposedTables
 import org.basaltmc.wire.multiversion.MutablePacket
 import org.basaltmc.wire.multiversion.VersionTables
-import org.basaltmc.wire.nbt.NbtCompound
 import org.basaltmc.wire.protocol.ProtocolState
 import org.basaltmc.wire.protocol.play.ContainerSetContentPacket
 import org.basaltmc.wire.protocol.play.ContainerSetSlotPacket
-import org.basaltmc.wire.protocol.play.ItemComponent
 import org.basaltmc.wire.protocol.play.ServerboundSetCreativeModeSlotPacket
 import org.basaltmc.wire.protocol.play.SetEquipmentPacket
 import org.basaltmc.wire.protocol.play.UpdateAttributesPacket
@@ -16,12 +13,9 @@ import org.basaltmc.wire.protocol.play.WireItemStack
 import org.basaltmc.wire.protocol.readAnonymousNbt
 import org.basaltmc.wire.protocol.readUuid
 import org.basaltmc.wire.protocol.readVarInt
-import org.basaltmc.wire.protocol.writeAnonymousNbt
-import org.basaltmc.wire.protocol.writeBoolean
 import org.basaltmc.wire.protocol.writeProtocolString
 import org.basaltmc.wire.protocol.writeUuid
 import org.basaltmc.wire.protocol.writeVarInt
-import org.basaltmc.wire.text.ComponentJson
 
 /**
  * 1.20.5 to 1.20.4, where an item stops being a set of components and goes back to being NBT.
@@ -55,7 +49,7 @@ internal class Link765(
                     output.writeByte(container)
                     output.writeVarInt(stateId)
                     output.writeShort(slot)
-                    writeOldStack(output, item)
+                    LegacyStacks.write(output, item, older)
                 }
             }
             ContainerSetContentPacket.ID -> {
@@ -68,8 +62,8 @@ internal class Link765(
                     output.writeByte(container)
                     output.writeVarInt(stateId)
                     output.writeVarInt(items.size)
-                    for (item in items) writeOldStack(output, item)
-                    writeOldStack(output, carried)
+                    for (item in items) LegacyStacks.write(output, item, older)
+                    LegacyStacks.write(output, carried, older)
                 }
             }
             SetEquipmentPacket.ID -> {
@@ -80,7 +74,7 @@ internal class Link765(
                         val last = index == equipment.slots.size - 1
                         val marker = if (last) slot.type.ordinal else slot.type.ordinal or CONTINUES
                         output.writeByte(marker.toByte())
-                        writeOldStack(output, slot.stack)
+                        LegacyStacks.write(output, slot.stack, older)
                     }
                 }
             }
@@ -117,48 +111,6 @@ internal class Link765(
             output.writeVarInt(0)
         }
         return true
-    }
-
-    /** A stack as everything before 1.20.5 reads one: present, then the item, the count and a tag. */
-    private fun writeOldStack(
-        output: ByteBuffer,
-        item: WireItemStack?,
-    ) {
-        if (item == null || item.count <= 0) {
-            output.writeBoolean(false)
-            return
-        }
-        output.writeBoolean(true)
-        output.writeVarInt(item.itemId)
-        output.writeByte(item.count.toByte())
-        val tag = tagOf(item)
-        if (tag == null) {
-            // No tag at all, which is a single zero byte rather than an empty compound.
-            output.writeByte(0)
-        } else {
-            output.writeAnonymousNbt(tag)
-        }
-    }
-
-    /** The two components an old tag has a name for, and null when the stack carries neither. */
-    private fun tagOf(item: WireItemStack): NbtCompound? {
-        var tag: NbtCompound? = null
-        for (component in item.components) {
-            when {
-                component is ItemComponent.Number && component.id == ItemComponent.DAMAGE -> {
-                    val into = tag ?: NbtCompound().also { tag = it }
-                    into.putInt("Damage", component.value)
-                }
-                component is ItemComponent.Text && component.id == ItemComponent.CUSTOM_NAME -> {
-                    val into = tag ?: NbtCompound().also { tag = it }
-                    // A name travelled as a string of json before it was a component of its own.
-                    val display = NbtCompound()
-                    display.putString("Name", ComponentJson.serialize(component.text).toString())
-                    into["display"] = display
-                }
-            }
-        }
-        return tag
     }
 
     /** An attribute is a number from 1.21 and a name below it, and the name is the far end's. */

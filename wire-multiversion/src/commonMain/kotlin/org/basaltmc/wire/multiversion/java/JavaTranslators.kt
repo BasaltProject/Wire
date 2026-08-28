@@ -163,6 +163,9 @@ public object JavaTranslators {
         if (protocol == ProtocolVersions.NATIVE || protocol !in supported) return null
         val used = factories.takeWhile { it.first >= protocol }
         val composed = ComposedTables(used.mapNotNull { tablesByVersion[it.first] })
-        return ProtocolChain(used.map { it.second(composed) }, ContentRewriter(composed, labels))
+        return ProtocolChain(
+            used.map { it.second(composed) },
+            ContentRewriter(composed, labels, protocol, used.map { it.first }),
+        )
     }
 }

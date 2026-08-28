@@ -6,6 +6,7 @@ import org.basaltmc.wire.multiversion.ComposedTables
 import org.basaltmc.wire.multiversion.IdLookup
 import org.basaltmc.wire.multiversion.IdMap
 import org.basaltmc.wire.multiversion.MutablePacket
+import org.basaltmc.wire.multiversion.ProtocolVersions
 import org.basaltmc.wire.multiversion.SubstitutionLabels
 import org.basaltmc.wire.protocol.ProtocolState
 import org.basaltmc.wire.protocol.configuration.TagsPacket
@@ -50,14 +51,15 @@ internal class ContentRewriter(
     private val tables: ComposedTables,
     /** Null leaves substitutes unnamed, which is what an operator who turned the naming off wants. */
     private val labels: SubstitutionLabels? = null,
+    /** The protocol at the far end, which decides how it reads what it is sent. */
+    private val farEnd: Int = ProtocolVersions.NATIVE,
+    /** The older side of every link between here and there, newest first. */
+    private val links: List<Int> = emptyList(),
 ) : org.basaltmc.wire.multiversion.PacketContentRewriter {
-    /**
-     * Entities the far end is being shown some other mob in place of: its id, and what it really is.
-     *
-     * Whatever thread has something to say to this session writes here, so the map is replaced
-     * rather than edited. It stays empty for every client whose version has all of this one's mobs.
-     */
-    private val substituted = AtomicReference<Map<Int, Int>>(emptyMap())
+    /** What each entity in sight really is, which says where its data sits over there. Replaced, not edited. */
+    private val entityTypes = AtomicReference<Map<Int, Int>>(emptyMap())
+
+    private val entityData = EntityDataRewriter(farEnd, links) { stack(it) }
 
     private val chunks =
         ChunkRewriter(
@@ -120,14 +122,14 @@ internal class ContentRewriter(
                     if (spawn.entityType != tables.nativePlayerEntityType) return false
                     return true
                 }
+                track(spawn.entityId, spawn.entityType)
                 if (tables.entityType.substitutes(spawn.entityType)) {
-                    track(spawn.entityId, spawn.entityType)
                     nameOver(packet, spawn.entityId, spawn.entityType)
                 }
                 encode(packet) { spawn.copy(entityType = type).write(it) }
             }
             RemoveEntitiesPacket.ID -> {
-                if (substituted.value.isNotEmpty()) {
+                if (entityTypes.value.isNotEmpty()) {
                     forget(decode(packet) { RemoveEntitiesPacket.read(it) }.entityIds)
                 }
             }
@@ -215,13 +217,19 @@ internal class ContentRewriter(
                 // What a mob standing in for another one is told about itself is held to what every
                 // entity has. Past that the entries belong to the type this client is not being
                 // shown, and reading a size where it expects a variant is how a client crashes.
+                val nativeType = entityTypes.value[data.entityId] ?: UNKNOWN_TYPE
                 val entries =
-                    if (data.entityId in substituted.value) {
+                    if (nativeType >= 0 && tables.entityType.substitutes(nativeType)) {
                         rewritten.filter { it.index <= SetEntityDataPacket.LAST_SHARED_INDEX }
                     } else {
                         rewritten
                     }
-                encode(packet) { data.copy(entries = entries).write(it) }
+                val translated = entityData.rewrite(SetEntityDataPacket(data.entityId, entries), nativeType)
+                if (translated != null) {
+                    packet.body = translated
+                } else {
+                    encode(packet) { data.copy(entries = entries).write(it) }
+                }
             }
         }
         return true
@@ -349,21 +357,26 @@ internal class ContentRewriter(
         return item.copy(components = item.components + ItemComponent.Text(ItemComponent.CUSTOM_NAME, label))
     }
 
+    private companion object {
+        /** An entity nothing announced the type of: only its shared fields can be placed. */
+        const val UNKNOWN_TYPE = -1
+    }
+
     private fun track(
         entityId: Int,
         nativeType: Int,
     ) {
         while (true) {
-            val current = substituted.value
-            if (substituted.compareAndSet(current, current + (entityId to nativeType))) return
+            val current = entityTypes.value
+            if (entityTypes.compareAndSet(current, current + (entityId to nativeType))) return
         }
     }
 
     private fun forget(entityIds: List<Int>) {
         while (true) {
-            val current = substituted.value
+            val current = entityTypes.value
             val left = current - entityIds.toSet()
-            if (left.size == current.size || substituted.compareAndSet(current, left)) return
+            if (left.size == current.size || entityTypes.compareAndSet(current, left)) return
         }
     }
 
@@ -374,17 +387,18 @@ internal class ContentRewriter(
         nativeType: Int,
     ) {
         val label = labels?.entityLabel(nativeType) ?: return
+        val named =
+            SetEntityDataPacket(
+                entityId,
+                listOf(
+                    SetEntityDataPacket.Entry.OptionalText(SetEntityDataPacket.CUSTOM_NAME_INDEX, label),
+                    SetEntityDataPacket.Entry.Booleans(SetEntityDataPacket.CUSTOM_NAME_VISIBLE_INDEX, true),
+                ),
+            )
+        // Through the same translation as any other entity data: this is the one packet nothing
+        // else has written, so it is the one that would go out in this version's own numbers.
         val body =
-            ByteBuffer()
-                .also {
-                    SetEntityDataPacket(
-                        entityId,
-                        listOf(
-                            SetEntityDataPacket.Entry.OptionalText(SetEntityDataPacket.CUSTOM_NAME_INDEX, label),
-                            SetEntityDataPacket.Entry.Booleans(SetEntityDataPacket.CUSTOM_NAME_VISIBLE_INDEX, true),
-                        ),
-                    ).write(it)
-                }.toByteArray()
+            entityData.rewrite(named, nativeType) ?: ByteBuffer().also { named.write(it) }.toByteArray()
         packet.extras += SetEntityDataPacket.ID to body
     }
 

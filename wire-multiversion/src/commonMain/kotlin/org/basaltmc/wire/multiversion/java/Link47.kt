@@ -44,7 +44,8 @@ internal class Link47(
         when (packet.nativeId) {
             MapChunkPacket.ID -> return rewriteChunk(packet)
             ForgetLevelChunkPacket.ID -> emptyChunk(packet)
-            SetEntityDataPacket.ID -> return false
+            // The data arrives in 1.8's own shape, kind and index in one byte, so it goes through.
+            SetEntityDataPacket.ID -> {}
             SpawnEntityPacket.ID -> return rewriteSpawn(packet)
             EntityTeleportPacket.ID, EntityPositionSyncPacket.ID -> fixedPointTeleport(packet)
             SetEquipmentPacket.ID -> return rewriteEquipment(packet)
