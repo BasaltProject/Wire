@@ -6,6 +6,7 @@ import org.basaltmc.wire.multiversion.SubstitutionLabels
 import org.basaltmc.wire.protocol.ProtocolState
 import org.basaltmc.wire.protocol.play.ContainerSetSlotPacket
 import org.basaltmc.wire.protocol.play.ItemComponent
+import org.basaltmc.wire.protocol.play.Pose
 import org.basaltmc.wire.protocol.play.SetEntityDataPacket
 import org.basaltmc.wire.protocol.play.SpawnEntityPacket
 import org.basaltmc.wire.protocol.play.WireItemStack
@@ -206,6 +207,41 @@ class SubstitutionLabelTest {
         assertEquals(3, header shr 5, "the kind rides in the same byte")
         assertEquals(20f, out.readFloat())
         assertEquals(0x7F, out.readByte().toInt() and 0xFF, "1.8 ends the list with its own byte")
+    }
+
+    @Test
+    fun `a pose a version never had is said in the one it has`() {
+        val sent = mutableListOf<ByteArray>()
+        val chain = checkNotNull(JavaTranslators.chainFor(ProtocolVersions.V1_18_2, LABELS))
+        val spawn =
+            ByteBuffer()
+                .also {
+                    SpawnEntityPacket(
+                        entityId = 9,
+                        uuid = Uuid.fromLongs(0, 9),
+                        entityType = ZOMBIE_776,
+                        x = 0.0,
+                        y = 0.0,
+                        z = 0.0,
+                    ).write(it)
+                }.toByteArray()
+        chain.clientbound(ProtocolState.PLAY, SpawnEntityPacket.ID, spawn) { _, _ -> }
+        val data =
+            ByteBuffer()
+                .also {
+                    SetEntityDataPacket(
+                        9,
+                        listOf(SetEntityDataPacket.Entry.Poses(SetEntityDataPacket.POSE_INDEX, Pose.CROAKING)),
+                    ).write(it)
+                }.toByteArray()
+        chain.clientbound(ProtocolState.PLAY, SetEntityDataPacket.ID, data) { _, bytes -> sent += bytes }
+
+        val out = ByteBuffer().apply { writeBytes(sent.single()) }
+        assertEquals(9, out.readVarInt())
+        assertEquals(SetEntityDataPacket.POSE_INDEX, out.readByte().toInt())
+        // 1.18.2 numbers a pose 18, and the poses the frog brought are standing to it.
+        assertEquals(18, out.readVarInt())
+        assertEquals(Pose.STANDING.ordinal, out.readVarInt())
     }
 
     private fun through(
