@@ -118,10 +118,12 @@ public:
     [[nodiscard]] std::int32_t serverboundIdToNative(protocol::ProtocolState state, std::int32_t id) const;
     [[nodiscard]] std::int32_t serverboundIdFromNative(protocol::ProtocolState state, std::int32_t id) const;
 
-private:
-    std::vector<std::reference_wrapper<ProtocolLink>> links_;
+    /// Like `clientbound`, but the packet is already in the numbering after the first `first` links.
     void clientboundFrom(std::size_t first, protocol::ProtocolState state, std::int32_t id,
                          std::span<const std::uint8_t> body, const Emit& emit) const;
+
+private:
+    std::vector<std::reference_wrapper<ProtocolLink>> links_;
     void serverboundStepwise(protocol::ProtocolState state, std::size_t remaining, std::int32_t id,
                              std::span<const std::uint8_t> body, const Emit& emit) const;
 

@@ -98,6 +98,7 @@ basalt_module(wire-multiversion
         src/java/Link774.cpp
         src/java/Link775.cpp
         src/java/Link776.cpp
+        src/java/Link763Up.cpp
         src/java/Link764Up.cpp
         src/java/Link765Up.cpp
         src/java/Link766Up.cpp
