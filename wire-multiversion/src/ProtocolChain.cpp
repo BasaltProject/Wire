@@ -202,6 +202,14 @@ const RegistryRemovals& ProtocolLink::registryRemovals() const {
     return none;
 }
 
+std::size_t ProtocolChain::linksUpTo(std::int32_t version) const noexcept {
+    std::size_t count = 0;
+    while (count < links_.size() && links_[count].get().older() <= version) {
+        ++count;
+    }
+    return count;
+}
+
 void ProtocolChain::clientbound(protocol::ProtocolState state, std::int32_t id, std::span<const std::uint8_t> body,
                                 const Emit& emit) const {
     clientboundFrom(0, state, id, body, emit);

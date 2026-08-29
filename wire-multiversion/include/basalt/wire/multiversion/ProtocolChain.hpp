@@ -118,6 +118,9 @@ public:
     [[nodiscard]] std::int32_t serverboundIdToNative(protocol::ProtocolState state, std::int32_t id) const;
     [[nodiscard]] std::int32_t serverboundIdFromNative(protocol::ProtocolState state, std::int32_t id) const;
 
+    /// Links whose older side is at most `version`: where a climbing chain meets that version.
+    [[nodiscard]] std::size_t linksUpTo(std::int32_t version) const noexcept;
+
     /// Like `clientbound`, but the packet is already in the numbering after the first `first` links.
     void clientboundFrom(std::size_t first, protocol::ProtocolState state, std::int32_t id,
                          std::span<const std::uint8_t> body, const Emit& emit) const;
