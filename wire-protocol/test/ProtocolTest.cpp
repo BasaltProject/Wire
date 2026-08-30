@@ -3,12 +3,21 @@
 #include <basalt/wire/protocol/PacketFraming.hpp>
 #include <basalt/wire/protocol/ProtocolBuffer.hpp>
 #include <basalt/wire/protocol/VarInt.hpp>
+#include <basalt/wire/protocol/configuration/ConfigurationPackets.hpp>
 #include <basalt/wire/protocol/handshake/HandshakePacket.hpp>
 #include <basalt/wire/protocol/login/LoginPackets.hpp>
+#include <basalt/wire/protocol/login/LoginPluginPackets.hpp>
+#include <basalt/wire/protocol/play/BlockEntityPackets.hpp>
 #include <basalt/wire/protocol/play/BlockPos.hpp>
+#include <basalt/wire/protocol/play/BorderPackets.hpp>
+#include <basalt/wire/protocol/play/HudPackets.hpp>
+#include <basalt/wire/protocol/play/ItemComponent.hpp>
 #include <basalt/wire/protocol/play/LowPrecisionVec3.hpp>
 #include <basalt/wire/protocol/play/NibbleArray.hpp>
 #include <basalt/wire/protocol/play/PalettedContainer.hpp>
+#include <basalt/wire/protocol/play/ParticleOptions.hpp>
+#include <basalt/wire/protocol/play/PlayerStatePackets.hpp>
+#include <basalt/wire/protocol/play/SimplePackets.hpp>
 #include <basalt/wire/protocol/status/StatusPackets.hpp>
 
 #include <doctest.h>
@@ -341,4 +350,368 @@ TEST_CASE("base64 round trips every remainder") {
     CHECK(common::base64::encode(std::vector<std::uint8_t>{'M', 'a'}) == "TWE=");
     CHECK(common::base64::encode(std::vector<std::uint8_t>{'M', 'a', 'n'}) == "TWFu");
     CHECK_FALSE(common::base64::decode("not base64!").has_value());
+}
+
+TEST_CASE("the configuration packets round trip") {
+    using namespace basalt::wire::protocol::configuration;
+
+    const ClientInformationPacket information{"en_us", 12, 0, true, 0x7F, 1, false, true, 0};
+    io::ByteBuffer informationBuffer;
+    information.write(informationBuffer);
+    CHECK(*ClientInformationPacket::read(informationBuffer) == information);
+
+    const SelectKnownPacksPacket packs{{{"minecraft", "core", "26.2"}}};
+    io::ByteBuffer packsBuffer;
+    packs.write(packsBuffer);
+    CHECK(*SelectKnownPacksPacket::read(packsBuffer) == packs);
+    // Basalt sends none of its own, so the empty list has to survive too.
+    io::ByteBuffer emptyPacks;
+    SelectKnownPacksPacket{}.write(emptyPacks);
+    CHECK(SelectKnownPacksPacket::read(emptyPacks)->packs.empty());
+
+    nbt::NbtCompound biome;
+    biome.putBoolean("has_precipitation", true);
+    biome.putFloat("temperature", 0.8F);
+    const RegistryDataPacket registry{
+        "minecraft:worldgen/biome",
+        {{"minecraft:plains", nbt::NbtTag::ofCompound(std::move(biome))}, {"minecraft:the_void", std::nullopt}}};
+    io::ByteBuffer registryBuffer;
+    registry.write(registryBuffer);
+    const auto readRegistry = RegistryDataPacket::read(registryBuffer);
+    REQUIRE(readRegistry.has_value());
+    CHECK(*readRegistry == registry);
+
+    const TagsPacket tags{{{"minecraft:block", {{"minecraft:logs", {1, 2, 3}}, {"minecraft:planks", {}}}}}};
+    io::ByteBuffer tagsBuffer;
+    tags.write(tagsBuffer);
+    CHECK(*TagsPacket::read(tagsBuffer) == tags);
+
+    const BrandPacket brand{"Basalt"};
+    io::ByteBuffer brandBuffer;
+    brand.write(brandBuffer);
+    CHECK(*BrandPacket::read(brandBuffer) == brand);
+    // A payload on another channel is not a brand packet, whatever it carries.
+    io::ByteBuffer otherChannel;
+    writeString(otherChannel, "basalt:something");
+    writeString(otherChannel, "x");
+    CHECK_FALSE(BrandPacket::read(otherChannel).has_value());
+}
+
+TEST_CASE("the login plugin packets round trip, payload and all") {
+    using namespace basalt::wire::protocol::login;
+
+    const LoginPluginRequestPacket request{7, "velocity:player_info", {1, 2, 3, 4}};
+    io::ByteBuffer requestBuffer;
+    request.write(requestBuffer);
+    CHECK(*LoginPluginRequestPacket::read(requestBuffer) == request);
+
+    const LoginPluginResponsePacket answered{7, std::vector<std::uint8_t>{9, 9}};
+    io::ByteBuffer answeredBuffer;
+    answered.write(answeredBuffer);
+    CHECK(*LoginPluginResponsePacket::read(answeredBuffer) == answered);
+
+    // What every real client answers: it does not know the channel.
+    const LoginPluginResponsePacket unknown{7, std::nullopt};
+    io::ByteBuffer unknownBuffer;
+    unknown.write(unknownBuffer);
+    CHECK(*LoginPluginResponsePacket::read(unknownBuffer) == unknown);
+}
+
+TEST_CASE("the simple play packets round trip") {
+    using namespace basalt::wire::protocol::play;
+
+    const CooldownPacket cooldown{"minecraft:ender_pearl", 20};
+    io::ByteBuffer cooldownBuffer;
+    cooldown.write(cooldownBuffer);
+    CHECK(*CooldownPacket::read(cooldownBuffer) == cooldown);
+
+    // The payload runs to the end of the frame, with no length of its own.
+    const CustomPayloadPacket payload{"basalt:hello", {1, 2, 3, 4, 5}};
+    io::ByteBuffer payloadBuffer;
+    payload.write(payloadBuffer);
+    CHECK(*CustomPayloadPacket::read(payloadBuffer) == payload);
+
+    const AwardStatsPacket stats{{{AwardStatsPacket::kTypeMined, 1, 42}, {AwardStatsPacket::kTypeCustom, 8, 7}}};
+    io::ByteBuffer statsBuffer;
+    stats.write(statsBuffer);
+    CHECK(*AwardStatsPacket::read(statsBuffer) == stats);
+
+    const ChunksBiomesPacket biomes{{{5, -7, {1, 2, 3}}, {0, 0, {}}}};
+    io::ByteBuffer biomesBuffer;
+    biomes.write(biomesBuffer);
+    CHECK(*ChunksBiomesPacket::read(biomesBuffer) == biomes);
+    // Negative chunk coordinates have to survive the packing, which is where sign errors hide.
+    CHECK(ChunkBiomeData::packChunkPos(-1, -1) == -1);
+
+    ExplodePacket explosion;
+    explosion.x = 10.5;
+    explosion.y = 64.0;
+    explosion.z = -3.25;
+    explosion.radius = 4.0F;
+    explosion.blockCount = 17;
+    explosion.particleId = 3;
+    explosion.sound = "minecraft:entity.generic.explode";
+    explosion.blockParticles = {{1, ExplodePacket::kPoofScaling, 0.0F, 1}, {2, ExplodePacket::kSmokeScaling, 0.0F, 1}};
+    io::ByteBuffer explosionBuffer;
+    explosion.write(explosionBuffer);
+    CHECK(*ExplodePacket::read(explosionBuffer) == explosion);
+
+    // An explosion that pushed somebody carries three more doubles, and one that did not carries
+    // none: the flag is what tells them apart, and both shapes have to read back.
+    explosion.knockbackX = 0.5;
+    explosion.knockbackY = 1.0;
+    explosion.knockbackZ = -0.25;
+    io::ByteBuffer pushedBuffer;
+    explosion.write(pushedBuffer);
+    CHECK(*ExplodePacket::read(pushedBuffer) == explosion);
+}
+
+TEST_CASE("the world border packets round trip") {
+    using namespace basalt::wire::protocol::play;
+
+    const InitializeBorderPacket initialize{
+        0.0, 0.0, 60000000.0, 60000000.0, 0, InitializeBorderPacket::kAbsoluteMaxSize, 5, 15};
+    io::ByteBuffer initializeBuffer;
+    initialize.write(initializeBuffer);
+    CHECK(*InitializeBorderPacket::read(initializeBuffer) == initialize);
+
+    const SetBorderLerpSizePacket lerp{100.0, 50.0, 12000};
+    io::ByteBuffer lerpBuffer;
+    lerp.write(lerpBuffer);
+    CHECK(*SetBorderLerpSizePacket::read(lerpBuffer) == lerp);
+
+    const TransferPacket transfer{"other.basaltmc.org", 25565};
+    io::ByteBuffer transferBuffer;
+    transfer.write(transferBuffer);
+    CHECK(*TransferPacket::read(transferBuffer) == transfer);
+
+    const TickingStatePacket ticking{20.0F, true};
+    io::ByteBuffer tickingBuffer;
+    ticking.write(tickingBuffer);
+    CHECK(*TickingStatePacket::read(tickingBuffer) == ticking);
+
+    // A truncated frame is a failed read, not a packet full of zeroes taken as real.
+    io::ByteBuffer truncated;
+    truncated.writeByte(1);
+    CHECK_FALSE(InitializeBorderPacket::read(truncated).has_value());
+}
+
+TEST_CASE("the HUD and sound packets round trip") {
+    using namespace basalt::wire::protocol::play;
+
+    const TitleTextPacket title{text::Component::text("Welcome", text::kGold).bold()};
+    io::ByteBuffer titleBuffer;
+    title.write(titleBuffer);
+    CHECK(*TitleTextPacket::read(titleBuffer) == title);
+
+    const SetTitlesAnimationPacket animation{10, 70, 20};
+    io::ByteBuffer animationBuffer;
+    animation.write(animationBuffer);
+    CHECK(*SetTitlesAnimationPacket::read(animationBuffer) == animation);
+
+    const SoundPacket sound{
+        "minecraft:block.note_block.harp", SoundSource::Records, 10.5, 64.0, -3.125, 1.0F, 1.5F, 123456789};
+    io::ByteBuffer soundBuffer;
+    sound.write(soundBuffer);
+    const auto readSound = SoundPacket::read(soundBuffer);
+    REQUIRE(readSound.has_value());
+    // Positions travel in eighths of a block, so they come back quantised, not exact.
+    CHECK(readSound->sound == sound.sound);
+    CHECK(readSound->source == SoundSource::Records);
+    CHECK(readSound->x == 10.5);
+    CHECK(readSound->z == doctest::Approx(-3.125));
+    CHECK(readSound->seed == sound.seed);
+
+    // The command names are not always the constant's own: `record`, `block` and `player`.
+    CHECK(soundSourceCommandName(SoundSource::Records) == "record");
+    CHECK(soundSourceCommandName(SoundSource::Blocks) == "block");
+    CHECK(soundSourceCommandName(SoundSource::Players) == "player");
+    CHECK(soundSourceByCommandName("record") == SoundSource::Records);
+    CHECK_FALSE(soundSourceByCommandName("records").has_value());
+
+    // All four shapes of the stop-sound flag byte.
+    for (const StopSoundPacket& stop :
+         std::vector<StopSoundPacket>{{std::nullopt, std::nullopt},
+                                      {std::nullopt, SoundSource::Music},
+                                      {std::string{"minecraft:music.game"}, std::nullopt},
+                                      {std::string{"minecraft:music.game"}, SoundSource::Music}}) {
+        io::ByteBuffer stopBuffer;
+        stop.write(stopBuffer);
+        CHECK(*StopSoundPacket::read(stopBuffer) == stop);
+    }
+}
+
+TEST_CASE("the command suggestion packets round trip") {
+    using namespace basalt::wire::protocol::play;
+
+    const CommandSuggestionRequestPacket request{3, "/give @p minecraft:st"};
+    io::ByteBuffer requestBuffer;
+    request.write(requestBuffer);
+    CHECK(*CommandSuggestionRequestPacket::read(requestBuffer) == request);
+
+    const CommandSuggestionsPacket suggestions{
+        3, 9, 11, {{"minecraft:stone", text::Component::text("Stone")}, {"minecraft:stick", std::nullopt}}};
+    io::ByteBuffer suggestionsBuffer;
+    suggestions.write(suggestionsBuffer);
+    CHECK(*CommandSuggestionsPacket::read(suggestionsBuffer) == suggestions);
+}
+
+TEST_CASE("the player state packets round trip") {
+    using namespace basalt::wire::protocol::play;
+
+    const SetHealthPacket health{15.5F, 18, 3.25F};
+    io::ByteBuffer healthBuffer;
+    health.write(healthBuffer);
+    CHECK(*SetHealthPacket::read(healthBuffer) == health);
+
+    const SetExperiencePacket experience{0.75F, 30, 1395};
+    io::ByteBuffer experienceBuffer;
+    experience.write(experienceBuffer);
+    CHECK(*SetExperiencePacket::read(experienceBuffer) == experience);
+
+    const ClientboundPlayerAbilitiesPacket abilities{true, true, true, true, 0.1F, 0.2F};
+    io::ByteBuffer abilitiesBuffer;
+    abilities.write(abilitiesBuffer);
+    CHECK(*ClientboundPlayerAbilitiesPacket::read(abilitiesBuffer) == abilities);
+    // The serverbound twin sends the same byte but only the flying bit survives the round trip.
+    io::ByteBuffer toggle;
+    ServerboundPlayerAbilitiesPacket{true}.write(toggle);
+    CHECK(ServerboundPlayerAbilitiesPacket::read(toggle)->flying);
+
+    SpawnInfo info;
+    info.dimension = 0;
+    info.dimensionName = "minecraft:overworld";
+    info.hashedSeed = 1234567890123LL;
+    info.gamemode = Gamemode::Creative;
+    info.previousGamemode = 255;
+    info.death = GlobalPos{"minecraft:the_nether", BlockPos{10, 64, -20}};
+    info.seaLevel = 63;
+    const RespawnPacket respawn{info, RespawnPacket::kKeepAllData};
+    io::ByteBuffer respawnBuffer;
+    respawn.write(respawnBuffer);
+    CHECK(*RespawnPacket::read(respawnBuffer) == respawn);
+
+    // A death point in another dimension is what puts the compass needle back in the overworld, so
+    // both the present and absent shapes have to read back.
+    info.death.reset();
+    io::ByteBuffer aliveBuffer;
+    RespawnPacket{info, 0}.write(aliveBuffer);
+    CHECK_FALSE(RespawnPacket::read(aliveBuffer)->spawnInfo.death.has_value());
+
+    const PlayerCommandPacket command{42, PlayerCommandPacket::Action::StartSprinting, 0};
+    io::ByteBuffer commandBuffer;
+    command.write(commandBuffer);
+    CHECK(*PlayerCommandPacket::read(commandBuffer) == command);
+    // An ordinal past the end of the enum is refused, not cast into whatever it lands on.
+    io::ByteBuffer badAction;
+    varInt::write(badAction, 42);
+    varInt::write(badAction, 99);
+    varInt::write(badAction, 0);
+    CHECK_FALSE(PlayerCommandPacket::read(badAction).has_value());
+
+    const PlayerCombatKillPacket death{7, text::Component::text("Steve fell out of the world")};
+    io::ByteBuffer deathBuffer;
+    death.write(deathBuffer);
+    CHECK(*PlayerCombatKillPacket::read(deathBuffer) == death);
+
+    const RemoveEntitiesPacket remove{{1, 2, 3, 4}};
+    io::ByteBuffer removeBuffer;
+    remove.write(removeBuffer);
+    CHECK(*RemoveEntitiesPacket::read(removeBuffer) == remove);
+}
+
+TEST_CASE("the block entity packets round trip") {
+    using namespace basalt::wire::protocol::play;
+
+    nbt::NbtCompound sign;
+    sign.putString("front_text", "hello");
+    const BlockEntityDataPacket data{BlockPos{1, 2, 3}, 7, sign};
+    io::ByteBuffer dataBuffer;
+    data.write(dataBuffer);
+    CHECK(*BlockEntityDataPacket::read(dataBuffer) == data);
+
+    // An absent tag goes out as TAG_End, one byte, and comes back absent.
+    const BlockEntityDataPacket cleared{BlockPos{1, 2, 3}, 7, std::nullopt};
+    io::ByteBuffer clearedBuffer;
+    cleared.write(clearedBuffer);
+    CHECK(*BlockEntityDataPacket::read(clearedBuffer) == cleared);
+
+    const BlockEventPacket event{BlockPos{-4, 70, 9}, 1, 2, 54};
+    io::ByteBuffer eventBuffer;
+    event.write(eventBuffer);
+    CHECK(*BlockEventPacket::read(eventBuffer) == event);
+
+    const SignUpdatePacket update{BlockPos{0, 64, 0}, true, {"one", "two", "", "four"}};
+    io::ByteBuffer updateBuffer;
+    update.write(updateBuffer);
+    CHECK(*SignUpdatePacket::read(updateBuffer) == update);
+}
+
+TEST_CASE("item components round trip, including the ones this build has no codec for") {
+    using namespace basalt::wire::protocol::play;
+
+    const auto roundTrip = [](const ItemComponent& component, std::optional<std::size_t> length = std::nullopt) {
+        io::ByteBuffer buffer;
+        component.writePayload(buffer);
+        const std::size_t written = buffer.readableBytes();
+        auto read = ItemComponent::readPayload(buffer, component.id(), length ? length : std::optional{written});
+        REQUIRE(read.has_value());
+        CHECK(*read == component);
+    };
+
+    roundTrip(ItemComponent{dataComponent::kDamage, ItemComponent::Number{42}});
+    roundTrip(ItemComponent{dataComponent::kDyedColor, ItemComponent::Color{0xFF8800}});
+    roundTrip(ItemComponent{dataComponent::kUnbreakable, ItemComponent::Unit{}});
+    roundTrip(ItemComponent{dataComponent::kEnchantmentGlintOverride, ItemComponent::Flag{true}});
+    roundTrip(ItemComponent{dataComponent::kCustomName, ItemComponent::Text{text::Component::text("Excalibur")}});
+    roundTrip(ItemComponent{dataComponent::kLore,
+                            ItemComponent::Lore{{text::Component::text("a"), text::Component::text("b")}}});
+    roundTrip(ItemComponent{dataComponent::kEnchantments, ItemComponent::Enchantments{{{3, 5}, {7, 1}}, false}});
+    roundTrip(ItemComponent{dataComponent::kStoredEnchantments, ItemComponent::Enchantments{{{3, 5}}, true}});
+
+    nbt::NbtCompound custom;
+    custom.putInt("plugin_value", 7);
+    roundTrip(ItemComponent{dataComponent::kCustomData, ItemComponent::CustomData{custom}});
+
+    // An unknown component keeps its bytes, so a stack that goes out to a client and comes back is
+    // the same stack. Without a length there is nothing to keep, and it says so.
+    const ItemComponent unknown{999, ItemComponent::Raw{{1, 2, 3}}};
+    roundTrip(unknown, std::size_t{3});
+    io::ByteBuffer buffer;
+    unknown.writePayload(buffer);
+    CHECK_FALSE(ItemComponent::readPayload(buffer, 999, std::nullopt).has_value());
+}
+
+TEST_CASE("particle options round trip through every shape") {
+    using namespace basalt::wire::protocol::play;
+
+    const auto roundTrip = [](const ParticleOptions& options, ParticleOptionShape shape) {
+        io::ByteBuffer buffer;
+        options.write(buffer);
+        const auto read = ParticleOptions::read(buffer, shape);
+        REQUIRE(read.has_value());
+        CHECK(*read == options);
+        CHECK(buffer.readableBytes() == 0);
+    };
+
+    roundTrip(ParticleOptions{ParticleOptions::BlockState{1234}}, ParticleOptionShape::BlockState);
+    roundTrip(ParticleOptions{ParticleOptions::Color{0x00FF00}}, ParticleOptionShape::Color);
+    roundTrip(ParticleOptions{ParticleOptions::Spell{0xFF0000, 0.5F}}, ParticleOptionShape::Spell);
+    roundTrip(ParticleOptions{ParticleOptions::Dust{0x0000FF, 1.5F}}, ParticleOptionShape::Dust);
+    roundTrip(ParticleOptions{ParticleOptions::DustTransition{1, 2, 0.75F}}, ParticleOptionShape::DustTransition);
+    roundTrip(ParticleOptions{ParticleOptions::Trail{1.0, 2.0, 3.0, 0xABCDEF, 40}}, ParticleOptionShape::Trail);
+    roundTrip(ParticleOptions{ParticleOptions::Number{2.5F}}, ParticleOptionShape::Number);
+    roundTrip(ParticleOptions{ParticleOptions::Delay{7}}, ParticleOptionShape::Delay);
+    roundTrip(ParticleOptions{ParticleOptions::Geyser{3}}, ParticleOptionShape::Geyser);
+    roundTrip(ParticleOptions{ParticleOptions::GeyserBase{3, 0.25F}}, ParticleOptionShape::GeyserBase);
+    roundTrip(ParticleOptions{ParticleOptions::Vibration{BlockPos{1, -2, 3}, 20}}, ParticleOptionShape::Vibration);
+
+    ParticleOptions::Item item;
+    item.itemId = 5;
+    item.count = 2;
+    item.components.emplace_back(dataComponent::kDamage, ItemComponent::Number{3});
+    roundTrip(ParticleOptions{item}, ParticleOptionShape::Item);
+
+    io::ByteBuffer empty;
+    CHECK_FALSE(ParticleOptions::read(empty, ParticleOptionShape::None).has_value());
 }

@@ -4,6 +4,9 @@
 #include <basalt/wire/common/collections/PrimitiveMap.hpp>
 #include <basalt/wire/common/hash/Md5.hpp>
 #include <basalt/wire/common/json/Json.hpp>
+#include <basalt/wire/common/timings/TickDurations.hpp>
+#include <basalt/wire/common/timings/Timings.hpp>
+#include <basalt/wire/common/toml/Toml.hpp>
 
 #include <doctest.h>
 
@@ -113,4 +116,116 @@ TEST_CASE("malformed JSON is refused rather than thrown") {
     CHECK(parseJson("{").error() == JsonError::SyntaxError);
     CHECK(parseJson("").error() == JsonError::SyntaxError);
     CHECK_FALSE(parseJson(std::string(kJsonMaxDepth + 8, '[')).has_value());
+}
+
+TEST_CASE("TOML reads the shapes the config files use") {
+    const auto parsed = toml::parse(R"(
+# a leading comment
+name = "Basalt"          # a trailing one
+port = 25565
+rate = 0.25
+online = true
+literal = 'no \escapes here'
+escaped = "line\nbreak"
+
+[network]
+compression-threshold = 256
+"quoted key" = 1
+
+[network.limits]
+max-players = 20
+
+worlds = [
+    "overworld",
+    "nether",   # a comment inside an array
+    "the_end",
+]
+)");
+    REQUIRE(parsed.has_value());
+
+    CHECK(parsed->string("name") == "Basalt");
+    CHECK(parsed->integer("port") == 25565);
+    CHECK(parsed->real("rate") == 0.25);
+    // An integer where a float is expected still reads: a hand-edited file writes `1`, not `1.0`.
+    CHECK(parsed->real("port") == 25565.0);
+    CHECK(parsed->boolean("online") == true);
+    CHECK(parsed->string("literal") == "no \\escapes here");
+    CHECK(parsed->string("escaped") == "line\nbreak");
+
+    const toml::TomlTable* network = parsed->table("network");
+    REQUIRE(network != nullptr);
+    CHECK(network->integer("compression-threshold") == 256);
+    CHECK(network->integer("quoted key") == 1);
+
+    const toml::TomlTable* limits = network->table("limits");
+    REQUIRE(limits != nullptr);
+    CHECK(limits->integer("max-players") == 20);
+    // An array written one entry per line, with a comment and a trailing comma, is the readable way
+    // to write it and has to survive.
+    CHECK(limits->stringList("worlds") == std::vector<std::string>{"overworld", "nether", "the_end"});
+
+    // Keys come back in the order they appear on the page, because that is the order they are
+    // written back in.
+    CHECK(parsed->keys().front() == "name");
+}
+
+TEST_CASE("TOML says no rather than guessing") {
+    CHECK(toml::parse("[[guides]]\nname = 'x'").error() == toml::TomlError::ArrayOfTablesUnsupported);
+    CHECK(toml::parse("[unterminated").error() == toml::TomlError::MalformedTableHeader);
+    CHECK(toml::parse("no separator here").error() == toml::TomlError::MissingSeparator);
+    CHECK(toml::parse("x = \"unterminated").error() == toml::TomlError::UnterminatedString);
+    CHECK(toml::parse("x = [1, 2").error() == toml::TomlError::UnterminatedArray);
+    CHECK(toml::parse("x = \"bad \\q escape\"").error() == toml::TomlError::UnknownEscape);
+    CHECK(toml::parse("x = notavalue").error() == toml::TomlError::NotAValue);
+    // A `#` inside a string is part of the string, not the start of a comment.
+    CHECK(toml::parse("x = \"a # b\"")->string("x") == "a # b");
+}
+
+TEST_CASE("tick durations report the outliers a TPS number hides") {
+    TickDurations durations{64};
+    const std::int64_t now = 100 * TickDurations::kNanosPerSecond;
+
+    // Fifty ticks over the last second: forty-nine fast ones and one that stalled.
+    for (int i = 0; i < 49; ++i) {
+        durations.record(now - (49 - i) * 10'000'000, 1'000'000);
+    }
+    durations.record(now, 80'000'000);
+
+    const DurationSummary summary = durations.summary(now, 5);
+    CHECK(summary.samples == 50);
+    CHECK(summary.minMillis == 1.0);
+    CHECK(summary.medianMillis == 1.0);
+    // The maximum is what says the server stuttered; the mean barely moves.
+    CHECK(summary.maxMillis == 80.0);
+    CHECK(summary.meanMillis < 3.0);
+
+    // A server younger than the window is measured over the time it has actually existed, not over
+    // the window, or a perfectly healthy young server reports a fraction of a tick per second.
+    CHECK(durations.ticksPerSecond(now, 300) > 19.0);
+    CHECK(durations.summary(now, 5).samples == 50);
+
+    durations.reset();
+    CHECK(durations.summary(now, 5) == DurationSummary{});
+    CHECK(durations.ticksPerSecond(now, 5) == 0.0);
+}
+
+TEST_CASE("a disabled timing measures nothing and still runs the work") {
+    Timings timings;
+    Timing& section = timings.of("player.tick");
+    CHECK(&timings.of("player.tick") == &section);
+
+    int ran = 0;
+    section.time([&ran] { ++ran; });
+    CHECK(ran == 1);
+    CHECK(section.snapshot().calls == 0);
+
+    timings.setEnabled(true);
+    section.time([&ran] { ++ran; });
+    section.time([&ran] { ++ran; });
+    CHECK(ran == 3);
+
+    const TimingSnapshot snapshot = section.snapshot();
+    CHECK(snapshot.calls == 2);
+    CHECK(snapshot.maxNanos >= snapshot.averageNanos());
+    CHECK(timings.snapshot().size() == 1);
 }
