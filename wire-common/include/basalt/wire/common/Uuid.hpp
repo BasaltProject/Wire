@@ -37,6 +37,10 @@ public:
     /// parity: java.util.UUID.nameUUIDFromBytes, an MD5 digest stamped with version 3 and variant 2.
     [[nodiscard]] static Uuid nameBased(std::string_view input);
 
+    /// parity: java.util.UUID.randomUUID, sixteen random bytes stamped with version 4 and variant
+    /// 2. For the identities the server invents for itself: a generated mob, a session token.
+    [[nodiscard]] static Uuid random();
+
     friend constexpr bool operator==(const Uuid&, const Uuid&) = default;
 
 private:

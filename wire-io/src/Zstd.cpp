@@ -1,6 +1,7 @@
 #include <basalt/wire/io/Compression.hpp>
 
 #define ZSTD_STATIC_LINKING_ONLY
+#include <algorithm>
 #include <array>
 #include <utility>
 #include <zstd.h>
@@ -150,6 +151,90 @@ bool StreamCompressor::finish() {
     }
     ZSTD_inBuffer input{nullptr, 0, 0};
     return state_->drive(input, ZSTD_e_end);
+}
+
+struct StreamDecompressor::State {
+    ZSTD_DStream* stream = nullptr;
+    ZSTD_inBuffer input{nullptr, 0, 0};
+    std::array<std::uint8_t, kChunkSize> buffer{};
+
+    /// What of `buffer` has been decompressed but not yet handed out.
+    std::size_t pendingStart = 0;
+    std::size_t pendingEnd = 0;
+    bool failed = false;
+    bool ended = false;
+
+    ~State() {
+        if (stream != nullptr) {
+            ZSTD_freeDStream(stream);
+        }
+    }
+
+    State() = default;
+    State(const State&) = delete;
+    State& operator=(const State&) = delete;
+
+    /// Decompresses the next block into the buffer. False once the frame has ended or failed.
+    bool refill() {
+        if (failed || ended || input.pos == input.size) {
+            return false;
+        }
+        ZSTD_outBuffer out{buffer.data(), buffer.size(), 0};
+        const std::size_t remaining = ZSTD_decompressStream(stream, &out, &input);
+        if (ZSTD_isError(remaining) != 0) {
+            failed = true;
+            return false;
+        }
+        pendingStart = 0;
+        pendingEnd = out.pos;
+        if (remaining == 0) {
+            ended = true;
+        }
+        return out.pos > 0;
+    }
+};
+
+StreamDecompressor::StreamDecompressor(std::span<const std::uint8_t> source) : state_(std::make_unique<State>()) {
+    state_->stream = ZSTD_createDStream();
+    if (state_->stream == nullptr) {
+        state_->failed = true;
+        return;
+    }
+    ZSTD_initDStream(state_->stream);
+    state_->input = ZSTD_inBuffer{source.data(), source.size(), 0};
+}
+
+StreamDecompressor::~StreamDecompressor() = default;
+
+bool StreamDecompressor::valid() const noexcept { return !state_->failed; }
+
+bool StreamDecompressor::readFully(std::span<std::uint8_t> destination) {
+    std::size_t filled = 0;
+    while (filled < destination.size()) {
+        if (state_->pendingStart == state_->pendingEnd && !state_->refill()) {
+            return false;
+        }
+        const std::size_t available = state_->pendingEnd - state_->pendingStart;
+        const std::size_t take = std::min(available, destination.size() - filled);
+        std::copy_n(state_->buffer.begin() + static_cast<std::ptrdiff_t>(state_->pendingStart), take,
+                    destination.begin() + static_cast<std::ptrdiff_t>(filled));
+        state_->pendingStart += take;
+        filled += take;
+    }
+    return true;
+}
+
+bool StreamDecompressor::frameComplete() const noexcept {
+    if (state_->failed) {
+        return false;
+    }
+    if (state_->pendingStart != state_->pendingEnd) {
+        return false;
+    }
+    // The frame may end on a block that filled the output buffer exactly, in which case the
+    // decompressor has not been asked the one more time that tells it so: with the input consumed
+    // and nothing pending there is nothing left either way.
+    return state_->ended || state_->input.pos == state_->input.size;
 }
 
 } // namespace basalt::wire::io::zstd

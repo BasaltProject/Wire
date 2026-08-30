@@ -1,8 +1,10 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <basalt/wire/common/Identifier.hpp>
 #include <basalt/wire/common/Mth.hpp>
+#include <basalt/wire/common/Uuid.hpp>
 #include <basalt/wire/common/collections/PrimitiveMap.hpp>
 #include <basalt/wire/common/hash/Md5.hpp>
+#include <basalt/wire/common/hash/Sha256.hpp>
 #include <basalt/wire/common/json/Json.hpp>
 #include <basalt/wire/common/timings/TickDurations.hpp>
 #include <basalt/wire/common/timings/Timings.hpp>
@@ -38,6 +40,42 @@ TEST_CASE("md5 matches the RFC 1321 test vectors") {
     CHECK(hex(md5(
               std::string_view{"12345678901234567890123456789012345678901234567890123456789012345678901234567890"})) ==
           "57edf4a22be3c955ac49da2e2107b67a");
+}
+
+TEST_CASE("sha-256 matches the FIPS 180-4 test vectors") {
+    CHECK(hex(sha256(std::string_view{""})) == "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855");
+    CHECK(hex(sha256(std::string_view{"abc"})) == "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad");
+    // Exactly one block short of needing a second one, which is where the padding goes wrong first.
+    CHECK(hex(sha256(std::string_view{"abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq"})) ==
+          "248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1");
+    CHECK(hex(sha256(std::string_view{
+              "abcdefghbcdefghicdefghijdefghijkefghijklfghijklmghijklmnhijklmnoijklmnopjklmnopqklmnopqrlmnopqrs"
+              "mnopqrstnopqrstu"})) == "cf5b16a778af8380036ce59e7b0492370b249b11e8f07a51afac45037afee9d1");
+}
+
+TEST_CASE("sha-256 pads a message that fills its last block exactly") {
+    // 55 bytes leave one for the 0x80 and eight for the length; 56 pushes the length into a block
+    // of its own, which is the case a hand-written padding loop gets wrong.
+    CHECK(hex(sha256(std::string(55, 'a'))) == "9f4390f8d30c2dd92ec9f095b65e2b9ae9b0a925a5258e241c9f1e910f734318");
+    CHECK(hex(sha256(std::string(56, 'a'))) == "b35439a4ac6f0948b6d6f9e3c6af0f5f590ce20f1bde7090ef7970686ec6738a");
+    CHECK(hex(sha256(std::string(64, 'a'))) == "ffe054fe7ae0cb6dc65c3af9b61d5209f439851db43d0ba5997337df154668eb");
+}
+
+TEST_CASE("a random uuid is a version four uuid") {
+    const basalt::wire::common::Uuid first = basalt::wire::common::Uuid::random();
+    const basalt::wire::common::Uuid second = basalt::wire::common::Uuid::random();
+    // parity: java.util.UUID.randomUUID stamps the version nibble and the two variant bits, which
+    // is what makes the string form say `-4` in the third group and start the fourth with 8 to b.
+    CHECK(((first.high() >> 12) & 0xF) == 4);
+    CHECK(((first.low() >> 62) & 0x3) == 2);
+    CHECK(first.toString()[14] == '4');
+    const char variant = first.toString()[19];
+    CHECK((variant == '8' || variant == '9' || variant == 'a' || variant == 'b'));
+
+    CHECK_FALSE(first.isNil());
+    CHECK(first != second);
+    // And it round trips like any other.
+    CHECK(basalt::wire::common::Uuid::parse(first.toString()) == first);
 }
 
 TEST_CASE("Identifier parses the vanilla resource id forms") {

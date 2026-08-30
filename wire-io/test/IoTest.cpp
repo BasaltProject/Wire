@@ -274,6 +274,59 @@ TEST_CASE("the streaming compressor never holds the whole input") {
     CHECK(zstd::decompress(compressed).value() == expected);
 }
 
+TEST_CASE("the streaming reader hands back exactly what was asked for") {
+    // The reading half: a region is a table followed by the blobs it describes, and whoever wants
+    // one blob reads past the table and stops.
+    const std::vector<std::uint8_t> original = sampleBytes(300 * 1024);
+    const std::vector<std::uint8_t> compressed = zstd::compress(original).value();
+
+    zstd::StreamDecompressor reader{compressed};
+    REQUIRE(reader.valid());
+    // Smaller than one output block, then larger than one, then the rest: the reader has to hold
+    // what it did not hand out and cross its own buffer boundary without losing a byte.
+    std::vector<std::uint8_t> head(100);
+    std::vector<std::uint8_t> middle(200 * 1024);
+    std::vector<std::uint8_t> tail(original.size() - head.size() - middle.size());
+    REQUIRE(reader.readFully(head));
+    CHECK_FALSE(reader.frameComplete());
+    REQUIRE(reader.readFully(middle));
+    REQUIRE(reader.readFully(tail));
+    CHECK(reader.frameComplete());
+
+    std::vector<std::uint8_t> rebuilt;
+    rebuilt.insert(rebuilt.end(), head.begin(), head.end());
+    rebuilt.insert(rebuilt.end(), middle.begin(), middle.end());
+    rebuilt.insert(rebuilt.end(), tail.begin(), tail.end());
+    CHECK(rebuilt == original);
+
+    // Asking for more than the frame holds says no rather than handing back whatever was there.
+    std::vector<std::uint8_t> past(16);
+    CHECK_FALSE(reader.readFully(past));
+}
+
+TEST_CASE("a stream that ends early, and one that never was") {
+    const std::vector<std::uint8_t> original = sampleBytes(4096);
+    const std::vector<std::uint8_t> compressed = zstd::compress(original).value();
+
+    zstd::StreamDecompressor reader{compressed};
+    std::vector<std::uint8_t> tooMuch(original.size() + 1);
+    CHECK_FALSE(reader.readFully(tooMuch));
+
+    // Stopping short of the end is not an error, but it is not a finished frame either: a format
+    // whose table said less than the stream holds has to be able to tell.
+    zstd::StreamDecompressor partial{compressed};
+    std::vector<std::uint8_t> half(2048);
+    CHECK(partial.readFully(half));
+    CHECK_FALSE(partial.frameComplete());
+
+    const std::vector<std::uint8_t> notAFrame{0xDE, 0xAD, 0xBE, 0xEF};
+    zstd::StreamDecompressor rubbish{notAFrame};
+    std::vector<std::uint8_t> nothing(8);
+    CHECK_FALSE(rubbish.readFully(nothing));
+    CHECK_FALSE(rubbish.valid());
+    CHECK_FALSE(rubbish.frameComplete());
+}
+
 TEST_CASE("the platform helpers answer or say they cannot") {
     // The resident set is what an operator's own `top` shows, so a running process has one.
     CHECK(residentSetBytes() > 0);
