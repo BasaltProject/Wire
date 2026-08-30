@@ -103,11 +103,11 @@ bool ContentRewriter::clientbound(ProtocolState state, MutablePacket& packet) {
         // carries is the registry's business and is not on the wire, so decoding the rest would mean
         // guessing at a shape to write straight back out.
         io::ByteBuffer input = io::ByteBuffer::wrap(packet.body);
-        const std::optional<std::int32_t> nativeType = protocol::varInt::read(input);
-        if (!nativeType.has_value()) {
+        const std::int32_t nativeType = protocol::varInt::read(input);
+        if (input.failed()) {
             return true;
         }
-        const std::int32_t mapped = tables_->particleType.map(*nativeType);
+        const std::int32_t mapped = tables_->particleType.map(nativeType);
         if (mapped == IdMap::kNone) {
             return false;
         }

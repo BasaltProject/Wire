@@ -6,6 +6,7 @@
 
 #include <cstdint>
 #include <optional>
+#include <string_view>
 #include <vector>
 
 /// The packets that describe the world itself: its chunks, its light, its clocks and the blocks
@@ -21,6 +22,10 @@ enum class HeightmapType : std::uint8_t {
     MotionBlocking,
     MotionBlockingNoLeaves,
 };
+
+/// What a heightmap is called where it travels by name rather than by number, which is how every
+/// version below 1.21.5 carried it. parity: Heightmap.Types' own constant names.
+[[nodiscard]] std::string_view heightmapName(HeightmapType type) noexcept;
 
 struct Heightmap {
     HeightmapType type = HeightmapType::MotionBlocking;

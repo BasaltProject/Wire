@@ -57,6 +57,29 @@ basalt_module(wire-multiversion
         src/java/Tables773.cpp
         src/java/Tables774.cpp
         src/java/Tables775.cpp
+        src/java/Link578.cpp
+        src/java/Link736.cpp
+        src/java/Link754.cpp
+        src/java/Link755.cpp
+        src/java/Link756.cpp
+        src/java/Link757.cpp
+        src/java/Link758.cpp
+        src/java/Link759.cpp
+        src/java/Link760.cpp
+        src/java/Link761.cpp
+        src/java/Link762.cpp
+        src/java/Link763.cpp
+        src/java/Link764.cpp
+        src/java/Link765.cpp
+        src/java/Link766.cpp
+        src/java/Link767.cpp
+        src/java/Link768.cpp
+        src/java/Link769.cpp
+        src/java/Link772.cpp
+        src/java/Link773.cpp
+        src/java/Link774.cpp
+        src/java/Link775.cpp
+        src/java/LoginFields.cpp
         src/java/EntityDataIndexes.cpp
         src/java/EntityDataRewriter.cpp
         src/java/EntityDataTypes.cpp

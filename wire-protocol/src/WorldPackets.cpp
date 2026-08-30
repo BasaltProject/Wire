@@ -41,6 +41,24 @@ std::vector<std::vector<std::uint8_t>> readByteArrayList(io::ByteBuffer& buffer)
 
 } // namespace
 
+std::string_view heightmapName(HeightmapType type) noexcept {
+    switch (type) {
+    case HeightmapType::WorldSurfaceWg:
+        return "WORLD_SURFACE_WG";
+    case HeightmapType::WorldSurface:
+        return "WORLD_SURFACE";
+    case HeightmapType::OceanFloorWg:
+        return "OCEAN_FLOOR_WG";
+    case HeightmapType::OceanFloor:
+        return "OCEAN_FLOOR";
+    case HeightmapType::MotionBlocking:
+        return "MOTION_BLOCKING";
+    case HeightmapType::MotionBlockingNoLeaves:
+        return "MOTION_BLOCKING_NO_LEAVES";
+    }
+    return "MOTION_BLOCKING";
+}
+
 void Heightmap::write(io::ByteBuffer& buffer) const {
     varInt::write(buffer, static_cast<std::int32_t>(type));
     writeLongBitset(buffer, data);
