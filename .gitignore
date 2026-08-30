@@ -30,3 +30,8 @@ gradle-app.setting
 
 # macOS
 .DS_Store
+
+# CMake
+/build/
+.cache/
+compile_commands.json
