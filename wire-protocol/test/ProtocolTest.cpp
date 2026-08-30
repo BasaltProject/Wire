@@ -10,14 +10,22 @@
 #include <basalt/wire/protocol/play/BlockEntityPackets.hpp>
 #include <basalt/wire/protocol/play/BlockPos.hpp>
 #include <basalt/wire/protocol/play/BorderPackets.hpp>
+#include <basalt/wire/protocol/play/CommandPackets.hpp>
+#include <basalt/wire/protocol/play/EntityData.hpp>
+#include <basalt/wire/protocol/play/EntityPackets.hpp>
 #include <basalt/wire/protocol/play/HudPackets.hpp>
+#include <basalt/wire/protocol/play/InventoryPackets.hpp>
 #include <basalt/wire/protocol/play/ItemComponent.hpp>
 #include <basalt/wire/protocol/play/LowPrecisionVec3.hpp>
 #include <basalt/wire/protocol/play/NibbleArray.hpp>
 #include <basalt/wire/protocol/play/PalettedContainer.hpp>
 #include <basalt/wire/protocol/play/ParticleOptions.hpp>
+#include <basalt/wire/protocol/play/PlayPackets.hpp>
 #include <basalt/wire/protocol/play/PlayerStatePackets.hpp>
+#include <basalt/wire/protocol/play/RecipePackets.hpp>
 #include <basalt/wire/protocol/play/SimplePackets.hpp>
+#include <basalt/wire/protocol/play/UiPackets.hpp>
+#include <basalt/wire/protocol/play/WorldPackets.hpp>
 #include <basalt/wire/protocol/status/StatusPackets.hpp>
 
 #include <doctest.h>
@@ -714,4 +722,842 @@ TEST_CASE("particle options round trip through every shape") {
 
     io::ByteBuffer empty;
     CHECK_FALSE(ParticleOptions::read(empty, ParticleOptionShape::None).has_value());
+}
+
+TEST_CASE("the recipe book packets round trip") {
+    using namespace basalt::wire::protocol::play;
+
+    RecipeDisplay shaped;
+    shaped.grid = RecipeDisplay::Grid{2, 2};
+    shaped.ingredients = {
+        SlotDisplay{SlotDisplay::Item{1}}, SlotDisplay{SlotDisplay::Empty{}},
+        SlotDisplay{SlotDisplay::Composite{{SlotDisplay{SlotDisplay::Item{2}}, SlotDisplay{SlotDisplay::Item{3}}}}},
+        SlotDisplay{SlotDisplay::Item{4}}};
+    shaped.result = SlotDisplay{SlotDisplay::Item{9}};
+    shaped.craftingStation = SlotDisplay{SlotDisplay::Empty{}};
+
+    RecipeBookEntry entry;
+    entry.recipeId = 11;
+    entry.display = shaped;
+    entry.craftingRequirements = {{1, 2}, {3}};
+    entry.highlight = true;
+
+    const RecipeBookAddPacket add{{entry}, true};
+    io::ByteBuffer addBuffer;
+    add.write(addBuffer);
+    const auto readAdd = RecipeBookAddPacket::read(addBuffer);
+    REQUIRE(readAdd.has_value());
+    CHECK(*readAdd == add);
+    CHECK(addBuffer.readableBytes() == 0);
+
+    // A shapeless recipe has no grid, so it writes two fewer varints than a shaped one.
+    RecipeBookEntry shapeless = entry;
+    shapeless.display.grid.reset();
+    shapeless.craftingRequirements.clear();
+    io::ByteBuffer shapelessBuffer;
+    RecipeBookAddPacket{{shapeless}, false}.write(shapelessBuffer);
+    CHECK(RecipeBookAddPacket::read(shapelessBuffer)->entries.front() == shapeless);
+
+    const RecipeBookRemovePacket remove{{1, 2, 3}};
+    io::ByteBuffer removeBuffer;
+    remove.write(removeBuffer);
+    CHECK(*RecipeBookRemovePacket::read(removeBuffer) == remove);
+}
+
+TEST_CASE("the stonecutter list round trips") {
+    using namespace basalt::wire::protocol::play;
+
+    const UpdateRecipesPacket recipes{{{{1, 2, 3}, 40, 1}, {{4}, 41, 4}}};
+    io::ByteBuffer buffer;
+    recipes.write(buffer);
+    const auto read = UpdateRecipesPacket::read(buffer);
+    REQUIRE(read.has_value());
+    CHECK(*read == recipes);
+    CHECK(buffer.readableBytes() == 0);
+}
+
+TEST_CASE("the command tree round trips with its argument parsers") {
+    using namespace basalt::wire::protocol::play;
+    using Parser = ArgumentParser;
+
+    // A tree shaped the way a real one is: a root, a literal under it, and an argument under that.
+    CommandNodeData root;
+    root.kind = CommandNodeData::Kind::Root;
+    root.children = {1};
+
+    CommandNodeData literal;
+    literal.kind = CommandNodeData::Kind::Literal;
+    literal.name = "give";
+    literal.children = {2};
+
+    CommandNodeData argument;
+    argument.kind = CommandNodeData::Kind::Argument;
+    argument.name = "targets";
+    argument.executable = true;
+    argument.parser = Parser{argumentType::kEntity, Parser::EntityProperties{false, true}};
+    argument.suggestionId = "minecraft:ask_server";
+    argument.redirect = 0;
+
+    const CommandsPacket packet{{root, literal, argument}, 0};
+    io::ByteBuffer buffer;
+    packet.write(buffer);
+    const auto read = CommandsPacket::read(buffer);
+    REQUIRE(read.has_value());
+    CHECK(*read == packet);
+    CHECK(buffer.readableBytes() == 0);
+}
+
+TEST_CASE("every shape of argument parser properties round trips") {
+    using namespace basalt::wire::protocol::play;
+    using Parser = ArgumentParser;
+
+    const auto roundTrip = [](const Parser& parser) {
+        io::ByteBuffer buffer;
+        parser.write(buffer);
+        const auto read = Parser::read(buffer);
+        REQUIRE(read.has_value());
+        CHECK(*read == parser);
+        CHECK(buffer.readableBytes() == 0);
+    };
+
+    // A singleton parser carries nothing at all after its id.
+    roundTrip(Parser{argumentType::kBrigadierBool});
+    roundTrip(Parser{argumentType::kUuid});
+
+    roundTrip(Parser{argumentType::kBrigadierString, Parser::StringProperties{Parser::StringKind::GreedyPhrase}});
+    roundTrip(Parser{argumentType::kEntity, Parser::EntityProperties{true, false}});
+    roundTrip(Parser{argumentType::kScoreHolder, Parser::ScoreHolderProperties{true}});
+    roundTrip(Parser{argumentType::kTime, Parser::TimeProperties{20}});
+    roundTrip(Parser{argumentType::kResource, Parser::RegistryProperties{"minecraft:item"}});
+    roundTrip(Parser{argumentType::kResourceOrTagKey, Parser::RegistryProperties{"minecraft:block"}});
+
+    // A bound that is absent is absent on the wire too, so all four combinations have to survive
+    // and an unbounded parser must not come back carrying a sentinel.
+    roundTrip(Parser{argumentType::kBrigadierInteger, Parser::Bounds<std::int32_t>{}});
+    roundTrip(Parser{argumentType::kBrigadierInteger, Parser::Bounds<std::int32_t>{0, std::nullopt}});
+    roundTrip(Parser{argumentType::kBrigadierInteger, Parser::Bounds<std::int32_t>{std::nullopt, 64}});
+    roundTrip(Parser{argumentType::kBrigadierInteger, Parser::Bounds<std::int32_t>{-1, 1}});
+    roundTrip(Parser{argumentType::kBrigadierDouble, Parser::Bounds<double>{0.5, 2.5}});
+    roundTrip(Parser{argumentType::kBrigadierFloat, Parser::Bounds<float>{std::nullopt, 1.0F}});
+
+    // An id past the end of the registry is refused, not read as whatever it lands on.
+    io::ByteBuffer unknown;
+    varInt::write(unknown, argumentType::kCount);
+    CHECK_FALSE(Parser::read(unknown).has_value());
+}
+
+TEST_CASE("a typed command round trips") {
+    using namespace basalt::wire::protocol::play;
+    const ChatCommandPacket command{"give @p minecraft:stone 64"};
+    io::ByteBuffer buffer;
+    command.write(buffer);
+    CHECK(*ChatCommandPacket::read(buffer) == command);
+
+    // The signed form reads only its command; the signature block behind it is left alone.
+    io::ByteBuffer signedBuffer;
+    writeString(signedBuffer, "say hello");
+    signedBuffer.writeLong(0);
+    CHECK(SignedChatCommandPacket::read(signedBuffer)->command == "say hello");
+}
+
+TEST_CASE("item stacks round trip in both of their wire forms") {
+    using namespace basalt::wire::protocol::play;
+
+    WireItemStack sword;
+    sword.itemId = 900;
+    sword.count = 1;
+    sword.components.emplace_back(dataComponent::kDamage, ItemComponent::Number{12});
+    sword.components.emplace_back(dataComponent::kEnchantments, ItemComponent::Enchantments{{{3, 4}}, false});
+    sword.removedComponents = {dataComponent::kMaxDamage};
+
+    io::ByteBuffer buffer;
+    sword.write(buffer);
+    const auto read = WireItemStack::read(buffer);
+    REQUIRE(read.has_value());
+    CHECK(*read == sword);
+    CHECK(read->damage() == 12);
+    CHECK(read->enchantments() == std::vector<std::pair<std::int32_t, std::int32_t>>{{3, 4}});
+
+    // An empty slot is a single zero, and comes back as nothing at all.
+    io::ByteBuffer empty;
+    WireItemStack::writeOptional(empty, std::nullopt);
+    CHECK(empty.readableBytes() == 1);
+    CHECK_FALSE(WireItemStack::read(empty).has_value());
+
+    // The delimited form keeps a component it cannot name, because a creative client echoes slots
+    // it merely looked at and dropping the unknown ones once stripped enchanted items.
+    io::ByteBuffer delimited;
+    varInt::write(delimited, 1);
+    varInt::write(delimited, 900);
+    varInt::write(delimited, 1);
+    varInt::write(delimited, 0);
+    varInt::write(delimited, 999);
+    varInt::write(delimited, 3);
+    delimited.writeBytes(std::vector<std::uint8_t>{7, 7, 7});
+    const auto kept = WireItemStack::readDelimited(delimited);
+    REQUIRE(kept.has_value());
+    REQUIRE(kept->components.size() == 1);
+    CHECK(kept->components.front().id() == 999);
+    CHECK(kept->components.front().as<ItemComponent::Raw>()->payload == std::vector<std::uint8_t>{7, 7, 7});
+    CHECK(delimited.readableBytes() == 0);
+}
+
+TEST_CASE("the container packets round trip") {
+    using namespace basalt::wire::protocol::play;
+
+    WireItemStack stone;
+    stone.itemId = 1;
+    stone.count = 64;
+
+    const ContainerSetContentPacket content{
+        ContainerSetContentPacket::kPlayerInventory, 7, {stone, std::nullopt, stone}, std::nullopt};
+    io::ByteBuffer contentBuffer;
+    content.write(contentBuffer);
+    CHECK(*ContainerSetContentPacket::read(contentBuffer) == content);
+
+    const ContainerSetSlotPacket slot{0, 7, 36, stone};
+    io::ByteBuffer slotBuffer;
+    slot.write(slotBuffer);
+    CHECK(*ContainerSetSlotPacket::read(slotBuffer) == slot);
+
+    const OpenScreenPacket screen{1, menuType::kGeneric9x3, text::Component::text("Chest")};
+    io::ByteBuffer screenBuffer;
+    screen.write(screenBuffer);
+    CHECK(*OpenScreenPacket::read(screenBuffer) == screen);
+
+    const ContainerSetDataPacket furnace{1, ContainerSetDataPacket::kFurnaceCookingProgress, 42};
+    io::ByteBuffer furnaceBuffer;
+    furnace.write(furnaceBuffer);
+    CHECK(*ContainerSetDataPacket::read(furnaceBuffer) == furnace);
+
+    const ContainerButtonClickPacket button{1, ContainerButtonClickPacket::kLecternNextPage};
+    io::ByteBuffer buttonBuffer;
+    button.write(buttonBuffer);
+    CHECK(*ContainerButtonClickPacket::read(buttonBuffer) == button);
+}
+
+TEST_CASE("a container click skips its hashed prediction without losing the stream") {
+    using namespace basalt::wire::protocol::play;
+
+    io::ByteBuffer buffer;
+    varInt::write(buffer, 1);
+    varInt::write(buffer, 7);
+    buffer.writeShort(36);
+    buffer.writeByte(0);
+    varInt::write(buffer, static_cast<std::int32_t>(ServerboundContainerClickPacket::Mode::QuickMove));
+
+    // One changed slot whose predicted stack carries a component hash and a removal.
+    varInt::write(buffer, 1);
+    buffer.writeShort(36);
+    writeBoolean(buffer, true);
+    varInt::write(buffer, 1);
+    varInt::write(buffer, 64);
+    varInt::write(buffer, 1);
+    varInt::write(buffer, dataComponent::kDamage);
+    buffer.writeInt(0x12345678);
+    varInt::write(buffer, 1);
+    varInt::write(buffer, dataComponent::kMaxDamage);
+
+    // The carried item: present, and empty of components.
+    writeBoolean(buffer, true);
+    varInt::write(buffer, 2);
+    varInt::write(buffer, 1);
+    varInt::write(buffer, 0);
+    varInt::write(buffer, 0);
+
+    // A trailing byte that must survive, which is what proves the skipping landed on the right spot.
+    buffer.writeByte(0xAB);
+
+    const auto click = ServerboundContainerClickPacket::read(buffer);
+    REQUIRE(click.has_value());
+    CHECK(click->slot == 36);
+    CHECK(click->mode == ServerboundContainerClickPacket::Mode::QuickMove);
+    CHECK(click->clientHasCarriedItem);
+    CHECK(buffer.readableBytes() == 1);
+    CHECK(buffer.readByte() == 0xAB);
+}
+
+TEST_CASE("merchant offers round trip") {
+    using namespace basalt::wire::protocol::play;
+
+    WireItemStack emerald;
+    emerald.itemId = 800;
+    emerald.count = 1;
+
+    MerchantOffer offer;
+    offer.costA = MerchantCost{800, 3};
+    offer.result = emerald;
+    offer.costB = MerchantCost{801, 1};
+    offer.maxUses = 12;
+    offer.experience = 2;
+    offer.priceMultiplier = 0.05F;
+
+    const MerchantOffersPacket packet{1, {offer}, 2, 30, true, true};
+    io::ByteBuffer buffer;
+    packet.write(buffer);
+    const auto read = MerchantOffersPacket::read(buffer);
+    REQUIRE(read.has_value());
+    CHECK(*read == packet);
+    CHECK(buffer.readableBytes() == 0);
+}
+
+TEST_CASE("the scoreboard packets round trip") {
+    using namespace basalt::wire::protocol::play;
+
+    // The blank format is what removes the red number, which is the whole reason a sidebar is
+    // usable, so it has to survive as itself and not fold into "no format at all".
+    SetObjectivePacket objective;
+    objective.objectiveName = "sidebar";
+    objective.method = SetObjectivePacket::kMethodAdd;
+    objective.displayName = text::Component::text("Basalt", text::kGold);
+    objective.numberFormat = NumberFormat{NumberFormat::Blank{}};
+    io::ByteBuffer objectiveBuffer;
+    objective.write(objectiveBuffer);
+    CHECK(*SetObjectivePacket::read(objectiveBuffer) == objective);
+
+    // A remove writes nothing past the method, and reading one back must not go looking for more.
+    SetObjectivePacket removal;
+    removal.objectiveName = "sidebar";
+    removal.method = SetObjectivePacket::kMethodRemove;
+    io::ByteBuffer removalBuffer;
+    removal.write(removalBuffer);
+    CHECK(removalBuffer.readableBytes() == 1 + 7 + 1);
+    CHECK(*SetObjectivePacket::read(removalBuffer) == removal);
+
+    const SetDisplayObjectivePacket display{DisplaySlot::Sidebar, "sidebar"};
+    io::ByteBuffer displayBuffer;
+    display.write(displayBuffer);
+    CHECK(*SetDisplayObjectivePacket::read(displayBuffer) == display);
+
+    SetScorePacket score;
+    score.owner = "line_1";
+    score.objectiveName = "sidebar";
+    score.score = 5;
+    score.display = text::Component::text("Players online: 3");
+    score.numberFormat = NumberFormat{NumberFormat::Fixed{text::Component::text("*")}};
+    io::ByteBuffer scoreBuffer;
+    score.write(scoreBuffer);
+    CHECK(*SetScorePacket::read(scoreBuffer) == score);
+
+    const ResetScorePacket reset{"line_1", std::string{"sidebar"}};
+    io::ByteBuffer resetBuffer;
+    reset.write(resetBuffer);
+    CHECK(*ResetScorePacket::read(resetBuffer) == reset);
+    io::ByteBuffer everywhere;
+    ResetScorePacket{"line_1", std::nullopt}.write(everywhere);
+    CHECK_FALSE(ResetScorePacket::read(everywhere)->objectiveName.has_value());
+}
+
+TEST_CASE("every boss bar operation round trips") {
+    using namespace basalt::wire::protocol::play;
+
+    const common::Uuid id{1, 2};
+    const std::vector<BossEventPacket::Operation> operations = {
+        BossEventPacket::Add{text::Component::text("The Ender Dragon"), 0.75F, BossBarColor::Purple,
+                             BossBarOverlay::Notched10, true, true, false},
+        BossEventPacket::Remove{},
+        BossEventPacket::UpdateProgress{0.5F},
+        BossEventPacket::UpdateName{text::Component::text("Almost there")},
+        BossEventPacket::UpdateStyle{BossBarColor::Red, BossBarOverlay::Notched20},
+        BossEventPacket::UpdateProperties{false, true, true},
+    };
+
+    for (const BossEventPacket::Operation& operation : operations) {
+        const BossEventPacket packet{id, operation};
+        io::ByteBuffer buffer;
+        packet.write(buffer);
+        const auto read = BossEventPacket::read(buffer);
+        REQUIRE(read.has_value());
+        CHECK(*read == packet);
+        CHECK(buffer.readableBytes() == 0);
+    }
+
+    CHECK(bossBarOverlayName(BossBarOverlay::Notched6) == "notched_6");
+}
+
+TEST_CASE("the team packets round trip on every method") {
+    using namespace basalt::wire::protocol::play;
+
+    SetPlayerTeamPacket::Parameters parameters;
+    parameters.displayName = text::Component::text("Red");
+    parameters.prefix = text::Component::text("[R] ");
+    parameters.nameTagVisibility = NameTagVisibility::HideForOtherTeams;
+    parameters.collisionRule = CollisionRule::PushOwnTeam;
+    parameters.color = TeamColor::Red;
+    parameters.friendlyFire = false;
+
+    const SetPlayerTeamPacket add{"red", SetPlayerTeamPacket::kMethodAdd, parameters, {"Steve", "Alex"}};
+    io::ByteBuffer addBuffer;
+    add.write(addBuffer);
+    CHECK(*SetPlayerTeamPacket::read(addBuffer) == add);
+
+    // A remove carries neither parameters nor members, and reading one must not look for either.
+    const SetPlayerTeamPacket remove{"red", SetPlayerTeamPacket::kMethodRemove, std::nullopt, {}};
+    io::ByteBuffer removeBuffer;
+    remove.write(removeBuffer);
+    CHECK(*SetPlayerTeamPacket::read(removeBuffer) == remove);
+
+    const SetPlayerTeamPacket join{"red", SetPlayerTeamPacket::kMethodJoin, std::nullopt, {"Notch"}};
+    io::ByteBuffer joinBuffer;
+    join.write(joinBuffer);
+    CHECK(*SetPlayerTeamPacket::read(joinBuffer) == join);
+
+    CHECK(nameTagVisibilityName(NameTagVisibility::HideForOtherTeams) == "hideForOtherTeams");
+    CHECK(collisionRuleByName("pushOwnTeam") == CollisionRule::PushOwnTeam);
+    CHECK(teamColorByName("dark_aqua") == TeamColor::DarkAqua);
+    CHECK(teamColorRgb(TeamColor::Gold) == 0xFFAA00);
+}
+
+TEST_CASE("the tab list and dialog packets round trip") {
+    using namespace basalt::wire::protocol::play;
+
+    const TabListPacket list{text::Component::text("Welcome"), text::Component::text("basaltmc.org")};
+    io::ByteBuffer listBuffer;
+    list.write(listBuffer);
+    CHECK(*TabListPacket::read(listBuffer) == list);
+
+    // The dialog id carries a plus one on the wire, because zero means an inline dialog.
+    const ShowDialogPacket dialog{7};
+    io::ByteBuffer dialogBuffer;
+    dialog.write(dialogBuffer);
+    CHECK(dialogBuffer.peekByte(0) == 8);
+    CHECK(*ShowDialogPacket::read(dialogBuffer) == dialog);
+}
+
+TEST_CASE("entity metadata round trips every serializer this build writes") {
+    using namespace basalt::wire::protocol::play;
+    using Data = SetEntityDataPacket;
+
+    WireItemStack stack;
+    stack.itemId = 1;
+    stack.count = 3;
+
+    Data packet;
+    packet.entityId = 42;
+    packet.entries = {
+        {Data::kSharedFlagsIndex, Data::ByteValue{Data::kFlagSneaking | Data::kFlagOnFire}},
+        {Data::kAirSupplyIndex, Data::IntValue{200}},
+        {Data::kPlayerAbsorptionIndex, Data::FloatValue{4.0F}},
+        {20, Data::TextValue{text::Component::text("Display")}},
+        {Data::kCustomNameIndex, Data::OptionalTextValue{text::Component::text("Bob")}},
+        {Data::kCustomNameVisibleIndex, Data::BoolValue{true}},
+        {Data::kItemStackIndex, Data::ItemValue{stack}},
+        {21, Data::RotationsValue{1.0F, 2.0F, 3.0F}},
+        {22, Data::VillagerDataValue{1, 2, 3}},
+        {Data::kSleepingPosIndex, Data::OptionalBlockPosValue{BlockPos{1, 2, 3}}},
+        {Data::kPoseIndex, Data::PoseValue{Pose::Sleeping}},
+        {23, Data::RegistryIdValue{5, RegistryHolder::WolfVariant}},
+    };
+
+    io::ByteBuffer buffer;
+    packet.write(buffer);
+    const auto read = Data::read(buffer);
+    REQUIRE(read.has_value());
+    CHECK(*read == packet);
+    CHECK(buffer.readableBytes() == 0);
+
+    // An absent optional is not the same as never having sent one, so it has to survive as absent.
+    Data cleared;
+    cleared.entityId = 42;
+    cleared.entries = {{Data::kCustomNameIndex, Data::OptionalTextValue{std::nullopt}},
+                       {Data::kSleepingPosIndex, Data::OptionalBlockPosValue{std::nullopt}}};
+    io::ByteBuffer clearedBuffer;
+    cleared.write(clearedBuffer);
+    CHECK(*Data::read(clearedBuffer) == cleared);
+
+    // A serializer this build cannot name has no width, so it is refused rather than skipped.
+    io::ByteBuffer unknown;
+    varInt::write(unknown, 42);
+    unknown.writeByte(0);
+    varInt::write(unknown, 99);
+    CHECK_FALSE(Data::read(unknown).has_value());
+}
+
+TEST_CASE("the entity metadata helpers write the indices vanilla expects") {
+    using namespace basalt::wire::protocol::play;
+    using Data = SetEntityDataPacket;
+
+    // parity: 26.2 put Avatar between LivingEntity and Player, so absorption is 17 and skin parts
+    // 16. An ageable mob's own fields start after that, and a wrong index crashes the client.
+    CHECK(Data::playerAbsorption(1, 4.0F).entries.front().index == 17);
+    CHECK(Data::skinParts(1, 0x7F).entries.front().index == 16);
+
+    const Data sleeping = Data::sleeping(1, BlockPos{0, 64, 0});
+    REQUIRE(sleeping.entries.size() == 2);
+    CHECK(std::get<Data::PoseValue>(sleeping.entries[0].value).pose == Pose::Sleeping);
+    CHECK(sleeping.entries[1].index == Data::kSleepingPosIndex);
+    CHECK(std::get<Data::PoseValue>(Data::sleeping(1, std::nullopt).entries[0].value).pose == Pose::Standing);
+
+    // The flags byte carries all of them at once, which is why the helper takes the whole byte:
+    // writing only the one a caller knows about erases the rest.
+    const Data submersion = Data::submersion(1, 300, Data::kFlagOnFire | Data::kFlagSprinting);
+    CHECK(std::get<Data::ByteValue>(submersion.entries[0].value).value ==
+          static_cast<std::int8_t>(Data::kFlagOnFire | Data::kFlagSprinting));
+}
+
+TEST_CASE("spawning an entity round trips its position and rotations") {
+    using namespace basalt::wire::protocol::play;
+
+    SpawnEntityPacket packet;
+    packet.entityId = 7;
+    packet.uuid = common::Uuid{1, 2};
+    packet.entityType = SpawnEntityPacket::kPlayerEntityType;
+    packet.x = 10.5;
+    packet.y = 64.0;
+    packet.z = -3.25;
+    packet.velocityX = 0.5;
+    packet.yaw = 90.0F;
+    packet.pitch = -45.0F;
+
+    io::ByteBuffer buffer;
+    packet.write(buffer);
+    const auto read = SpawnEntityPacket::read(buffer);
+    REQUIRE(read.has_value());
+    CHECK(read->entityId == packet.entityId);
+    CHECK(read->uuid == packet.uuid);
+    CHECK(read->x == packet.x);
+    // Rotations travel as one byte, so they come back quantised to 256 steps per turn.
+    CHECK(read->yaw == doctest::Approx(90.0F).epsilon(0.01));
+    CHECK(read->pitch == doctest::Approx(-45.0F).epsilon(0.01));
+    CHECK(read->velocityX == doctest::Approx(0.5).epsilon(1e-3));
+    CHECK(buffer.readableBytes() == 0);
+}
+
+TEST_CASE("the entity packets round trip") {
+    using namespace basalt::wire::protocol::play;
+
+    WireItemStack helmet;
+    helmet.itemId = 300;
+    helmet.count = 1;
+
+    // The continuation bit is set on every slot but the last, which is what makes several slots fit
+    // in one packet with no count in front of them.
+    const SetEquipmentPacket equipment{
+        7, {{SetEquipmentPacket::SlotType::Head, helmet}, {SetEquipmentPacket::SlotType::MainHand, std::nullopt}}};
+    io::ByteBuffer equipmentBuffer;
+    equipment.write(equipmentBuffer);
+    CHECK(*SetEquipmentPacket::read(equipmentBuffer) == equipment);
+
+    const LevelEventPacket levelEvent{LevelEventPacket::kParticlesDestroyBlock, BlockPos{1, 2, 3}, 15, false};
+    io::ByteBuffer levelEventBuffer;
+    levelEvent.write(levelEventBuffer);
+    CHECK(*LevelEventPacket::read(levelEventBuffer) == levelEvent);
+
+    const BlockDestructionPacket cracks{7, BlockPos{1, 2, 3}, 5};
+    io::ByteBuffer cracksBuffer;
+    cracks.write(cracksBuffer);
+    CHECK(*BlockDestructionPacket::read(cracksBuffer) == cracks);
+
+    // Both link ids are plain ints, not varints: a varint here writes a shorter frame.
+    io::ByteBuffer linkBuffer;
+    SetEntityLinkPacket{7, SetEntityLinkPacket::kNoVehicle}.write(linkBuffer);
+    CHECK(linkBuffer.readableBytes() == 8);
+    CHECK(SetEntityLinkPacket::read(linkBuffer)->destinationId == -1);
+
+    const UpdateMobEffectPacket effect{7, 3, 1, 600, false, true, true, false};
+    io::ByteBuffer effectBuffer;
+    effect.write(effectBuffer);
+    CHECK(*UpdateMobEffectPacket::read(effectBuffer) == effect);
+
+    const EntityPositionSyncPacket sync{7, 1.5, 64.0, -2.5, 0.1, 0.2, 0.3, 90.0F, 0.0F, true};
+    io::ByteBuffer syncBuffer;
+    sync.write(syncBuffer);
+    CHECK(*EntityPositionSyncPacket::read(syncBuffer) == sync);
+
+    const SetPassengersPacket passengers{7, {8, 9}};
+    io::ByteBuffer passengersBuffer;
+    passengers.write(passengersBuffer);
+    CHECK(*SetPassengersPacket::read(passengersBuffer) == passengers);
+
+    // A permission level is an entity event in the twenties, and the client needs it before its own
+    // parser will accept a selector.
+    CHECK(EntityEventPacket::permissionLevel(7, 2).eventId == 26);
+    CHECK(EntityEventPacket::permissionLevel(7, 99).eventId == 28);
+}
+
+TEST_CASE("a damage event carries its optional source position") {
+    using namespace basalt::wire::protocol::play;
+
+    DamageEventPacket damage;
+    damage.entityId = 7;
+    damage.damageType = 3;
+    damage.causeEntityId = 8;
+    damage.directEntityId = -1;
+
+    io::ByteBuffer buffer;
+    damage.write(buffer);
+    const auto read = DamageEventPacket::read(buffer);
+    REQUIRE(read.has_value());
+    CHECK(*read == damage);
+    // A hit nobody dealt is -1 in, and -1 back out, because the wire carries it as zero.
+    CHECK(read->directEntityId == -1);
+
+    damage.sourceX = 1.0;
+    damage.sourceY = 2.0;
+    damage.sourceZ = 3.0;
+    io::ByteBuffer positioned;
+    damage.write(positioned);
+    CHECK(*DamageEventPacket::read(positioned) == damage);
+}
+
+TEST_CASE("attributes and their modifiers round trip") {
+    using namespace basalt::wire::protocol::play;
+
+    UpdateAttributesPacket packet;
+    packet.entityId = 7;
+    packet.attributes = {
+        {1,
+         0.1,
+         {{common::Identifier{"minecraft", "sprinting"}, 0.3, UpdateAttributesPacket::Operation::AddMultipliedTotal}}},
+        {2, 20.0, {}}};
+
+    io::ByteBuffer buffer;
+    packet.write(buffer);
+    const auto read = UpdateAttributesPacket::read(buffer);
+    REQUIRE(read.has_value());
+    CHECK(*read == packet);
+    CHECK(buffer.readableBytes() == 0);
+}
+
+TEST_CASE("a tracked waypoint writes a three-byte colour, not four") {
+    using namespace basalt::wire::protocol::play;
+
+    TrackedWaypointPacket waypoint;
+    waypoint.operation = TrackedWaypointPacket::Operation::Track;
+    waypoint.entityUuid = common::Uuid{1, 2};
+    waypoint.style = "minecraft:default";
+    waypoint.color = 0xFF8800;
+    waypoint.x = 100;
+    waypoint.y = 64;
+    waypoint.z = -100;
+
+    io::ByteBuffer buffer;
+    waypoint.write(buffer);
+    const auto read = TrackedWaypointPacket::read(buffer);
+    REQUIRE(read.has_value());
+    CHECK(*read == waypoint);
+    CHECK(buffer.readableBytes() == 0);
+
+    // Without a colour the three bytes are simply absent.
+    waypoint.color.reset();
+    io::ByteBuffer plain;
+    waypoint.write(plain);
+    CHECK(*TrackedWaypointPacket::read(plain) == waypoint);
+}
+
+TEST_CASE("particles carry their options only when the type has them") {
+    using namespace basalt::wire::protocol::play;
+
+    LevelParticlesPacket plain;
+    plain.particleTypeId = 20;
+    plain.x = 1.0;
+    plain.count = 5;
+    io::ByteBuffer plainBuffer;
+    plain.write(plainBuffer);
+    CHECK(*LevelParticlesPacket::read(plainBuffer, ParticleOptionShape::None) == plain);
+
+    LevelParticlesPacket dust = plain;
+    dust.options = ParticleOptions{ParticleOptions::Dust{0xFF0000, 1.0F}};
+    io::ByteBuffer dustBuffer;
+    dust.write(dustBuffer);
+    CHECK(*LevelParticlesPacket::read(dustBuffer, ParticleOptionShape::Dust) == dust);
+}
+
+TEST_CASE("the world packets round trip") {
+    using namespace basalt::wire::protocol::play;
+
+    LightData light;
+    light.skyLightMask = {0x3};
+    light.blockLightMask = {0x1};
+    light.emptySkyLightMask = {0};
+    light.emptyBlockLightMask = {0};
+    light.skyLight = {std::vector<std::uint8_t>(2048, 0xFF), std::vector<std::uint8_t>(2048, 0x11)};
+    light.blockLight = {std::vector<std::uint8_t>(2048, 0x00)};
+
+    nbt::NbtCompound sign;
+    sign.putString("text", "hi");
+
+    MapChunkPacket chunk;
+    chunk.x = 3;
+    chunk.z = -4;
+    chunk.heightmaps = {{HeightmapType::MotionBlocking, {1, 2, 3}}};
+    chunk.chunkData = {1, 2, 3, 4, 5};
+    chunk.blockEntities = {{0x21, 64, 7, sign}, {0x00, -60, 9, std::nullopt}};
+    chunk.light = light;
+
+    io::ByteBuffer chunkBuffer;
+    chunk.write(chunkBuffer);
+    const auto readChunk = MapChunkPacket::read(chunkBuffer);
+    REQUIRE(readChunk.has_value());
+    CHECK(*readChunk == chunk);
+    CHECK(chunkBuffer.readableBytes() == 0);
+
+    const UpdateLightPacket lightPacket{3, -4, light};
+    io::ByteBuffer lightBuffer;
+    lightPacket.write(lightBuffer);
+    CHECK(*UpdateLightPacket::read(lightBuffer) == lightPacket);
+
+    // Negative chunk coordinates have to survive the packing, which is where sign errors hide.
+    const ForgetLevelChunkPacket forget{-1, -1};
+    io::ByteBuffer forgetBuffer;
+    forget.write(forgetBuffer);
+    CHECK(*ForgetLevelChunkPacket::read(forgetBuffer) == forget);
+
+    const SetTimePacket time{123456, {{SetTimePacket::kOverworldClock, 6000, 0.5F, 1.0F}}};
+    io::ByteBuffer timeBuffer;
+    time.write(timeBuffer);
+    CHECK(*SetTimePacket::read(timeBuffer) == time);
+
+    const ClientboundBlockUpdatePacket block{BlockPos{-1, 64, -1}, 1234};
+    io::ByteBuffer blockBuffer;
+    block.write(blockBuffer);
+    CHECK(*ClientboundBlockUpdatePacket::read(blockBuffer) == block);
+}
+
+TEST_CASE("a section update packs its coordinates and its changes") {
+    using namespace basalt::wire::protocol::play;
+
+    SectionBlocksUpdatePacket packet;
+    packet.sectionX = -2;
+    packet.sectionY = -4;
+    packet.sectionZ = 3;
+    packet.changes = {{SectionBlocksUpdatePacket::packPosition(1, 2, 3), 100},
+                      {SectionBlocksUpdatePacket::packPosition(15, 15, 15), 200}};
+
+    io::ByteBuffer buffer;
+    packet.write(buffer);
+    const auto read = SectionBlocksUpdatePacket::read(buffer);
+    REQUIRE(read.has_value());
+    CHECK(*read == packet);
+    CHECK(buffer.readableBytes() == 0);
+
+    // parity: SectionPos.sectionRelativePos is x, then z, then y, which is not the order the
+    // arguments come in.
+    CHECK(SectionBlocksUpdatePacket::packPosition(1, 2, 3) == 0x132);
+}
+
+TEST_CASE("the join and position packets round trip") {
+    using namespace basalt::wire::protocol::play;
+
+    SpawnInfo spawnInfo;
+    spawnInfo.dimensionName = "minecraft:overworld";
+    spawnInfo.gamemode = Gamemode::Creative;
+
+    LoginPlayPacket login;
+    login.entityId = 1;
+    login.worldNames = {"minecraft:overworld", "minecraft:the_nether"};
+    login.spawnInfo = spawnInfo;
+    login.viewDistance = 12;
+
+    io::ByteBuffer loginBuffer;
+    login.write(loginBuffer);
+    CHECK(*LoginPlayPacket::read(loginBuffer) == login);
+
+    const PlayerPositionPacket position{7, 0.5, 64.0, 0.5, 0.0, 0.0, 0.0, 90.0F, 0.0F, 0};
+    io::ByteBuffer positionBuffer;
+    position.write(positionBuffer);
+    CHECK(*PlayerPositionPacket::read(positionBuffer) == position);
+
+    const EntityTeleportPacket teleport{2, 1.0, 2.0, 3.0, 0.0, 0.0, 0.0, 45.0F, -10.0F, 0, true};
+    io::ByteBuffer teleportBuffer;
+    teleport.write(teleportBuffer);
+    CHECK(*EntityTeleportPacket::read(teleportBuffer) == teleport);
+
+    // The movement packets carry the on-ground flag as a bitfield, not a boolean.
+    const ServerboundPositionLookPacket move{1.0, 64.0, 2.0, 180.0F, 0.0F, true};
+    io::ByteBuffer moveBuffer;
+    move.write(moveBuffer);
+    CHECK(*ServerboundPositionLookPacket::read(moveBuffer) == move);
+}
+
+TEST_CASE("the tab list packets round trip and refuse what they cannot parse") {
+    using namespace basalt::wire::protocol::play;
+
+    PlayerInfoEntry entry;
+    entry.uuid = common::Uuid::offlinePlayer("Steve");
+    entry.name = "Steve";
+    entry.listed = true;
+    entry.latencyMillis = 42;
+    entry.gamemode = Gamemode::Creative;
+    entry.properties.push_back({"textures", "base64", std::string{"signature"}});
+
+    const auto initializing = PlayerInfoUpdatePacket::initializing({entry});
+    io::ByteBuffer buffer;
+    initializing.write(buffer);
+    const auto read = PlayerInfoUpdatePacket::read(buffer);
+    REQUIRE(read.has_value());
+    CHECK(*read == initializing);
+
+    const auto gameMode = PlayerInfoUpdatePacket::gameMode(entry.uuid, Gamemode::Spectator);
+    io::ByteBuffer gameModeBuffer;
+    gameMode.write(gameModeBuffer);
+    CHECK(*PlayerInfoUpdatePacket::read(gameModeBuffer) == gameMode);
+
+    // An action whose fields have unknown width cannot be walked past, so the packet is refused.
+    io::ByteBuffer unsupported;
+    unsupported.writeByte(PlayerInfoUpdatePacket::kUpdateDisplayName);
+    varInt::write(unsupported, 0);
+    CHECK_FALSE(PlayerInfoUpdatePacket::read(unsupported).has_value());
+
+    const PlayerInfoRemovePacket remove{{entry.uuid}};
+    io::ByteBuffer removeBuffer;
+    remove.write(removeBuffer);
+    CHECK(*PlayerInfoRemovePacket::read(removeBuffer) == remove);
+}
+
+TEST_CASE("the block interaction packets round trip") {
+    using namespace basalt::wire::protocol::play;
+
+    const ServerboundPlayerActionPacket action{ServerboundPlayerActionPacket::Action::StopDestroyBlock,
+                                               BlockPos{1, 2, 3}, Direction::Up, 12};
+    io::ByteBuffer actionBuffer;
+    action.write(actionBuffer);
+    CHECK(*ServerboundPlayerActionPacket::read(actionBuffer) == action);
+
+    const ServerboundUseItemOnPacket use{
+        Hand::MainHand, BlockHitResult{BlockPos{1, 2, 3}, Direction::North, 0.5F, 0.5F, 0.0F, false, false}, 13};
+    io::ByteBuffer useBuffer;
+    use.write(useBuffer);
+    CHECK(*ServerboundUseItemOnPacket::read(useBuffer) == use);
+
+    const ServerboundUseItemPacket bucket{Hand::OffHand, 14, 90.0F, 0.0F};
+    io::ByteBuffer bucketBuffer;
+    bucket.write(bucketBuffer);
+    CHECK(*ServerboundUseItemPacket::read(bucketBuffer) == bucket);
+
+    const PickItemFromBlockPacket pick{BlockPos{1, 2, 3}, true};
+    io::ByteBuffer pickBuffer;
+    pick.write(pickBuffer);
+    CHECK(*PickItemFromBlockPacket::read(pickBuffer) == pick);
+
+    // An action ordinal past the end of the enum is refused, not cast into whatever it lands on.
+    io::ByteBuffer bad;
+    varInt::write(bad, 99);
+    bad.writeLong(0);
+    bad.writeByte(0);
+    varInt::write(bad, 0);
+    CHECK_FALSE(ServerboundPlayerActionPacket::read(bad).has_value());
+}
+
+TEST_CASE("the chat packets round trip") {
+    using namespace basalt::wire::protocol::play;
+
+    const SystemChatPacket system{text::Component::text("Server restarting", text::kRed), false};
+    io::ByteBuffer systemBuffer;
+    system.write(systemBuffer);
+    CHECK(*SystemChatPacket::read(systemBuffer) == system);
+
+    ChatMessagePacket chat;
+    chat.message = "hello";
+    chat.timestamp = 1234;
+    chat.salt = 5678;
+    chat.acknowledged = {0, 0, 0};
+    io::ByteBuffer chatBuffer;
+    chat.write(chatBuffer);
+    CHECK(*ChatMessagePacket::read(chatBuffer) == chat);
+
+    chat.signature = std::vector<std::uint8_t>(ChatMessagePacket::kSignatureLength, 0x7F);
+    io::ByteBuffer signedBuffer;
+    chat.write(signedBuffer);
+    CHECK(*ChatMessagePacket::read(signedBuffer) == chat);
 }

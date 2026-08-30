@@ -1,8 +1,11 @@
 basalt_module(wire-auth
     SOURCES
         src/Cfb8Cipher.cpp
+        src/LegacyForwarding.cpp
+        src/ProxyForwarding.cpp
         src/SessionKeyPair.cpp
-    DEPENDS basalt::wire-common
+        src/VelocityForwarding.cpp
+    DEPENDS basalt::wire-common basalt::wire-io basalt::wire-protocol
     PRIVATE_DEPENDS basalt::mbedtls
 )
 
