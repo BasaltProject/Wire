@@ -7,8 +7,13 @@
 #include <basalt/wire/multiversion/ProtocolGate.hpp>
 #include <basalt/wire/multiversion/ProtocolVersions.hpp>
 #include <basalt/wire/multiversion/java/EntityDataRewriter.hpp>
+#include <basalt/wire/multiversion/java/JavaTranslators.hpp>
+#include <basalt/wire/multiversion/java/Tables775.hpp>
 #include <basalt/wire/protocol/ProtocolBuffer.hpp>
+#include <basalt/wire/protocol/play/EntityPackets.hpp>
+#include <basalt/wire/protocol/play/InventoryPackets.hpp>
 #include <basalt/wire/protocol/play/PalettedContainer.hpp>
+#include <basalt/wire/protocol/play/WorldPackets.hpp>
 
 #include <doctest.h>
 
@@ -400,4 +405,96 @@ TEST_CASE("a boolean is written as the byte it always was where there is no kind
     const auto unpacked = modern.rewrite(data, 5);
     REQUIRE(unpacked.has_value());
     CHECK(*unpacked == std::vector<std::uint8_t>{0x01, 0x01, 0x08, 0x01, 0xFF});
+}
+
+namespace {
+
+/// The numbers are read out of the two versions' own reports (26.1.2 and 26.2), so a failure here
+/// means the table is wrong rather than the expectation being stale.
+constexpr std::int32_t kStone776 = 1;
+constexpr std::int32_t kStone775 = 1;
+constexpr std::int32_t kOakPlanks776 = 63;
+constexpr std::int32_t kOakPlanks775 = 36;
+constexpr std::int32_t kMaxHealth776 = 23;
+constexpr std::int32_t kMaxHealth775 = 19;
+constexpr std::int32_t kBounciness776 = 9;
+
+/// Runs one packet down a chain and hands back what came out the far end.
+std::vector<std::uint8_t> clientbound(const ProtocolChain& chain, std::int32_t id,
+                                      const std::vector<std::uint8_t>& body) {
+    std::vector<std::uint8_t> out;
+    chain.clientbound(
+        basalt::wire::protocol::ProtocolState::Play, id, body,
+        [&out](std::int32_t, std::span<const std::uint8_t> bytes) { out.assign(bytes.begin(), bytes.end()); });
+    return out;
+}
+
+} // namespace
+
+TEST_CASE("a chain for 26.1 renumbers what a packet carries") {
+    namespace play = basalt::wire::protocol::play;
+
+    const std::unique_ptr<java::JavaChain> built = java::javaTranslators::chainFor(protocolVersions::kV26_1);
+    REQUIRE(built != nullptr);
+    const ProtocolChain& chain = built->chain();
+
+    SUBCASE("a block state keeps its number where nothing moved") {
+        play::ClientboundBlockUpdatePacket update;
+        update.pos = {8, 64, 8};
+        update.blockStateId = kStone776;
+        basalt::wire::io::ByteBuffer body;
+        update.write(body);
+
+        basalt::wire::io::ByteBuffer out = basalt::wire::io::ByteBuffer::wrap(
+            clientbound(chain, play::ClientboundBlockUpdatePacket::kId, body.toVector()));
+        const auto sent = play::ClientboundBlockUpdatePacket::read(out);
+        REQUIRE(sent.has_value());
+        CHECK(sent->blockStateId == kStone775);
+    }
+
+    SUBCASE("an item moves to where 26.1 keeps it") {
+        play::ContainerSetSlotPacket slot;
+        slot.stateId = 1;
+        slot.slot = 5;
+        slot.item = play::WireItemStack{.itemId = kOakPlanks776, .count = 3};
+        basalt::wire::io::ByteBuffer body;
+        slot.write(body);
+
+        basalt::wire::io::ByteBuffer out =
+            basalt::wire::io::ByteBuffer::wrap(clientbound(chain, play::ContainerSetSlotPacket::kId, body.toVector()));
+        const auto sent = play::ContainerSetSlotPacket::read(out);
+        REQUIRE(sent.has_value());
+        REQUIRE(sent->item.has_value());
+        CHECK(sent->item->itemId == kOakPlanks775);
+        CHECK(sent->item->count == 3);
+    }
+
+    SUBCASE("an attribute 26.1 does not have is left out instead of sent wrong") {
+        play::UpdateAttributesPacket attributes;
+        attributes.entityId = 7;
+        attributes.attributes.push_back({.attribute = kMaxHealth776, .base = 20.0});
+        attributes.attributes.push_back({.attribute = kBounciness776, .base = 1.0});
+        basalt::wire::io::ByteBuffer body;
+        attributes.write(body);
+
+        basalt::wire::io::ByteBuffer out =
+            basalt::wire::io::ByteBuffer::wrap(clientbound(chain, play::UpdateAttributesPacket::kId, body.toVector()));
+        const auto sent = play::UpdateAttributesPacket::read(out);
+        REQUIRE(sent.has_value());
+        REQUIRE(sent->attributes.size() == 1);
+        CHECK(sent->attributes.front().attribute == kMaxHealth775);
+    }
+}
+
+TEST_CASE("every version the gate admits has an unbroken road of links") {
+    // A gap would leave a client let in to a chain that cannot carry it, which is worse than being
+    // turned away at the door.
+    for (const std::int32_t version : java::javaTranslators::supported()) {
+        if (version == protocolVersions::kNative) {
+            continue;
+        }
+        CAPTURE(version);
+        CHECK(java::javaTranslators::chainFor(version) != nullptr);
+    }
+    CHECK(java::javaTranslators::supported().contains(protocolVersions::kV1_8));
 }

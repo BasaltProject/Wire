@@ -1,5 +1,6 @@
 #pragma once
 
+#include <compare>
 #include <expected>
 #include <string>
 #include <string_view>
@@ -34,6 +35,10 @@ public:
     [[nodiscard]] std::string toString() const { return namespace_ + ':' + path_; }
 
     friend bool operator==(const Identifier&, const Identifier&) = default;
+
+    /// Namespace first, then path. A total order so an identifier can key an ordered container, and
+    /// the order tags and command completions come out in.
+    friend std::strong_ordering operator<=>(const Identifier&, const Identifier&) = default;
 
 private:
     std::string namespace_;

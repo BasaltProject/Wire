@@ -22,6 +22,10 @@ if(NOT TARGET basalt_warnings)
     include(BasaltParity)
     include(BasaltSanitizers)
     include(BasaltModule)
+    include(BasaltEmbed)
+    # The script half of basalt_embed_text(), named here so a consumer that pulled Wire in with
+    # add_subdirectory() still finds it.
+    set(BASALT_EMBED_SCRIPT ${CMAKE_CURRENT_SOURCE_DIR}/cmake/BasaltEmbedText.cmake CACHE INTERNAL "")
     add_subdirectory(third_party)
 
     if(BASALT_BUILD_TESTS)
