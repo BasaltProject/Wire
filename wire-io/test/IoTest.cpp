@@ -2,6 +2,7 @@
 #include <basalt/wire/io/ByteBuffer.hpp>
 #include <basalt/wire/io/Compression.hpp>
 #include <basalt/wire/io/EventLoop.hpp>
+#include <basalt/wire/io/Platform.hpp>
 #include <basalt/wire/io/TcpSocket.hpp>
 #include <basalt/wire/io/ZipReader.hpp>
 
@@ -234,4 +235,63 @@ TEST_CASE("the zip reader pulls stored and deflated entries out of an archive") 
     CHECK(reader->read("missing").error() == ZipError::EntryNotFound);
 
     CHECK(ZipReader::open(std::vector<std::uint8_t>{1, 2, 3}).error() == ZipError::NotAZipFile);
+}
+
+TEST_CASE("zstd round trips a whole region's worth of data") {
+    const std::vector<std::uint8_t> data = sampleBytes(1024 * 1024);
+
+    const auto compressed = zstd::compress(data);
+    REQUIRE(compressed.has_value());
+    CHECK(compressed->size() < data.size());
+    CHECK(zstd::decompress(*compressed).value() == data);
+
+    CHECK(zstd::compress(std::vector<std::uint8_t>{}).value().empty());
+    CHECK_FALSE(zstd::decompress(std::vector<std::uint8_t>{0xDE, 0xAD, 0xBE, 0xEF}).has_value());
+}
+
+TEST_CASE("the streaming compressor never holds the whole input") {
+    // The point of it: a region is written from the blobs already in hand, one at a time, and the
+    // output leaves through the sink as it is produced.
+    std::vector<std::uint8_t> compressed;
+    {
+        zstd::StreamCompressor compressor{[&compressed](std::span<const std::uint8_t> block) {
+            compressed.insert(compressed.end(), block.begin(), block.end());
+        }};
+        REQUIRE(compressor.valid());
+
+        for (int piece = 0; piece < 16; ++piece) {
+            REQUIRE(compressor.feed(sampleBytes(64 * 1024)));
+        }
+        REQUIRE(compressor.finish());
+    }
+
+    std::vector<std::uint8_t> expected;
+    for (int piece = 0; piece < 16; ++piece) {
+        const std::vector<std::uint8_t> chunk = sampleBytes(64 * 1024);
+        expected.insert(expected.end(), chunk.begin(), chunk.end());
+    }
+    CHECK(compressed.size() < expected.size());
+    CHECK(zstd::decompress(compressed).value() == expected);
+}
+
+TEST_CASE("the platform helpers answer or say they cannot") {
+    // The resident set is what an operator's own `top` shows, so a running process has one.
+    CHECK(residentSetBytes() > 0);
+
+    const auto cores = cpuCoreCount();
+    REQUIRE(cores.has_value());
+    CHECK(*cores >= 1);
+
+    const auto cpu = processCpuTime();
+    REQUIRE(cpu.has_value());
+    CHECK(cpu->count() >= 0);
+
+    // A shutdown signal is a flag, polled, never acted on from the handler itself.
+    shutdownSignal::reset();
+    CHECK_FALSE(shutdownSignal::isRequested());
+
+    // Raw mode is refused when standard input is not a terminal, which is not a failure: under a
+    // test runner that is exactly the situation, and restoring is safe either way.
+    static_cast<void>(terminal::enableRawMode());
+    terminal::restoreMode();
 }

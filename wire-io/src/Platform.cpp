@@ -11,9 +11,13 @@
 #include <windows.h>
 #elif defined(__APPLE__)
 #include <mach/mach.h>
+#include <sys/resource.h>
+#include <termios.h>
 #include <unistd.h>
 #else
 #include <cstdio>
+#include <sys/resource.h>
+#include <termios.h>
 #include <unistd.h>
 #endif
 
@@ -83,5 +87,88 @@ bool isConsoleInteractive() {
     return ::isatty(fileno(stdout)) != 0;
 #endif
 }
+
+std::optional<std::chrono::microseconds> processCpuTime() {
+#if defined(_WIN32)
+    FILETIME creation{};
+    FILETIME exit{};
+    FILETIME kernel{};
+    FILETIME user{};
+    if (GetProcessTimes(GetCurrentProcess(), &creation, &exit, &kernel, &user) == 0) {
+        return std::nullopt;
+    }
+    const auto toMicros = [](const FILETIME& time) {
+        const std::uint64_t hundredNanos = (static_cast<std::uint64_t>(time.dwHighDateTime) << 32) | time.dwLowDateTime;
+        return hundredNanos / 10;
+    };
+    return std::chrono::microseconds{toMicros(kernel) + toMicros(user)};
+#else
+    rusage usage{};
+    if (getrusage(RUSAGE_SELF, &usage) != 0) {
+        return std::nullopt;
+    }
+    const auto micros = [](const timeval& time) {
+        return static_cast<std::int64_t>(time.tv_sec) * 1'000'000 + time.tv_usec;
+    };
+    return std::chrono::microseconds{micros(usage.ru_utime) + micros(usage.ru_stime)};
+#endif
+}
+
+std::optional<unsigned int> cpuCoreCount() {
+    const unsigned int cores = std::thread::hardware_concurrency();
+    return cores == 0 ? std::nullopt : std::optional{cores};
+}
+
+namespace terminal {
+namespace {
+
+#if !defined(_WIN32)
+// The settings as they were before this process touched them, kept so they can be put back.
+termios gSaved{};
+bool gRaw = false;
+#endif
+
+} // namespace
+
+bool enableRawMode() {
+#if defined(_WIN32)
+    // The Windows console has its own mode flags rather than termios; the line editor falls back to
+    // plain reading there until that is written.
+    return false;
+#else
+    if (::isatty(STDIN_FILENO) != 1) {
+        return false;
+    }
+    if (gRaw) {
+        return true;
+    }
+    if (::tcgetattr(STDIN_FILENO, &gSaved) != 0) {
+        return false;
+    }
+
+    termios raw = gSaved;
+    // Only line buffering and echo go: signals and output processing stay exactly as they were, so
+    // the terminal still behaves like a terminal in every other respect.
+    raw.c_lflag &= static_cast<tcflag_t>(~(ICANON | ECHO));
+    if (::tcsetattr(STDIN_FILENO, TCSANOW, &raw) != 0) {
+        return false;
+    }
+    gRaw = true;
+    return true;
+#endif
+}
+
+void restoreMode() {
+#if !defined(_WIN32)
+    if (gRaw) {
+        ::tcsetattr(STDIN_FILENO, TCSANOW, &gSaved);
+        gRaw = false;
+    }
+#endif
+}
+
+int readByte() { return std::getchar(); }
+
+} // namespace terminal
 
 } // namespace basalt::wire::io
