@@ -1,0 +1,237 @@
+#define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
+#include <basalt/wire/io/ByteBuffer.hpp>
+#include <basalt/wire/io/Compression.hpp>
+#include <basalt/wire/io/EventLoop.hpp>
+#include <basalt/wire/io/TcpSocket.hpp>
+#include <basalt/wire/io/ZipReader.hpp>
+
+#include <doctest.h>
+
+#include <numeric>
+#include <string>
+#include <vector>
+
+using namespace basalt::wire::io;
+
+namespace {
+
+std::vector<std::uint8_t> sampleBytes(std::size_t size) {
+    std::vector<std::uint8_t> out(size);
+    for (std::size_t i = 0; i < size; ++i) {
+        out[i] = static_cast<std::uint8_t>((i * 7) % 251);
+    }
+    return out;
+}
+
+} // namespace
+
+TEST_CASE("ByteBuffer round trips every primitive in big-endian order") {
+    ByteBuffer buffer;
+    buffer.writeByte(0xAB);
+    buffer.writeShort(-1234);
+    buffer.writeInt(-70000);
+    buffer.writeLong(1234567890123LL);
+    buffer.writeFloat(3.5F);
+    buffer.writeDouble(2.718281828459045);
+    const std::vector<std::uint8_t> payload = {1, 2, 3, 4};
+    buffer.writeBytes(payload);
+
+    CHECK(buffer.readByte() == 0xAB);
+    CHECK(buffer.readShort() == -1234);
+    CHECK(buffer.readInt() == -70000);
+    CHECK(buffer.readLong() == 1234567890123LL);
+    CHECK(buffer.readFloat() == 3.5F);
+    CHECK(buffer.readDouble() == 2.718281828459045);
+    CHECK(buffer.readBytes(4) == payload);
+    CHECK(buffer.readableBytes() == 0);
+    CHECK_FALSE(buffer.failed());
+}
+
+TEST_CASE("ByteBuffer reports a short read instead of running off the end") {
+    ByteBuffer buffer;
+    buffer.writeByte(1);
+
+    CHECK(buffer.readByte() == 1);
+    CHECK_FALSE(buffer.failed());
+    CHECK(buffer.readInt() == 0);
+    CHECK(buffer.failed());
+    // The flag is sticky, so one check after a whole packet is enough.
+    CHECK(buffer.readByte() == 0);
+    CHECK(buffer.failed());
+    buffer.clearFailure();
+    CHECK_FALSE(buffer.failed());
+}
+
+TEST_CASE("ByteBuffer reuses its storage across packets") {
+    ByteBuffer buffer;
+    buffer.writeInt(1);
+    buffer.writeInt(2);
+    CHECK(buffer.readInt() == 1);
+
+    buffer.discardReadBytes();
+    CHECK(buffer.readerIndex() == 0);
+    CHECK(buffer.readableBytes() == 4);
+    CHECK(buffer.readInt() == 2);
+}
+
+TEST_CASE("zlib compresses straight into a destination buffer") {
+    const std::vector<std::uint8_t> data = sampleBytes(8192);
+
+    ByteBuffer compressed;
+    compressed.writeInt(0x5A5A5A5A);
+    REQUIRE(zlib::compressInto(data, compressed).has_value());
+    // The header written before it is untouched: the compressor appends, it does not own the buffer.
+    CHECK(compressed.readInt() == 0x5A5A5A5A);
+    const std::vector<std::uint8_t> body = compressed.toVector();
+    CHECK(body.size() < data.size());
+
+    ByteBuffer restored;
+    REQUIRE(zlib::decompressInto(body, data.size(), restored).has_value());
+    CHECK(restored.toVector() == data);
+    CHECK(zlib::decompressUnknownSize(body).value() == data);
+}
+
+TEST_CASE("gzip produces a real gzip stream and reads it back") {
+    const std::vector<std::uint8_t> data = sampleBytes(4096);
+    const auto compressed = gzip::compress(data);
+    REQUIRE(compressed.has_value());
+    REQUIRE(compressed->size() > 2);
+    CHECK((*compressed)[0] == 0x1F);
+    CHECK((*compressed)[1] == 0x8B);
+    CHECK(gzip::decompress(*compressed).value() == data);
+}
+
+TEST_CASE("corrupt compressed input is refused, not crashed on") {
+    const std::vector<std::uint8_t> garbage = {0xDE, 0xAD, 0xBE, 0xEF, 0x00, 0x11};
+    CHECK_FALSE(zlib::decompress(garbage, 1024).has_value());
+    CHECK_FALSE(gzip::decompress(garbage).has_value());
+    CHECK_FALSE(rawDeflate::decompress(garbage, 1024).has_value());
+    CHECK(zlib::decompress(garbage, kMaxDecompressedSize + 1).error() == CompressionError::TooLarge);
+}
+
+TEST_CASE("IPv4 literals parse and format back") {
+    CHECK(parseIpv4("127.0.0.1").has_value());
+    CHECK(formatIpv4(*parseIpv4("192.168.1.42")) == "192.168.1.42");
+    CHECK_FALSE(parseIpv4("256.0.0.1").has_value());
+    CHECK_FALSE(parseIpv4("1.2.3").has_value());
+    CHECK_FALSE(parseIpv4("not an address").has_value());
+    CHECK_FALSE(parseIpv4("1.2.3.4.5").has_value());
+}
+
+TEST_CASE("a listener accepts a connection and the two exchange bytes") {
+    auto listener = TcpListener::bind(0);
+    REQUIRE(listener.has_value());
+    const auto port = listener->localPort();
+    REQUIRE(port.has_value());
+
+    EventLoop loop;
+    loop.watch(listener->nativeHandle());
+
+    auto client = TcpConnection::connect("127.0.0.1", *port);
+    REQUIRE(client.has_value());
+
+    const auto ready = loop.waitReadable(2000);
+    REQUIRE(ready.has_value());
+    REQUIRE(ready->size() == 1);
+    CHECK(ready->front() == listener->nativeHandle());
+
+    auto server = listener->accept();
+    REQUIRE(server.has_value());
+    CHECK(server->remoteAddress() == "127.0.0.1");
+
+    const std::vector<std::uint8_t> message = {'b', 'a', 's', 'a', 'l', 't'};
+    REQUIRE(client->write(message).has_value());
+
+    std::vector<std::uint8_t> received(message.size());
+    const auto count = server->read(received);
+    REQUIRE(count.has_value());
+    CHECK(*count == message.size());
+    CHECK(received == message);
+
+    // A closed peer reads as end of stream, not as an error.
+    client->close();
+    const auto afterClose = server->read(received);
+    REQUIRE(afterClose.has_value());
+    CHECK(*afterClose == 0);
+}
+
+TEST_CASE("connecting to something that is not an address fails cleanly") {
+    const auto failed = TcpConnection::connect("localhost", 1);
+    REQUIRE_FALSE(failed.has_value());
+    CHECK(failed.error().kind == SocketError::Kind::InvalidAddress);
+}
+
+TEST_CASE("the zip reader pulls stored and deflated entries out of an archive") {
+    // A minimal archive built by hand, so the test carries no third-party binary and no jar.
+    const std::string storedName = "stored.txt";
+    const std::string storedBody = "hello";
+
+    std::vector<std::uint8_t> archive;
+    const auto put16 = [&archive](std::uint16_t value) {
+        archive.push_back(static_cast<std::uint8_t>(value));
+        archive.push_back(static_cast<std::uint8_t>(value >> 8));
+    };
+    const auto put32 = [&archive](std::uint32_t value) {
+        for (int i = 0; i < 4; ++i) {
+            archive.push_back(static_cast<std::uint8_t>(value >> (8 * i)));
+        }
+    };
+    const auto putBytes = [&archive](std::string_view text) {
+        archive.insert(archive.end(), text.begin(), text.end());
+    };
+
+    const std::uint32_t localHeaderOffset = 0;
+    put32(0x04034b50);
+    put16(20);
+    put16(0);
+    put16(0);
+    put16(0);
+    put16(0);
+    put32(0);
+    put32(static_cast<std::uint32_t>(storedBody.size()));
+    put32(static_cast<std::uint32_t>(storedBody.size()));
+    put16(static_cast<std::uint16_t>(storedName.size()));
+    put16(0);
+    putBytes(storedName);
+    putBytes(storedBody);
+
+    const auto directoryOffset = static_cast<std::uint32_t>(archive.size());
+    put32(0x02014b50);
+    put16(20);
+    put16(20);
+    put16(0);
+    put16(0);
+    put16(0);
+    put16(0);
+    put32(0);
+    put32(static_cast<std::uint32_t>(storedBody.size()));
+    put32(static_cast<std::uint32_t>(storedBody.size()));
+    put16(static_cast<std::uint16_t>(storedName.size()));
+    put16(0);
+    put16(0);
+    put16(0);
+    put16(0);
+    put32(0);
+    put32(localHeaderOffset);
+    putBytes(storedName);
+
+    const auto directorySize = static_cast<std::uint32_t>(archive.size() - directoryOffset);
+    put32(0x06054b50);
+    put16(0);
+    put16(0);
+    put16(1);
+    put16(1);
+    put32(directorySize);
+    put32(directoryOffset);
+    put16(0);
+
+    const auto reader = ZipReader::open(archive);
+    REQUIRE(reader.has_value());
+    CHECK(reader->entryNames() == std::vector<std::string>{storedName});
+    const auto entry = reader->read(storedName);
+    REQUIRE(entry.has_value());
+    CHECK(std::string(entry->begin(), entry->end()) == storedBody);
+    CHECK(reader->read("missing").error() == ZipError::EntryNotFound);
+
+    CHECK(ZipReader::open(std::vector<std::uint8_t>{1, 2, 3}).error() == ZipError::NotAZipFile);
+}

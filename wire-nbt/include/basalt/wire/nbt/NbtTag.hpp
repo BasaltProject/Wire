@@ -134,19 +134,35 @@ public:
     NbtTag() = default;
 
     [[nodiscard]] static NbtTag ofByte(std::int8_t value) { return NbtTag{Storage{value}}; }
+
     [[nodiscard]] static NbtTag ofBoolean(bool value) { return ofByte(value ? 1 : 0); }
+
     [[nodiscard]] static NbtTag ofShort(std::int16_t value) { return NbtTag{Storage{value}}; }
+
     [[nodiscard]] static NbtTag ofInt(std::int32_t value) { return NbtTag{Storage{value}}; }
+
     [[nodiscard]] static NbtTag ofLong(std::int64_t value) { return NbtTag{Storage{value}}; }
+
     [[nodiscard]] static NbtTag ofFloat(float value) { return NbtTag{Storage{value}}; }
+
     [[nodiscard]] static NbtTag ofDouble(double value) { return NbtTag{Storage{value}}; }
+
     [[nodiscard]] static NbtTag ofString(std::string value) { return NbtTag{Storage{std::move(value)}}; }
-    [[nodiscard]] static NbtTag ofByteArray(std::vector<std::int8_t> value) { return NbtTag{Storage{std::move(value)}}; }
-    [[nodiscard]] static NbtTag ofIntArray(std::vector<std::int32_t> value) { return NbtTag{Storage{std::move(value)}}; }
+
+    [[nodiscard]] static NbtTag ofByteArray(std::vector<std::int8_t> value) {
+        return NbtTag{Storage{std::move(value)}};
+    }
+
+    [[nodiscard]] static NbtTag ofIntArray(std::vector<std::int32_t> value) {
+        return NbtTag{Storage{std::move(value)}};
+    }
+
     [[nodiscard]] static NbtTag ofLongArray(std::vector<std::int64_t> value) {
         return NbtTag{Storage{std::move(value)}};
     }
+
     [[nodiscard]] static NbtTag ofList(NbtList value) { return NbtTag{Storage{std::move(value)}}; }
+
     [[nodiscard]] static NbtTag ofCompound(NbtCompound value) { return NbtTag{Storage{std::move(value)}}; }
 
     [[nodiscard]] NbtType type() const noexcept { return static_cast<NbtType>(storage_.index()); }

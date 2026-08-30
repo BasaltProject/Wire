@@ -25,8 +25,7 @@ inline constexpr double kSinScale = 10430.378350470453;
 }
 
 [[nodiscard]] inline float cos(double value) noexcept {
-    return sineTable()[static_cast<std::uint32_t>(truncateToInt(toLongLikeJava(value * kSinScale + 16384.0))) &
-                       65535U];
+    return sineTable()[static_cast<std::uint32_t>(truncateToInt(toLongLikeJava(value * kSinScale + 16384.0))) & 65535U];
 }
 
 [[nodiscard]] inline float sin(float value) noexcept { return sin(static_cast<double>(value)); }
@@ -42,17 +41,14 @@ inline constexpr double kSinScale = 10430.378350470453;
     return lerp(alpha2, lerp(alpha1, x00, x10), lerp(alpha1, x01, x11));
 }
 
-[[nodiscard]] constexpr double lerp3(double alpha1, double alpha2, double alpha3, double x000, double x100,
-                                     double x010, double x110, double x001, double x101, double x011,
-                                     double x111) noexcept {
+[[nodiscard]] constexpr double lerp3(double alpha1, double alpha2, double alpha3, double x000, double x100, double x010,
+                                     double x110, double x001, double x101, double x011, double x111) noexcept {
     return lerp(alpha3, lerp2(alpha1, alpha2, x000, x100, x010, x110), lerp2(alpha1, alpha2, x001, x101, x011, x111));
 }
 
 [[nodiscard]] constexpr double smoothstep(double x) noexcept { return x * x * x * (x * (x * 6.0 - 15.0) + 10.0); }
 
-[[nodiscard]] constexpr double smoothstepDerivative(double x) noexcept {
-    return 30.0 * x * x * (x - 1.0) * (x - 1.0);
-}
+[[nodiscard]] constexpr double smoothstepDerivative(double x) noexcept { return 30.0 * x * x * (x - 1.0) * (x - 1.0); }
 
 [[nodiscard]] constexpr std::int64_t square(std::int64_t v) noexcept { return v * v; }
 

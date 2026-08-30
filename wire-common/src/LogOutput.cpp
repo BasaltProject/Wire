@@ -17,6 +17,7 @@ constexpr std::string_view kCyan = "\x1B[36m";
 
 bool gUseColor = false;
 std::function<void(const std::function<void()>&)> gAroundConsoleLine;
+
 std::vector<std::function<void(std::string_view)>>& sinks() {
     static std::vector<std::function<void(std::string_view)>> instance;
     return instance;
@@ -104,7 +105,13 @@ void emit(LogLevel level, std::string_view timestamp, std::string_view name, std
     }
 
     const std::string_view console = gUseColor ? std::string_view{line} : std::string_view{plain};
-    const auto write = [&console]() { std::fwrite(console.data(), 1, console.size(), stdout); std::fputc('\n', stdout); };
+    // Flushed on every line: stdout is fully buffered when it is a pipe, and a server whose log
+    // only appears when the buffer fills is useless under systemd, Docker or a hosting panel.
+    const auto write = [&console]() {
+        std::fwrite(console.data(), 1, console.size(), stdout);
+        std::fputc('\n', stdout);
+        std::fflush(stdout);
+    };
     if (gAroundConsoleLine) {
         gAroundConsoleLine(write);
     } else {

@@ -1,7 +1,7 @@
-#include <basalt/wire/nbt/NbtIO.hpp>
-
 #include "BinaryIO.hpp"
 #include "ModifiedUtf8.hpp"
+
+#include <basalt/wire/nbt/NbtIO.hpp>
 
 namespace basalt::wire::nbt::nbtIO {
 namespace {

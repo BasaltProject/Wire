@@ -30,7 +30,9 @@ public:
     static constexpr Key kEmpty = std::numeric_limits<Key>::min();
     static constexpr Key kTombstone = std::numeric_limits<Key>::min() + 1;
 
-    explicit PrimitiveMap(std::size_t initialCapacity = 16) { reset(nextPowerOfTwo(std::max<std::size_t>(initialCapacity, 4))); }
+    explicit PrimitiveMap(std::size_t initialCapacity = 16) {
+        reset(nextPowerOfTwo(std::max<std::size_t>(initialCapacity, 4)));
+    }
 
     [[nodiscard]] std::size_t size() const noexcept { return size_; }
 

@@ -2,10 +2,9 @@
 
 // The only translation unit that sees simdjson. Everything else in Basalt talks to JsonValue, so a
 // 5 MB header does not land on every file that happens to read a config.
-#include <simdjson.h>
-
 #include <array>
 #include <charconv>
+#include <simdjson.h>
 
 namespace basalt::wire::common {
 namespace {

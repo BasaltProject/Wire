@@ -1,9 +1,9 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
-#include <doctest.h>
-
 #include <basalt/wire/nbt/NbtIO.hpp>
 #include <basalt/wire/nbt/NbtTag.hpp>
 #include <basalt/wire/nbt/Snbt.hpp>
+
+#include <doctest.h>
 
 #include <string>
 #include <vector>
@@ -41,8 +41,8 @@ NbtCompound buildSample() {
     first.putInt("id", 1);
     NbtCompound second;
     second.putInt("id", 2);
-    root.set("listOfCompounds", NbtTag::ofList(NbtList{
-                                    NbtType::Compound,
+    root.set("listOfCompounds",
+             NbtTag::ofList(NbtList{NbtType::Compound,
                                     {NbtTag::ofCompound(std::move(first)), NbtTag::ofCompound(std::move(second))}}));
 
     root.set("emptyList", NbtTag::ofList(NbtList{}));

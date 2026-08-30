@@ -56,8 +56,7 @@ std::array<std::uint8_t, 16> md5(std::span<const std::uint8_t> input) {
     for (std::size_t offset = 0; offset < padded.size(); offset += 64) {
         for (std::size_t i = 0; i < 16; ++i) {
             const std::size_t base = offset + i * 4;
-            block[i] = static_cast<std::uint32_t>(padded[base]) |
-                       (static_cast<std::uint32_t>(padded[base + 1]) << 8) |
+            block[i] = static_cast<std::uint32_t>(padded[base]) | (static_cast<std::uint32_t>(padded[base + 1]) << 8) |
                        (static_cast<std::uint32_t>(padded[base + 2]) << 16) |
                        (static_cast<std::uint32_t>(padded[base + 3]) << 24);
         }

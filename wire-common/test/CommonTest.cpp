@@ -1,11 +1,11 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
-#include <doctest.h>
-
 #include <basalt/wire/common/Identifier.hpp>
 #include <basalt/wire/common/Mth.hpp>
 #include <basalt/wire/common/collections/PrimitiveMap.hpp>
 #include <basalt/wire/common/hash/Md5.hpp>
 #include <basalt/wire/common/json/Json.hpp>
+
+#include <doctest.h>
 
 #include <string>
 
@@ -32,7 +32,8 @@ TEST_CASE("md5 matches the RFC 1321 test vectors") {
     CHECK(hex(md5(std::string_view{"abc"})) == "900150983cd24fb0d6963f7d28e17f72");
     CHECK(hex(md5(std::string_view{"message digest"})) == "f96b697d7cb7938d525a2f31aaf161d0");
     CHECK(hex(md5(std::string_view{"abcdefghijklmnopqrstuvwxyz"})) == "c3fcd3d76192e4007dfb496cca67e13b");
-    CHECK(hex(md5(std::string_view{"12345678901234567890123456789012345678901234567890123456789012345678901234567890"})) ==
+    CHECK(hex(md5(
+              std::string_view{"12345678901234567890123456789012345678901234567890123456789012345678901234567890"})) ==
           "57edf4a22be3c955ac49da2e2107b67a");
 }
 

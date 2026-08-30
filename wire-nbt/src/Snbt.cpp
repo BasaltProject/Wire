@@ -1,6 +1,5 @@
-#include <basalt/wire/nbt/Snbt.hpp>
-
 #include <basalt/wire/nbt/NbtIO.hpp>
+#include <basalt/wire/nbt/Snbt.hpp>
 
 #include <algorithm>
 #include <array>
