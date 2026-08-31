@@ -1,4 +1,5 @@
 #include <basalt/wire/multiversion/java/Link763Up.hpp>
+#include <basalt/wire/multiversion/java/PlayerSpawn.hpp>
 #include <basalt/wire/nbt/NbtIO.hpp>
 #include <basalt/wire/protocol/ProtocolBuffer.hpp>
 #include <basalt/wire/protocol/VarInt.hpp>
@@ -336,22 +337,6 @@ void rewriteRespawn(io::ByteBuffer& in, io::ByteBuffer& out) {
     out.writeByte(keep);
 }
 
-void rewritePlayerSpawn(io::ByteBuffer& in, io::ByteBuffer& out, std::int32_t playerType) {
-    copyVarInt(in, out);
-    copyBytes(in, out, 16);
-    pv::varInt::write(out, playerType);
-    copyBytes(in, out, 24);
-    const std::uint8_t yaw = in.readByte();
-    const std::uint8_t pitch = in.readByte();
-    out.writeByte(pitch);
-    out.writeByte(yaw);
-    out.writeByte(yaw);
-    pv::varInt::write(out, 0);
-    out.writeShort(0);
-    out.writeShort(0);
-    out.writeShort(0);
-}
-
 void rewriteChunk(io::ByteBuffer& in, io::ByteBuffer& out) {
     copyBytes(in, out, 8);
     convertNbt(in, out, true);
@@ -380,9 +365,8 @@ bool Link763Up::clientbound(ProtocolState state, MutablePacket& packet) {
     }
     switch (packet.id) {
     case kNamedEntitySpawn:
-        transform(packet, [&](io::ByteBuffer& in, io::ByteBuffer& out) {
-            rewritePlayerSpawn(in, out, tables().playerEntityType);
-        });
+        transform(packet,
+                  [&](io::ByteBuffer& in, io::ByteBuffer& out) { playerAsEntity(in, out, tables().playerEntityType); });
         packet.overrideId(kSpawnEntity764);
         break;
     case kTileEntityData:

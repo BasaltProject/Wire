@@ -12,6 +12,8 @@ struct Layout {
     std::int32_t time = 42;
     std::int32_t firstRegistry = 43;
     std::int32_t lastRegistry = 47;
+    /// The source version wrote no property for the time parser; a minimum of zero is added.
+    bool timeAddsMinimum = false;
 };
 
 /// Renumbers the argument parsers of a command tree to the next version's layout.

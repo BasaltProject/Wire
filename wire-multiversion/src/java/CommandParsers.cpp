@@ -44,7 +44,7 @@ void copyProperties(io::ByteBuffer& in, io::ByteBuffer& out, std::int32_t parser
     } else if (parser == kEntity || parser == layout.scoreHolder) {
         out.writeByte(in.readByte());
     } else if (parser == layout.time) {
-        out.writeInt(in.readInt());
+        out.writeInt(layout.timeAddsMinimum ? 0 : in.readInt());
     } else if (parser >= layout.firstRegistry && parser <= layout.lastRegistry) {
         copyString(in, out);
     }

@@ -98,6 +98,10 @@ basalt_module(wire-multiversion
         src/java/Link774.cpp
         src/java/Link775.cpp
         src/java/Link776.cpp
+        src/java/CodecAdditions.cpp
+        src/java/LoginCodec.cpp
+        src/java/PlayerSpawn.cpp
+        src/java/Link761Up.cpp
         src/java/Link762Up.cpp
         src/java/Link763Up.cpp
         src/java/Link764Up.cpp
