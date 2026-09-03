@@ -45,7 +45,7 @@ runtime and no Java library in the build: no Netty, no Adventure, no Gson.
 | Language | C++23, 100 %. No Java, no JVM at runtime |
 | Target version | Minecraft 26.2 (protocol 776) |
 | Message model | Adventure-style immutable components; no legacy `§` formatting |
-| Consumed as | A git submodule, composed into the consumer's Gradle build |
+| Consumed as | A git submodule, added to the consumer's CMake build |
 | License | GPL-3.0 |
 
 ## Modules
