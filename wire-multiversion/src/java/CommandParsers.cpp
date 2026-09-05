@@ -25,6 +25,12 @@ void copyVarInt(io::ByteBuffer& in, io::ByteBuffer& out) { protocol::varInt::wri
 void copyString(io::ByteBuffer& in, io::ByteBuffer& out) { protocol::writeString(out, protocol::readString(in)); }
 
 void copyProperties(io::ByteBuffer& in, io::ByteBuffer& out, std::int32_t parser, const Layout& layout) {
+    if (layout.addedRegistry != nullptr) {
+        if (const char* registry = layout.addedRegistry(parser)) {
+            protocol::writeString(out, registry);
+            return;
+        }
+    }
     if (parser == kFloat || parser == kInteger || parser == kDouble || parser == kLong) {
         const std::uint8_t flags = in.readByte();
         out.writeByte(flags);
