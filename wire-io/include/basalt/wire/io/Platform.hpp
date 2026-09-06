@@ -64,6 +64,11 @@ void restoreMode();
 /// is pressed.
 [[nodiscard]] int readByte();
 
+/// Whether a byte is there to be read, waiting at most `timeout`. End of input counts as ready, so
+/// the caller reads it and sees the -1. A reader that only calls `readByte` cannot be told to stop:
+/// waiting first gives it somewhere to notice it should quit.
+[[nodiscard]] bool waitForInput(std::chrono::milliseconds timeout);
+
 } // namespace terminal
 
 } // namespace basalt::wire::io
