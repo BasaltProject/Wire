@@ -1,5 +1,7 @@
 #include <basalt/wire/text/ComponentJson.hpp>
 
+#include <cstdint>
+
 namespace basalt::wire::text::componentJson {
 namespace {
 

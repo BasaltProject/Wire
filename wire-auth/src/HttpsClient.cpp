@@ -11,6 +11,7 @@ extern "C" {
 
 #include <array>
 #include <charconv>
+#include <cstdint>
 #include <cstring>
 
 namespace basalt::wire::auth {

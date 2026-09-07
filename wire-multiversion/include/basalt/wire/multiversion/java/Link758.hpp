@@ -2,6 +2,7 @@
 
 #include <basalt/wire/multiversion/java/RenumberingLink.hpp>
 
+#include <cstdint>
 #include <span>
 
 namespace basalt::wire::multiversion::java {

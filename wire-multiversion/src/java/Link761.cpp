@@ -5,6 +5,8 @@
 #include <basalt/wire/protocol/play/EntityPackets.hpp>
 #include <basalt/wire/protocol/play/PlayPackets.hpp>
 
+#include <cstdint>
+
 namespace basalt::wire::multiversion::java {
 namespace {
 

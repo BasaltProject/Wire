@@ -2,6 +2,7 @@
 
 #include <basalt/wire/multiversion/VersionTables.hpp>
 
+#include <cstdint>
 #include <functional>
 #include <set>
 #include <span>

@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cstdint>
 
 namespace basalt::wire::protocol::play {
 namespace {

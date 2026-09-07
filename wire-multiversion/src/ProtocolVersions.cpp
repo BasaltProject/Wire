@@ -1,6 +1,7 @@
 #include <basalt/wire/multiversion/ProtocolVersions.hpp>
 
 #include <array>
+#include <cstdint>
 
 namespace basalt::wire::multiversion {
 namespace {

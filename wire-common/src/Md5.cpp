@@ -1,6 +1,7 @@
 #include <basalt/wire/common/hash/Md5.hpp>
 
 #include <bit>
+#include <cstdint>
 #include <cstring>
 #include <vector>
 

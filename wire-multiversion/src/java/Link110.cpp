@@ -4,6 +4,7 @@
 #include <basalt/wire/protocol/play/HudPackets.hpp>
 
 #include <algorithm>
+#include <cstdint>
 #include <string>
 
 namespace basalt::wire::multiversion::java {

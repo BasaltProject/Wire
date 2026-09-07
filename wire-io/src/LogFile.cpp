@@ -5,6 +5,7 @@
 #include <basalt/wire/io/LogFile.hpp>
 
 #include <chrono>
+#include <cstdint>
 #include <mutex>
 
 namespace basalt::wire::io::logFile {

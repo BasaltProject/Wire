@@ -1,5 +1,7 @@
 #include <basalt/wire/multiversion/CompactBitStorage.hpp>
 
+#include <cstdint>
+
 namespace basalt::wire::multiversion::compactBitStorage {
 
 std::vector<std::int32_t> unpack(std::span<const std::int64_t> words, int bits, std::size_t size) {

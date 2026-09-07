@@ -2,6 +2,8 @@
 #include <basalt/wire/protocol/ProtocolBuffer.hpp>
 #include <basalt/wire/protocol/VarInt.hpp>
 
+#include <cstdint>
+
 namespace basalt::wire::multiversion::java {
 
 void LoginFields::SpawnFields::write(io::ByteBuffer& output, bool withSeaLevel) const {

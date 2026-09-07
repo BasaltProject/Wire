@@ -6,6 +6,8 @@
 #include <basalt/wire/protocol/play/ItemComponent.hpp>
 #include <basalt/wire/text/ComponentJson.hpp>
 
+#include <cstdint>
+
 namespace basalt::wire::multiversion::java::legacyStacks {
 namespace {
 

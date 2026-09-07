@@ -4,6 +4,7 @@
 // 5 MB header does not land on every file that happens to read a config.
 #include <array>
 #include <charconv>
+#include <cstdint>
 #include <simdjson.h>
 
 namespace basalt::wire::common {

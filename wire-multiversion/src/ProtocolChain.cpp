@@ -3,6 +3,8 @@
 #include <basalt/wire/nbt/NbtTag.hpp>
 #include <basalt/wire/protocol/configuration/ConfigurationPackets.hpp>
 
+#include <cstdint>
+
 namespace basalt::wire::multiversion {
 namespace {
 

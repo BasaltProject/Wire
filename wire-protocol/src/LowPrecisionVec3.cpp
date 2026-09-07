@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 
 namespace basalt::wire::protocol::play::lowPrecisionVec3 {
 namespace {

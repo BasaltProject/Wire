@@ -2,6 +2,7 @@
 #include <basalt/wire/protocol/PacketFraming.hpp>
 #include <basalt/wire/protocol/VarInt.hpp>
 
+#include <cstdint>
 #include <cstring>
 
 namespace basalt::wire::protocol::packetFraming {

@@ -1,6 +1,7 @@
 #include <basalt/wire/common/toml/Toml.hpp>
 
 #include <charconv>
+#include <cstdint>
 
 namespace basalt::wire::common::toml {
 namespace {

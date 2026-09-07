@@ -1,6 +1,7 @@
 #include <basalt/wire/io/Compression.hpp>
 
 #include <algorithm>
+#include <cstdint>
 #include <cstring>
 #include <zlib.h>
 

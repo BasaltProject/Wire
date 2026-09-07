@@ -3,6 +3,8 @@
 #include <basalt/wire/protocol/play/EntityPackets.hpp>
 #include <basalt/wire/protocol/play/InventoryPackets.hpp>
 
+#include <cstdint>
+
 namespace basalt::wire::multiversion::java {
 
 namespace play = protocol::play;

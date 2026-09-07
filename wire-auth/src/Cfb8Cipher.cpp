@@ -1,5 +1,6 @@
 #include <basalt/wire/auth/Cfb8Cipher.hpp>
 
+#include <cstdint>
 #include <cstring>
 #include <mbedtls/aes.h>
 

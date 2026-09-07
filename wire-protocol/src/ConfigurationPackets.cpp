@@ -1,6 +1,8 @@
 #include <basalt/wire/protocol/ProtocolBuffer.hpp>
 #include <basalt/wire/protocol/configuration/ConfigurationPackets.hpp>
 
+#include <cstdint>
+
 namespace basalt::wire::protocol::configuration {
 namespace {
 

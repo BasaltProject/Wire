@@ -1,6 +1,8 @@
 #include <basalt/wire/protocol/ProtocolBuffer.hpp>
 #include <basalt/wire/protocol/play/SimplePackets.hpp>
 
+#include <cstdint>
+
 namespace basalt::wire::protocol::play {
 
 void CooldownPacket::write(io::ByteBuffer& buffer) const {

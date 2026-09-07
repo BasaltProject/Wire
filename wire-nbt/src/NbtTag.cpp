@@ -1,6 +1,7 @@
 #include <basalt/wire/nbt/NbtTag.hpp>
 
 #include <algorithm>
+#include <cstdint>
 
 namespace basalt::wire::nbt {
 

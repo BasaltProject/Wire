@@ -3,6 +3,7 @@
 #define ZSTD_STATIC_LINKING_ONLY
 #include <algorithm>
 #include <array>
+#include <cstdint>
 #include <utility>
 #include <zstd.h>
 #include <zstd_errors.h>

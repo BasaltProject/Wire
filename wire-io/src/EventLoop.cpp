@@ -1,6 +1,7 @@
 #include <basalt/wire/io/EventLoop.hpp>
 
 #include <algorithm>
+#include <cstdint>
 #include <cstring>
 
 #if defined(_WIN32)

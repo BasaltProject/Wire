@@ -11,6 +11,7 @@
 #include <basalt/wire/protocol/play/SimplePackets.hpp>
 
 #include <cmath>
+#include <cstdint>
 
 namespace basalt::wire::multiversion::java {
 namespace {

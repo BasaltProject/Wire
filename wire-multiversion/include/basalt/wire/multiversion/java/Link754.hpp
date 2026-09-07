@@ -3,6 +3,8 @@
 #include <basalt/wire/multiversion/java/RenumberingLink.hpp>
 #include <basalt/wire/nbt/NbtTag.hpp>
 
+#include <cstdint>
+
 namespace basalt::wire::multiversion::java {
 
 /// 1.17 to 1.16.4 and 1.16.5, where the world stops fitting.

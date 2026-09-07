@@ -1,6 +1,8 @@
 #include <basalt/wire/protocol/ProtocolBuffer.hpp>
 #include <basalt/wire/protocol/handshake/HandshakePacket.hpp>
 
+#include <cstdint>
+
 namespace basalt::wire::protocol::handshake {
 
 void HandshakePacket::write(io::ByteBuffer& buffer) const {

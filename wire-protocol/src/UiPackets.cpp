@@ -3,6 +3,7 @@
 #include <basalt/wire/text/ComponentNbt.hpp>
 
 #include <array>
+#include <cstdint>
 #include <utility>
 
 namespace basalt::wire::protocol::play {

@@ -2,6 +2,7 @@
 #include <basalt/wire/protocol/ProtocolBuffer.hpp>
 
 #include <algorithm>
+#include <cstdint>
 
 namespace basalt::wire::protocol {
 

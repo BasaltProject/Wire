@@ -5,6 +5,8 @@
 #include <basalt/wire/protocol/login/LoginPackets.hpp>
 #include <basalt/wire/protocol/play/PlayPackets.hpp>
 
+#include <cstdint>
+
 namespace basalt::wire::multiversion::java {
 
 bool Link775::clientbound(protocol::ProtocolState state, MutablePacket& packet) {
