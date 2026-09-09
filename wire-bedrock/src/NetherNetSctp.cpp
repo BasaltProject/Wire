@@ -3,12 +3,10 @@
 #include <algorithm>
 #include <array>
 #include <cerrno>
-#include <chrono>
 #include <cstdlib>
 #include <cstring>
 #include <deque>
 #include <mutex>
-#include <thread>
 #include <unordered_map>
 #include <usrsctp.h>
 #include <utility>
@@ -53,7 +51,7 @@ std::unordered_map<const void*, std::shared_ptr<SctpEngine::Impl>>& registry() {
     return map;
 }
 
-int engineCount = 0;
+bool stackReady = false;
 
 std::shared_ptr<SctpEngine::Impl> lookup(const void* key) {
     const std::lock_guard<std::mutex> guard{registryLock()};
@@ -174,22 +172,14 @@ void initializeStack() {
     usrsctp_sysctl_set_sctp_enable_sack_immediately(1);
 }
 
-void finishStack() {
-    for (int attempt = 0; attempt < 50; ++attempt) {
-        if (usrsctp_finish() == 0) {
-            return;
-        }
-        std::this_thread::sleep_for(std::chrono::milliseconds{20});
-    }
-}
-
 } // namespace
 
 SctpEngine::SctpEngine(Wake wake) : impl_(std::make_shared<Impl>()) {
     impl_->wake = std::move(wake);
     const std::lock_guard<std::mutex> guard{registryLock()};
-    if (engineCount++ == 0) {
+    if (!stackReady) {
         initializeStack();
+        stackReady = true;
     }
     registry()[impl_.get()] = impl_;
 }
@@ -199,9 +189,6 @@ SctpEngine::~SctpEngine() {
     {
         const std::lock_guard<std::mutex> guard{registryLock()};
         registry().erase(impl_.get());
-        if (--engineCount == 0) {
-            finishStack();
-        }
     }
 }
 
