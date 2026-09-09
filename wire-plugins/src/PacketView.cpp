@@ -3,6 +3,7 @@
 #include <basalt/wire/plugins/PacketView.hpp>
 
 #include <cstdint>
+#include <expected>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -13,13 +14,15 @@ namespace basalt::wire::plugins {
 namespace {
 using lua::LuaArgs;
 
-[[nodiscard]] std::vector<std::uint8_t> bytesFrom(LuaArgs& args, std::int32_t index, std::size_t limit) {
+using Bytes = std::expected<std::vector<std::uint8_t>, std::string>;
+
+[[nodiscard]] Bytes bytesFrom(LuaArgs& args, std::int32_t index, std::size_t limit) {
     if (!args.isTable(index)) {
-        args.raise("packet bytes are a list of numbers from 0 to 255");
+        return std::unexpected{"packet bytes are a list of numbers from 0 to 255"};
     }
     const std::int64_t length = args.length(index);
     if (length < 0 || static_cast<std::size_t>(length) > limit) {
-        args.raise("packet bytes are limited to " + std::to_string(limit) + " bytes here");
+        return std::unexpected{"packet bytes are limited to " + std::to_string(limit) + " bytes here"};
     }
     std::vector<std::uint8_t> out;
     out.reserve(static_cast<std::size_t>(length));
@@ -47,53 +50,62 @@ using lua::LuaArgs;
     return "play";
 }
 
-[[nodiscard]] PluginPacket& live(LuaArgs& args, const PacketViewLease& lease) {
-    PluginPacket* packet = lease.packet();
-    if (packet == nullptr) {
-        args.raise("this packet is only valid while its listener runs");
-    }
-    return *packet;
-}
+constexpr std::string_view kExpired = "this packet is only valid while its listener runs";
 
 [[nodiscard]] std::int32_t firstArgument(const LuaArgs& args) { return args.count() >= 1 && args.isTable(1) ? 2 : 1; }
 
 // Sends or injects another packet on the connection this one travels on, past the listeners unless asked.
-[[nodiscard]] bool relay(LuaArgs& args, PacketViewLease& lease, bool inbound) {
-    PluginPacket& from = live(args, lease);
+[[nodiscard]] std::expected<bool, std::string> relay(LuaArgs& args, PacketViewLease& lease, bool inbound) {
+    PluginPacket* const live = lease.packet();
+    if (live == nullptr) {
+        return std::unexpected{std::string{kExpired}};
+    }
+    PluginPacket& from = *live;
     const std::int32_t base = firstArgument(args);
     const std::string name = args.checkString(base);
     const std::optional<PacketAddress> address = packetNaming::resolve(name);
     if (!address.has_value() || address->serverbound != inbound) {
-        args.raise("'" + name + "' is not a " + (inbound ? "serverbound" : "clientbound") + " packet");
+        return std::unexpected{"'" + name + "' is not a " + (inbound ? "serverbound" : "clientbound") + " packet"};
     }
     if (address->phase != from.address.phase) {
-        args.raise("'" + name + "' belongs to another protocol phase than the connection is in");
+        return std::unexpected{"'" + name + "' belongs to another protocol phase than the connection is in"};
     }
-    const std::vector<std::uint8_t> body = bytesFrom(args, base + 1, lease.host().maxBodyBytes);
+    const Bytes body = bytesFrom(args, base + 1, lease.host().maxBodyBytes);
+    if (!body) {
+        return std::unexpected{body.error()};
+    }
     if (!lease.spend()) {
-        args.raise("a listener may send at most " + std::to_string(lease.host().maxInjected) + " packets per call");
+        return std::unexpected{"a listener may send at most " + std::to_string(lease.host().maxInjected) +
+                               " packets per call"};
     }
     if (from.endpoint == nullptr) {
         return false;
     }
     const bool intercept = args.isBoolean(base + 2) && args.booleanOr(base + 2, false);
-    return inbound ? from.endpoint->receiveServerbound(address->id, body, intercept)
-                   : from.endpoint->sendClientbound(address->id, body, intercept);
+    return inbound ? from.endpoint->receiveServerbound(address->id, *body, intercept)
+                   : from.endpoint->sendClientbound(address->id, *body, intercept);
 }
 
 void pushMethod(LuaArgs& args, const std::shared_ptr<PacketViewLease>& lease, std::string_view name) {
     if (name == "cancel") {
         lua::pushHostFunction(args, "packet.cancel", [lease](LuaArgs& inner) {
-            PluginPacket& packet = live(inner, *lease);
-            if (packet.editable) {
-                packet.cancelled = true;
+            PluginPacket* const packet = lease->packet();
+            if (packet == nullptr) {
+                return inner.fail(kExpired);
+            }
+            if (packet->editable) {
+                packet->cancelled = true;
             }
             return 0;
         });
     } else if (name == "send" || name == "receive") {
         const bool inbound = name == "receive";
         lua::pushHostFunction(args, inbound ? "packet.receive" : "packet.send", [lease, inbound](LuaArgs& inner) {
-            inner.pushBoolean(relay(inner, *lease, inbound));
+            const auto sent = relay(inner, *lease, inbound);
+            if (!sent) {
+                return inner.fail(sent.error());
+            }
+            inner.pushBoolean(*sent);
             return 1;
         });
     } else {
@@ -101,8 +113,12 @@ void pushMethod(LuaArgs& args, const std::shared_ptr<PacketViewLease>& lease, st
     }
 }
 
-void pushField(LuaArgs& args, const std::shared_ptr<PacketViewLease>& lease, std::string_view key) {
-    PluginPacket& packet = live(args, *lease);
+[[nodiscard]] bool pushField(LuaArgs& args, const std::shared_ptr<PacketViewLease>& lease, std::string_view key) {
+    PluginPacket* const live = lease->packet();
+    if (live == nullptr) {
+        return false;
+    }
+    PluginPacket& packet = *live;
     if (key == "name") {
         args.pushString(packet.name);
     } else if (key == "serverbound") {
@@ -147,6 +163,7 @@ void pushField(LuaArgs& args, const std::shared_ptr<PacketViewLease>& lease, std
     } else {
         pushMethod(args, lease, key);
     }
+    return true;
 }
 } // namespace
 
@@ -155,24 +172,30 @@ std::shared_ptr<PacketViewLease> pushPacketView(LuaArgs& lua, PluginPacket& pack
     lua.pushTable();
     lua.pushTable();
     lua::pushHostFunction(lua, "packet.index", [lease](LuaArgs& args) {
-        pushField(args, lease, args.checkString(2));
-        return 1;
+        const std::string key = args.checkString(2);
+        return pushField(args, lease, key) ? 1 : args.fail(kExpired);
     });
     lua.setField("__index");
     lua::pushHostFunction(lua, "packet.newindex", [lease](LuaArgs& args) {
-        PluginPacket& target = live(args, *lease);
+        PluginPacket* const target = lease->packet();
+        if (target == nullptr) {
+            return args.fail(kExpired);
+        }
         const std::string key = args.checkString(2);
         if (key == "cancelled") {
-            if (target.editable) {
-                target.cancelled = args.booleanOr(3, true);
+            if (target->editable) {
+                target->cancelled = args.booleanOr(3, true);
             }
         } else if (key == "bytes") {
-            std::vector<std::uint8_t> body = bytesFrom(args, 3, lease->host().maxBodyBytes);
-            if (target.editable) {
-                target.replacement = std::move(body);
+            Bytes body = bytesFrom(args, 3, lease->host().maxBodyBytes);
+            if (!body) {
+                return args.fail(body.error());
+            }
+            if (target->editable) {
+                target->replacement = std::move(*body);
             }
         } else {
-            args.raise("a packet has no writable field '" + key + "'; cancelled and bytes can be set");
+            return args.fail("a packet has no writable field '" + key + "'; cancelled and bytes can be set");
         }
         return 0;
     });
