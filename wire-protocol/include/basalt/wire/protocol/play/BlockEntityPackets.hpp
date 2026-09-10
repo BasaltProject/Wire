@@ -81,4 +81,32 @@ struct SignUpdatePacket {
     friend bool operator==(const SignUpdatePacket&, const SignUpdatePacket&) = default;
 };
 
+/// Serverbound, id 0x36: what somebody typed into a command block's screen.
+///
+/// parity: `ServerboundSetCommandBlockPacket`. The three modes are the block itself (an impulse, a
+/// repeating or a chain block), so accepting one means putting a different block down; the flags are
+/// a single byte and vanilla names them one, two and four.
+struct SetCommandBlockPacket {
+    static constexpr std::int32_t kId = 0x36;
+
+    /// parity: `CommandBlockEntity.Mode`, in the enum's own order, which is what the byte carries.
+    enum class Mode : std::int32_t { Sequence, Auto, Redstone };
+
+    static constexpr std::int32_t kTrackOutputFlag = 1;
+    static constexpr std::int32_t kConditionalFlag = 2;
+    static constexpr std::int32_t kAutomaticFlag = 4;
+
+    BlockPos pos;
+    std::string command;
+    Mode mode = Mode::Redstone;
+    bool trackOutput = false;
+    bool conditional = false;
+    bool automatic = false;
+
+    void write(io::ByteBuffer& buffer) const;
+    [[nodiscard]] static std::optional<SetCommandBlockPacket> read(io::ByteBuffer& buffer);
+
+    friend bool operator==(const SetCommandBlockPacket&, const SetCommandBlockPacket&) = default;
+};
+
 } // namespace basalt::wire::protocol::play

@@ -654,6 +654,13 @@ TEST_CASE("the block entity packets round trip") {
     io::ByteBuffer updateBuffer;
     update.write(updateBuffer);
     CHECK(*SignUpdatePacket::read(updateBuffer) == update);
+
+    // The three flags are one byte, so a packet with two of them set and one clear pins the bits.
+    const SetCommandBlockPacket programmed{
+        BlockPos{3, -60, 8}, "say hello", SetCommandBlockPacket::Mode::Sequence, true, false, true};
+    io::ByteBuffer programmedBuffer;
+    programmed.write(programmedBuffer);
+    CHECK(*SetCommandBlockPacket::read(programmedBuffer) == programmed);
 }
 
 TEST_CASE("item components round trip, including the ones this build has no codec for") {
