@@ -594,6 +594,49 @@ void writeCreativeContent(io::ByteBuffer& buffer) {
 
 void writeSetCommandsEnabled(io::ByteBuffer& buffer, const bool enabled) { writeBool(buffer, enabled); }
 
+void writeSpawnParticle(io::ByteBuffer& buffer, const BedrockDimension dimension, const std::string_view particle,
+                        const float x, const float y, const float z) {
+    buffer.writeByte(static_cast<std::uint8_t>(dimension));
+    writeVarLong(buffer, -1); // Belonging to no entity in particular.
+    writeFloatLE(buffer, x);
+    writeFloatLE(buffer, y);
+    writeFloatLE(buffer, z);
+    writeString(buffer, particle);
+    writeBool(buffer, false); // No variables of its own to fill in.
+}
+
+void writeEntityEvent(io::ByteBuffer& buffer, const std::uint64_t runtimeEntityId, const BedrockEntityEvent event,
+                      const std::int32_t data, const int protocol) {
+    writeVarULong(buffer, runtimeEntityId);
+    buffer.writeByte(static_cast<std::uint8_t>(event));
+    writeVarInt(buffer, data);
+    if (protocol >= kEntityEventGrewProtocol) {
+        writeBool(buffer, false); // No position of its own, which only a fire event carries.
+    }
+}
+
+void writeSetEntityMotion(io::ByteBuffer& buffer, const std::uint64_t runtimeEntityId, const float x, const float y,
+                          const float z) {
+    writeVarULong(buffer, runtimeEntityId);
+    writeFloatLE(buffer, x);
+    writeFloatLE(buffer, y);
+    writeFloatLE(buffer, z);
+    writeVarULong(buffer, 0); // Which tick it belongs to, which only a replay cares about.
+}
+
+void writeMobEffect(io::ByteBuffer& buffer, const std::uint64_t runtimeEntityId, const BedrockEffectEvent event,
+                    const std::int32_t effectId, const std::int32_t amplifier, const bool particles,
+                    const std::int32_t durationTicks, const bool ambient) {
+    writeVarULong(buffer, runtimeEntityId);
+    buffer.writeByte(static_cast<std::uint8_t>(event));
+    writeVarInt(buffer, effectId);
+    writeVarInt(buffer, amplifier);
+    writeBool(buffer, particles);
+    writeVarInt(buffer, durationTicks);
+    writeVarULong(buffer, 0); // Which tick it started on, which only a replay cares about.
+    writeBool(buffer, ambient);
+}
+
 void writePlaySound(io::ByteBuffer& buffer, const std::string_view sound, const double x, const double y,
                     const double z, const float volume, const float pitch, const int protocol) {
     writeString(buffer, sound);
@@ -776,6 +819,11 @@ void writeMetadataHead(io::ByteBuffer& buffer, const EntityDataId id, const Enti
 void writeMetadataLong(io::ByteBuffer& buffer, const EntityDataId id, const std::int64_t value, const int protocol) {
     writeMetadataHead(buffer, id, EntityDataFormat::Long, protocol);
     writeVarLong(buffer, value);
+}
+
+void writeMetadataShort(io::ByteBuffer& buffer, const EntityDataId id, const std::int16_t value, const int protocol) {
+    writeMetadataHead(buffer, id, EntityDataFormat::Short, protocol);
+    writeShortLE(buffer, static_cast<std::uint16_t>(value));
 }
 
 void writeMetadataFloat(io::ByteBuffer& buffer, const EntityDataId id, const float value, const int protocol) {
@@ -1017,6 +1065,17 @@ void writeUpdateAttributes(io::ByteBuffer& buffer, const std::uint64_t runtimeEn
         writeVarUInt(buffer, 0); // Nothing is modifying it: the server sends the number it wants.
     }
     writeVarULong(buffer, tick);
+}
+
+void writeSubmersion(io::ByteBuffer& buffer, const std::uint64_t runtimeEntityId, const std::int16_t airSupply,
+                     const std::uint64_t flags, const int protocol) {
+    writeVarULong(buffer, runtimeEntityId);
+    writeVarUInt(buffer, 2);
+    writeMetadataLong(buffer, EntityDataId::Flags, static_cast<std::int64_t>(flags), protocol);
+    writeMetadataShort(buffer, EntityDataId::AirSupply, airSupply, protocol);
+    writeVarUInt(buffer, 0); // No entity properties, of either kind.
+    writeVarUInt(buffer, 0);
+    writeVarULong(buffer, 0); // Which tick it belongs to, which only a replay cares about.
 }
 
 } // namespace basalt::wire::bedrock

@@ -30,6 +30,9 @@ inline constexpr int kStartGameGrewProtocol = 1001;
 /// Where a played sound gained the handle of one the server holds itself, which this one never has.
 inline constexpr int kServerSoundHandleProtocol = 975;
 
+/// Where an entity event gained a trailing optional position, which only a fire event fills.
+inline constexpr int kEntityEventGrewProtocol = 975;
+
 /// What a client asks for before anything else, and the only packet either side sends in the
 /// clear and uncompressed.
 struct RequestNetworkSettings {
@@ -286,9 +289,16 @@ void writeEmptyLevelChunk(io::ByteBuffer& buffer, std::int32_t chunkX, std::int3
 /// byte, and the client refuses a packet where the two disagree.
 void writeMetadataLong(io::ByteBuffer& buffer, EntityDataId id, std::int64_t value, int protocol);
 
+void writeMetadataShort(io::ByteBuffer& buffer, EntityDataId id, std::int16_t value, int protocol);
+
 void writeMetadataFloat(io::ByteBuffer& buffer, EntityDataId id, float value, int protocol);
 
 void writeMetadataString(io::ByteBuffer& buffer, EntityDataId id, std::string_view value, int protocol);
+
+/// How much air is left and which of the shared flags are on. The two travel together because
+/// they are the two halves of what the HUD draws while somebody is under water or on fire.
+void writeSubmersion(io::ByteBuffer& buffer, std::uint64_t runtimeEntityId, std::int16_t airSupply, std::uint64_t flags,
+                     int protocol);
 
 /// What a player looks like. Bedrock will not draw somebody it has no skin for, and a server that
 /// redistributed Mojang's would be shipping their art, so this is a plain image made here.
@@ -359,6 +369,40 @@ enum class BedrockDimension : std::int32_t {
 /// Moves a client to another dimension: the sky, the fog and the chunk cache all come from this.
 /// The client answers when it has finished, and the chunks go out after that.
 void writeChangeDimension(io::ByteBuffer& buffer, BedrockDimension dimension, float x, float y, float z, bool respawn);
+
+/// A particle, at a place, under the name that edition knows it by. The dimension goes first
+/// because this packet can be sent to a world the receiver is not in.
+void writeSpawnParticle(io::ByteBuffer& buffer, BedrockDimension dimension, std::string_view particle, float x, float y,
+                        float z);
+
+/// The handful of entity events this server has anything to say with. The numbers have not moved
+/// once in the window: every version since 291 only adds to the end of the table.
+enum class BedrockEntityEvent : std::uint8_t {
+    Hurt = 2,
+    Death = 3,
+};
+
+/// One thing happening to one entity that the client draws itself: the flash of a hit, the fall of
+/// a death. Grew a trailing optional position at 975, which nothing here fills.
+void writeEntityEvent(io::ByteBuffer& buffer, std::uint64_t runtimeEntityId, BedrockEntityEvent event,
+                      std::int32_t data, int protocol);
+
+/// Throws an entity, in blocks per tick. What a hit does to whoever took it.
+void writeSetEntityMotion(io::ByteBuffer& buffer, std::uint64_t runtimeEntityId, float x, float y, float z);
+
+/// What a mob effect packet is saying about the effect it names.
+enum class BedrockEffectEvent : std::uint8_t {
+    None = 0,
+    Add = 1,
+    Modify = 2,
+    Remove = 3,
+};
+
+/// One effect starting, changing or ending on one entity. Bedrock draws its own icon and screen
+/// tint off this and off nothing else, so an effect not sent is an effect the player cannot see.
+void writeMobEffect(io::ByteBuffer& buffer, std::uint64_t runtimeEntityId, BedrockEffectEvent event,
+                    std::int32_t effectId, std::int32_t amplifier, bool particles, std::int32_t durationTicks,
+                    bool ambient);
 
 /// The sentence on the screen a dead player is shown. Bedrock draws that screen off the health
 /// attribute reaching zero; this only puts the words on it.
