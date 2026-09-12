@@ -319,6 +319,10 @@ void writeStartGame(io::ByteBuffer& buffer, const StartGameInfo& info, const int
     writeString(buffer, info.levelName);
     writeString(buffer, ""); // No premium world template.
     writeBool(buffer, false);
+    // How movement is settled, in three fields. The first says the server verifies it from
+    // `player_auth_input`, which is what this server reads and the only mode left: the client-side
+    // one was deprecated at 800 and this window starts at 924.
+    writeVarInt(buffer, 1);
     writeVarInt(buffer, 0);   // No rewind history: this server does not rewind.
     writeBool(buffer, false); // Block breaking stays with the client for now.
     writeLongLE(buffer, info.currentTick);
@@ -331,7 +335,10 @@ void writeStartGame(io::ByteBuffer& buffer, const StartGameInfo& info, const int
     writeLongLE(buffer, 0);     // No block registry checksum: the client checks nothing when it is zero.
     writeUuid(buffer, 0, 0);
     writeBool(buffer, false); // The client does not generate its own chunks.
-    writeBool(buffer, true);  // Block ids are hashes of their state, not an order we have to agree on.
+    // Block ids are the position in the client's own palette, which is what the generated tables
+    // hold: saying they are hashes of the state would have the client resolve every one of them
+    // against the wrong thing.
+    writeBool(buffer, false);
     writeBool(buffer, true);  // Sounds come from the server.
     if (protocol >= kStartGameGrewProtocol && !writesNativeShapes(protocol)) {
         // Whether chat is logged, which only 1001 asks: 975 and below never had it and 2168
@@ -790,15 +797,9 @@ void writeByteAngle(io::ByteBuffer& buffer, const float degrees) {
     buffer.writeByte(static_cast<std::uint8_t>(static_cast<std::int8_t>(degrees / (360.0F / 256.0F))));
 }
 
-/// Nothing in a hand. Air is the one item that says its whole self in six numbers.
-void writeAirItem(io::ByteBuffer& buffer) {
-    writeShortLE(buffer, 0);  // No item,
-    writeShortLE(buffer, 0);  // none of it,
-    writeVarUInt(buffer, 0);  // undamaged,
-    writeBool(buffer, false); // with no net id,
-    writeVarUInt(buffer, 0);  // no block behind it
-    writeVarUInt(buffer, 0);  // and nothing written on it.
-}
+/// Nothing in a hand. Air is the one item that is only its id: a client that reads a zero there
+/// stops, so the count, the damage and everything after it are not written at all.
+void writeAirItem(io::ByteBuffer& buffer) { writeVarInt(buffer, 0); }
 
 } // namespace
 
@@ -879,9 +880,7 @@ void writePlayerListAdd(io::ByteBuffer& buffer, const std::span<const PlayerList
         writeBool(buffer, false); // Not a teacher,
         writeBool(buffer, false); // not the host
         writeBool(buffer, false); // and not somebody's second player on one console.
-        if (writesNativeShapes(protocol)) {
-            writeIntLE(buffer, 0);
-        }
+        writeIntLE(buffer, 0);    // What colour their name is drawn in, which 800 added.
     }
     // Below 2168 whether a skin is to be trusted is not part of the line: it is a run of booleans
     // behind all of them, one each.
