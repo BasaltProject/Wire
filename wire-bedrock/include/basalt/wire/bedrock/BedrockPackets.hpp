@@ -5,6 +5,7 @@
 
 #include <cstdint>
 #include <optional>
+#include <span>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -122,6 +123,34 @@ struct IncomingText {
 };
 
 [[nodiscard]] std::optional<IncomingText> readText(io::ByteBuffer& buffer);
+
+/// What time it is where this player is. Bedrock runs its own clock from here, like Java does.
+void writeSetTime(io::ByteBuffer& buffer, std::int32_t time);
+
+/// A command a client typed. Only the line itself is read: what follows says which of the client's
+/// own consoles it came from, and a server that runs it for the player answers the same way to all
+/// of them.
+[[nodiscard]] std::optional<std::string> readCommandRequest(io::ByteBuffer& buffer);
+
+/// A form, which is what a Bedrock player gets instead of a window of items. The json is the form
+/// itself, in the shape the client's own UI reads.
+void writeModalFormRequest(io::ByteBuffer& buffer, std::uint32_t formId, std::string_view json);
+
+/// Nothing to draw any more, for a form the server takes back.
+void writeCloseForm(io::ByteBuffer& buffer);
+
+/// What a client answers a form with: the id it was given, and either what was chosen or nothing
+/// at all when it was dismissed.
+struct ModalFormResponse {
+    std::uint32_t formId = 0;
+    std::optional<std::string> data;
+};
+
+[[nodiscard]] std::optional<ModalFormResponse> readModalFormResponse(io::ByteBuffer& buffer);
+
+/// Builds the json of a simple form: a title, a line of text, and a button per entry.
+[[nodiscard]] std::string simpleFormJson(std::string_view title, std::string_view content,
+                                         std::span<const std::string> buttons);
 
 /// Where a client says it is, which in Bedrock is the only movement packet: the client moves itself
 /// and tells the server afterwards.

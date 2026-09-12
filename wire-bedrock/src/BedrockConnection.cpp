@@ -26,8 +26,8 @@ std::vector<std::uint8_t> randomSalt() {
 } // namespace
 
 BedrockConnection::BedrockConnection(RakSession& transport, std::shared_ptr<const EcKeyPair> keys,
-                                     std::string gameVersion)
-    : transport_(transport), keys_(std::move(keys)), gameVersion_(std::move(gameVersion)) {}
+                                     std::string gameVersion, BedrockGate gate)
+    : transport_(transport), keys_(std::move(keys)), gameVersion_(std::move(gameVersion)), gate_(std::move(gate)) {}
 
 void BedrockConnection::receive(std::span<const std::uint8_t> payload) {
     if (state_ == BedrockState::Closed || payload.empty()) {
@@ -108,14 +108,24 @@ void BedrockConnection::onRequestNetworkSettings(io::ByteBuffer& body) {
     }
     protocolVersion_ = request->protocolVersion;
 
-    if (protocolVersion_ != kNativeBedrockProtocol) {
+    const BedrockVerdict verdict = gate_.verdict(protocolVersion_);
+    if (!verdict.allowed()) {
+        // The status is what draws the screen: a client told it is out of date offers to update
+        // itself, and one told the server is out of date says so instead. A disconnect on its own
+        // would be a message over a blank screen.
         scratch_.clear();
-        writePlayStatus(scratch_, protocolVersion_ < kNativeBedrockProtocol ? PlayStatus::ClientTooOld
-                                                                            : PlayStatus::ServerTooOld);
+        writePlayStatus(scratch_, verdict.kind == BedrockVerdict::Kind::TooOld ? PlayStatus::ClientTooOld
+                                                                               : PlayStatus::ServerTooOld);
         sendPacket(BedrockPacket::PlayStatus, scratch_.readable());
         flush();
         state_ = BedrockState::Closed;
+        if (onRefused_) {
+            onRefused_(protocolVersion_, gate_.refusalFor(verdict, gameVersion_));
+        }
         return;
+    }
+    if (verdict.warn && onWarning_) {
+        onWarning_(protocolVersion_);
     }
 
     scratch_.clear();
