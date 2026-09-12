@@ -6,6 +6,12 @@ basalt_module(wire-bedrock
         src/BedrockGate.cpp
         src/BedrockKeys.cpp
         src/BedrockPacketNames.cpp
+        src/BedrockBlocks260.cpp
+        src/BedrockBlocks2610.cpp
+        src/BedrockBlocks2620.cpp
+        src/BedrockBlocks2630.cpp
+        src/BedrockBlocks2640.cpp
+        src/BedrockBlockTables.cpp
         src/BedrockPackets.cpp
         src/BedrockTypes.cpp
         src/RakFrame.cpp

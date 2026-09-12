@@ -14,16 +14,25 @@
 
 namespace basalt::wire::bedrock {
 
-/// Every shape below that a protocol changed, changed at the same one: 2168 rewrote the skin, the
-/// metadata, the player list, the chunk, the two resource pack packets and two fields of
-/// `start_game`, and everything older in the window reads the shape underneath. A writer that
-/// takes a protocol takes it for that reason and no other.
-[[nodiscard]] constexpr bool writesNativeShapes(const int protocol) { return protocol >= kNativeBedrockProtocol; }
+/// Where almost every shape in this window last changed: 2168 rewrote the skin, the metadata, the
+/// player list, the chunk, the two resource pack packets and two fields of `start_game`, and
+/// everything older reads the shape underneath. A writer that takes a protocol takes it for that
+/// reason and no other.
+///
+/// Written as its own number rather than as "the newest one this build speaks": 2169 came along and
+/// changed nothing, so tying the two together quietly gave 2168 the old shapes and left it at the
+/// door. The number is where the shapes moved, not where the window happens to end today.
+inline constexpr int kShapesChangedProtocol = 2168;
+
+[[nodiscard]] constexpr bool writesNativeShapes(const int protocol) { return protocol >= kShapesChangedProtocol; }
 
 /// The one shape in the window that also changed somewhere other than 2168: `start_game` grew three
 /// fields at 1001 (two about editor worlds and one asking whether chat is logged), of which 2168
 /// kept the first two and dropped the third. The three protocols below 1001 have none of them.
 inline constexpr int kStartGameGrewProtocol = 1001;
+
+/// Where a played sound gained the handle of one the server holds itself, which this one never has.
+inline constexpr int kServerSoundHandleProtocol = 975;
 
 /// What a client asks for before anything else, and the only packet either side sends in the
 /// clear and uncompressed.
@@ -221,6 +230,41 @@ void writeChunkRadiusUpdated(io::ByteBuffer& buffer, std::int32_t radius);
 /// chunks that are not coming.
 void writeNetworkChunkPublisherUpdate(io::ByteBuffer& buffer, std::int32_t x, std::int32_t y, std::int32_t z,
                                       std::uint32_t radius);
+
+/// How many blocks a subchunk holds, which is sixteen cubed on both editions.
+inline constexpr std::size_t kSubChunkBlocks = 4096;
+
+/// One subchunk's worth of blocks, as Java numbers its states: 4096 of them, and the caller says
+/// which corner they start from. The order is Java's own, y innermost.
+using JavaSubChunk = std::span<const std::int32_t>;
+
+/// Writes one subchunk in the shape a Bedrock client reads: its own palette, and the blocks as
+/// indices into it packed however few bits they need.
+///
+/// The index of a block inside a subchunk is `(x << 8) | (z << 4) | y` over there, which is the
+/// opposite nesting to Java's, so this is also where the two orders meet.
+void writeSubChunk(io::ByteBuffer& buffer, JavaSubChunk blocks, std::int8_t subChunkIndex, int protocol);
+
+/// A sound, at a place. The name is Bedrock's own, which `bedrockSoundName` translates from Java's.
+///
+/// The position travels as eighths of a block, which is the one place in this protocol where a
+/// coordinate is not a coordinate.
+void writePlaySound(io::ByteBuffer& buffer, std::string_view sound, double x, double y, double z, float volume,
+                    float pitch, int protocol);
+
+/// One block that changed, for a client that already has the column it is in.
+///
+/// The flags say what the client does about it: telling the neighbours is what makes a fence
+/// rejoin and water flow on, and the network bit is what says the change came from here rather
+/// than from the player's own hand.
+void writeUpdateBlock(io::ByteBuffer& buffer, std::int32_t x, std::int32_t y, std::int32_t z, std::int32_t javaState,
+                      int protocol);
+
+/// A chunk column with blocks in it. `subChunks` is what `writeSubChunk` already wrote, one after
+/// another, and `count` how many of them: the client reads them from the bottom of the world up.
+void writeLevelChunk(io::ByteBuffer& buffer, std::int32_t chunkX, std::int32_t chunkZ, std::uint32_t count,
+                     std::span<const std::uint8_t> subChunks, std::uint32_t biomeSections, std::int32_t dimension,
+                     int protocol);
 
 /// An empty chunk column: every subchunk absent, biomes flat, no block entities. It is what a
 /// client needs to stop waiting for a chunk it was told to expect.
