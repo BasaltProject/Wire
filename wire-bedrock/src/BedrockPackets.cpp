@@ -319,6 +319,61 @@ void writeStartGame(io::ByteBuffer& buffer, const StartGameInfo& info) {
     writeString(buffer, ""); // No owner.
 }
 
+std::optional<PlayerAuthInput> readPlayerAuthInput(io::ByteBuffer& buffer) {
+    PlayerAuthInput input;
+    // The rotation is split around the position: pitch and yaw lead, the head's own yaw follows the
+    // movement vector. It is not an accident of ours.
+    input.pitch = readFloatLE(buffer);
+    input.yaw = readFloatLE(buffer);
+    input.x = readFloatLE(buffer);
+    input.y = readFloatLE(buffer);
+    input.z = readFloatLE(buffer);
+    static_cast<void>(readFloatLE(buffer)); // Where the client is trying to move, sideways.
+    static_cast<void>(readFloatLE(buffer)); // The same, forwards.
+    input.headYaw = readFloatLE(buffer);
+    if (buffer.failed()) {
+        return std::nullopt;
+    }
+    return input;
+}
+
+void writeText(io::ByteBuffer& buffer, TextType type, std::string_view source, std::string_view message,
+               std::string_view xuid) {
+    const bool withAuthor = type == TextType::Chat || type == TextType::Whisper || type == TextType::Announcement;
+
+    writeBool(buffer, false); // Nothing here is a translation key; the server resolved it already.
+    buffer.writeByte(withAuthor ? 1 : 0);
+    buffer.writeByte(static_cast<std::uint8_t>(type));
+    if (withAuthor) {
+        writeString(buffer, source);
+    }
+    // A client with an empty line to draw logs a complaint and draws nothing, so it gets a space.
+    writeString(buffer, message.empty() ? std::string_view{" "} : message);
+    writeString(buffer, xuid);
+    writeString(buffer, "");  // No platform chat id: this server does not route between consoles.
+    writeBool(buffer, false); // Nothing filtered.
+}
+
+std::optional<IncomingText> readText(io::ByteBuffer& buffer) {
+    static_cast<void>(buffer.readByte()); // Whether the client thinks this needs translating.
+    const std::uint8_t shape = buffer.readByte();
+    const std::uint8_t type = buffer.readByte();
+    if (buffer.failed() || shape > 2 || type > static_cast<std::uint8_t>(TextType::Announcement)) {
+        return std::nullopt;
+    }
+
+    IncomingText text;
+    text.type = static_cast<TextType>(type);
+    if (shape == 1) {
+        text.source = readString(buffer);
+    }
+    text.message = readString(buffer);
+    if (buffer.failed()) {
+        return std::nullopt;
+    }
+    return text;
+}
+
 void writeChunkRadiusUpdated(io::ByteBuffer& buffer, std::int32_t radius) { writeVarInt(buffer, radius); }
 
 std::optional<std::int32_t> readRequestChunkRadius(io::ByteBuffer& buffer) {

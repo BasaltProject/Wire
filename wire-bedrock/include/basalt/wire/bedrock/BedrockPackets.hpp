@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace basalt::wire::bedrock {
@@ -94,6 +95,54 @@ struct StartGameInfo {
 };
 
 void writeStartGame(io::ByteBuffer& buffer, const StartGameInfo& info);
+
+/// What a line of text is for. The number is the protocol's own order, and it decides what the
+/// client does with the line: a chat message gets a name in front, a raw one is printed as it is.
+enum class TextType : std::uint8_t {
+    Raw = 0,
+    Chat = 1,
+    Translation = 2,
+    Popup = 3,
+    JukeboxPopup = 4,
+    Tip = 5,
+    System = 6,
+    Whisper = 7,
+    Announcement = 8,
+};
+
+/// A line for the chat window. The source is only written for the types that carry a name.
+void writeText(io::ByteBuffer& buffer, TextType type, std::string_view source, std::string_view message,
+               std::string_view xuid = {});
+
+/// What a client typed, or whatever else it sent as text.
+struct IncomingText {
+    TextType type = TextType::Raw;
+    std::string source;
+    std::string message;
+};
+
+[[nodiscard]] std::optional<IncomingText> readText(io::ByteBuffer& buffer);
+
+/// Where a client says it is, which in Bedrock is the only movement packet: the client moves itself
+/// and tells the server afterwards.
+struct PlayerAuthInput {
+    float x = 0.0F;
+    /// As the client writes it, which is its eyes and not its feet. kPlayerEyeHeight is the
+    /// difference.
+    float y = 0.0F;
+    float z = 0.0F;
+    float pitch = 0.0F;
+    float yaw = 0.0F;
+    float headYaw = 0.0F;
+};
+
+/// How far above its feet a Bedrock client reports a player to be. Java measures from the feet, so
+/// every position that crosses between them moves by this.
+inline constexpr float kPlayerEyeHeight = 1.62001F;
+
+/// Reads only as far as the position and the rotation: what follows is input state, item use and
+/// stack requests, none of which this server acts on yet.
+[[nodiscard]] std::optional<PlayerAuthInput> readPlayerAuthInput(io::ByteBuffer& buffer);
 
 /// How far the client should ask the server for, and how far it draws.
 void writeChunkRadiusUpdated(io::ByteBuffer& buffer, std::int32_t radius);
