@@ -9,7 +9,9 @@
 #include <basalt/wire/multiversion/java/EntityDataRewriter.hpp>
 #include <basalt/wire/multiversion/java/JavaTranslators.hpp>
 #include <basalt/wire/multiversion/java/Tables775.hpp>
+#include <basalt/wire/nbt/NbtTag.hpp>
 #include <basalt/wire/protocol/ProtocolBuffer.hpp>
+#include <basalt/wire/protocol/configuration/ConfigurationPackets.hpp>
 #include <basalt/wire/protocol/play/EntityPackets.hpp>
 #include <basalt/wire/protocol/play/InventoryPackets.hpp>
 #include <basalt/wire/protocol/play/PalettedContainer.hpp>
@@ -498,4 +500,102 @@ TEST_CASE("every version the gate admits has an unbroken road of links") {
         CHECK(java::javaTranslators::chainFor(version) != nullptr);
     }
     CHECK(java::javaTranslators::supported().contains(protocolVersions::kV1_8));
+}
+
+TEST_CASE("an element loses the members the far end has never seen, and keeps the rest") {
+    using basalt::wire::protocol::ProtocolState;
+    using basalt::wire::protocol::configuration::RegistryDataPacket;
+    using basalt::wire::protocol::configuration::RegistryEntry;
+    namespace nbt = basalt::wire::nbt;
+
+    // 26.1 gave every wolf variant a second set of assets for its baby. A client from 1.21.10 reads
+    // an element against the shape it was compiled with, so that member costs it the registry.
+    nbt::NbtCompound assets;
+    assets.putString("wild", "minecraft:entity/wolf/wolf_pale");
+    nbt::NbtCompound babyAssets;
+    babyAssets.putString("wild", "minecraft:entity/wolf/wolf_baby_pale");
+    nbt::NbtCompound element;
+    element.set("assets", nbt::NbtTag::ofCompound(std::move(assets)));
+    element.set("baby_assets", nbt::NbtTag::ofCompound(std::move(babyAssets)));
+
+    RegistryDataPacket data;
+    data.registryId = "minecraft:wolf_variant";
+    data.entries.push_back(RegistryEntry{"minecraft:pale", nbt::NbtTag::ofCompound(std::move(element))});
+    basalt::wire::io::ByteBuffer body;
+    data.write(body);
+
+    std::map<ProtocolState, PacketIdMap> nothing;
+    TableOnlyLink toOld{773, PacketIdTables{nothing, nothing}};
+    std::vector<std::reference_wrapper<ProtocolLink>> links = {toOld};
+    const ProtocolChain chain{links};
+
+    std::vector<std::vector<std::uint8_t>> sent;
+    chain.clientbound(ProtocolState::Configuration, RegistryDataPacket::kId, body.toVector(),
+                      [&sent](std::int32_t, std::span<const std::uint8_t> written) {
+                          sent.emplace_back(written.begin(), written.end());
+                      });
+
+    REQUIRE(sent.size() == 1);
+    basalt::wire::io::ByteBuffer read = basalt::wire::io::ByteBuffer::wrap(sent[0]);
+    const auto arrived = RegistryDataPacket::read(read);
+    REQUIRE(arrived.has_value());
+    REQUIRE(arrived->entries.size() == 1);
+    REQUIRE(arrived->entries[0].value.has_value());
+    const nbt::NbtCompound* kept = arrived->entries[0].value->get<nbt::NbtCompound>();
+    REQUIRE(kept != nullptr);
+    CHECK_FALSE(kept->contains("baby_assets"));
+    REQUIRE(kept->contains("assets"));
+    // What the version does have is untouched, members and all.
+    const nbt::NbtCompound* keptAssets = kept->getCompound("assets");
+    REQUIRE(keptAssets != nullptr);
+    CHECK(keptAssets->contains("wild"));
+}
+
+TEST_CASE("a real chain turns a biome into the shape its client has and then keeps that shape") {
+    using basalt::wire::protocol::ProtocolState;
+    using basalt::wire::protocol::configuration::RegistryDataPacket;
+    using basalt::wire::protocol::configuration::RegistryEntry;
+    namespace nbt = basalt::wire::nbt;
+
+    // 26.2 writes a biome's colours as attributes; 1.21.10 has never heard of one and reads its
+    // colours out of `effects`. The link turns one into the other, and what takes out members the
+    // far end does not have must not take that away with them.
+    nbt::NbtCompound attributes;
+    attributes.putInt("minecraft:visual/water_color", 0x3f76e4);
+    attributes.putInt("minecraft:visual/sky_color", 0x78a7ff);
+    nbt::NbtCompound biome;
+    biome.putBoolean("has_precipitation", true);
+    biome.putFloat("temperature", 0.8F);
+    biome.putFloat("downfall", 0.4F);
+    biome.set("attributes", nbt::NbtTag::ofCompound(std::move(attributes)));
+
+    RegistryDataPacket data;
+    data.registryId = "minecraft:worldgen/biome";
+    data.entries.push_back(RegistryEntry{"minecraft:plains", nbt::NbtTag::ofCompound(std::move(biome))});
+    basalt::wire::io::ByteBuffer body;
+    data.write(body);
+
+    const std::unique_ptr<java::JavaChain> built = java::javaTranslators::chainFor(773);
+    REQUIRE(built != nullptr);
+
+    std::vector<std::vector<std::uint8_t>> sent;
+    built->chain().clientbound(ProtocolState::Configuration, RegistryDataPacket::kId, body.toVector(),
+                               [&sent](std::int32_t, std::span<const std::uint8_t> written) {
+                                   sent.emplace_back(written.begin(), written.end());
+                               });
+    REQUIRE(sent.size() == 1);
+
+    basalt::wire::io::ByteBuffer read = basalt::wire::io::ByteBuffer::wrap(sent[0]);
+    const auto arrived = RegistryDataPacket::read(read);
+    REQUIRE(arrived.has_value());
+    REQUIRE(arrived->entries.size() == 1);
+    REQUIRE(arrived->entries[0].value.has_value());
+    const nbt::NbtCompound* element = arrived->entries[0].value->get<nbt::NbtCompound>();
+    REQUIRE(element != nullptr);
+    CHECK_FALSE(element->contains("attributes"));
+    const nbt::NbtCompound* effects = element->getCompound("effects");
+    REQUIRE(effects != nullptr);
+    CHECK(effects->contains("water_color"));
+    CHECK(effects->contains("sky_color"));
+    CHECK(element->contains("temperature"));
 }
