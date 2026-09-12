@@ -144,3 +144,24 @@ TEST_CASE("a language file parses into a lookup table") {
     CHECK(resolvePlainText(Component::translatable("a.b", {Component::text("world")}), *table) == "Hello world");
     CHECK(parseLangTable("[]").error() == basalt::wire::common::JsonError::WrongType);
 }
+
+TEST_CASE("the legacy serializer writes the codes a client without components reads") {
+    using namespace basalt::wire::text;
+
+    const Component line = Component::text("red and bold").color(kRed).bold(true);
+    CHECK(toLegacyText(line) == "§c§lred and bold");
+
+    SUBCASE("a child keeps what its parent styled and adds its own") {
+        const Component parent =
+            Component::text("grey ").color(kGray).append(Component::text("and yellow").color(kYellow));
+        CHECK(toLegacyText(parent) == "§7grey §eand yellow");
+    }
+
+    SUBCASE("a colour the other side cannot draw becomes the nearest one it can") {
+        // A dark red that is not *the* dark red, and a near-white.
+        CHECK(toLegacyText(Component::text("x").color(TextColor{0xAB0102})) == "§4x");
+        CHECK(toLegacyText(Component::text("x").color(TextColor{0xFEFEFE})) == "§fx");
+    }
+
+    SUBCASE("plain text carries no codes at all") { CHECK(toLegacyText(Component::text("nothing")) == "nothing"); }
+}
