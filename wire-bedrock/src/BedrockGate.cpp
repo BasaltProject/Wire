@@ -20,7 +20,7 @@ std::optional<BedrockFuturePolicy> parseBedrockFuturePolicy(const std::string_vi
 std::set<std::int32_t> BedrockGate::buildSupport() {
     // Only what this build has a codec for. The window of live protocols is wider than that on
     // paper, and claiming one whose packets are shaped differently is worse than turning it away.
-    return {kNativeBedrockProtocol};
+    return {924, 944, 975, 1001, kNativeBedrockProtocol};
 }
 
 BedrockVerdict BedrockGate::verdict(const std::int32_t protocol) const {

@@ -190,8 +190,9 @@ std::optional<LoginRequest> readLogin(io::ByteBuffer& buffer) {
     return login;
 }
 
-std::optional<ResourcePackResponse> readResourcePackResponse(io::ByteBuffer& buffer) {
-    const std::uint32_t status = readVarUInt(buffer) + 1;
+std::optional<ResourcePackResponse> readResourcePackResponse(io::ByteBuffer& buffer, const int protocol) {
+    // 2168 moved the status off by one and put its name behind it; below that it is a plain byte.
+    const std::uint32_t status = writesNativeShapes(protocol) ? readVarUInt(buffer) + 1 : buffer.readByte();
     if (buffer.failed() || status < 1 || status > 4) {
         return std::nullopt;
     }
@@ -202,14 +203,19 @@ void writePlayStatus(io::ByteBuffer& buffer, PlayStatus status) { buffer.writeIn
 
 void writeServerToClientHandshake(io::ByteBuffer& buffer, std::string_view jwt) { writeString(buffer, jwt); }
 
-void writeResourcePacksInfo(io::ByteBuffer& buffer) {
+void writeResourcePacksInfo(io::ByteBuffer& buffer, const int protocol) {
     writeBool(buffer, false); // Nothing to accept.
     writeBool(buffer, false); // No addon packs.
     writeBool(buffer, false); // No scripting.
     writeBool(buffer, false); // Vibrant visuals left to the client.
     writeUuid(buffer, 0, 0);
     writeString(buffer, "");
-    writeVarUInt(buffer, 0); // No packs.
+    // No packs, counted as 2168 counts an array. Below it the count of this one list is a short.
+    if (writesNativeShapes(protocol)) {
+        writeVarUInt(buffer, 0);
+    } else {
+        writeShortLE(buffer, 0);
+    }
 }
 
 void writeResourcePackStack(io::ByteBuffer& buffer, std::string_view gameVersion) {
@@ -228,7 +234,7 @@ void writeDisconnect(io::ByteBuffer& buffer, std::string_view reason) {
     writeString(buffer, "");
 }
 
-void writeStartGame(io::ByteBuffer& buffer, const StartGameInfo& info) {
+void writeStartGame(io::ByteBuffer& buffer, const StartGameInfo& info, const int protocol) {
     writeVarLong(buffer, info.uniqueEntityId);
     writeVarULong(buffer, info.runtimeEntityId);
     writeVarInt(buffer, info.playerGameType);
@@ -270,7 +276,13 @@ void writeStartGame(io::ByteBuffer& buffer, const StartGameInfo& info) {
     writeBool(buffer, false);
     writeBool(buffer, false);
     writeBool(buffer, false);
-    buffer.writeByte(1);   // Members by default.
+    // Members by default. 2168 writes the permission as a byte where everything below it wrote a
+    // varint, which for the number one is a different byte and not a different size.
+    if (writesNativeShapes(protocol)) {
+        buffer.writeByte(1);
+    } else {
+        writeVarInt(buffer, 1);
+    }
     writeIntLE(buffer, 4); // Chunk tick range.
     writeBool(buffer, false);
     writeBool(buffer, false);
@@ -290,9 +302,11 @@ void writeStartGame(io::ByteBuffer& buffer, const StartGameInfo& info) {
     writeString(buffer, "");
     writeBool(buffer, false); // No forced experimental gameplay.
     buffer.writeByte(0);      // Chat unrestricted.
-    writeBool(buffer, false);
-    writeVarInt(buffer, 0); // No editor connection.
-    writeBool(buffer, false);
+    writeBool(buffer, false); // Player interactions left alone.
+    if (protocol >= kStartGameGrewProtocol) {
+        writeVarInt(buffer, 0);   // No editor connection,
+        writeBool(buffer, false); // and nothing dropped anonymously in an editor world.
+    }
 
     writeString(buffer, info.levelId);
     writeString(buffer, info.levelName);
@@ -312,6 +326,11 @@ void writeStartGame(io::ByteBuffer& buffer, const StartGameInfo& info) {
     writeBool(buffer, false); // The client does not generate its own chunks.
     writeBool(buffer, true);  // Block ids are hashes of their state, not an order we have to agree on.
     writeBool(buffer, true);  // Sounds come from the server.
+    if (protocol >= kStartGameGrewProtocol && !writesNativeShapes(protocol)) {
+        // Whether chat is logged, which only 1001 asks: 975 and below never had it and 2168
+        // stopped asking.
+        writeBool(buffer, false);
+    }
     writeBool(buffer, false); // No join info.
     writeString(buffer, info.serverId);
     writeString(buffer, ""); // No scenario.
@@ -320,7 +339,7 @@ void writeStartGame(io::ByteBuffer& buffer, const StartGameInfo& info) {
 }
 
 void writeTeleport(io::ByteBuffer& buffer, const std::uint64_t runtimeEntityId, const float x, const float y,
-                   const float z, const float yaw, const float pitch, const std::uint64_t tick) {
+                   const float z, const float yaw, const float pitch, const std::uint64_t tick, const int protocol) {
     writeVarULong(buffer, runtimeEntityId);
     writeFloatLE(buffer, x);
     writeFloatLE(buffer, y);
@@ -332,8 +351,11 @@ void writeTeleport(io::ByteBuffer& buffer, const std::uint64_t runtimeEntityId, 
     buffer.writeByte(2); // A teleport, not a step.
     writeBool(buffer, false);
     writeVarULong(buffer, 0); // Riding nothing.
-    // Only a teleport says why it happened, and this one always does.
-    writeBool(buffer, true);
+    // Only a teleport says why it happened, and this one always does. 2168 puts a "it is here"
+    // flag in front of the reason; below it the reason simply follows a teleport.
+    if (writesNativeShapes(protocol)) {
+        writeBool(buffer, true);
+    }
     writeIntLE(buffer, 3); // Because something asked for it, which is what a command is.
     writeIntLE(buffer, 0);
     writeVarULong(buffer, tick);
@@ -486,14 +508,20 @@ void writeNetworkChunkPublisherUpdate(io::ByteBuffer& buffer, std::int32_t x, st
 }
 
 void writeEmptyLevelChunk(io::ByteBuffer& buffer, std::int32_t chunkX, std::int32_t chunkZ, std::uint32_t subChunkCount,
-                          std::int32_t dimension) {
+                          std::int32_t dimension, const int protocol) {
     writeVarInt(buffer, chunkX);
     writeVarInt(buffer, chunkZ);
     writeVarInt(buffer, dimension);
-    writeVarUInt(buffer, 0);  // No block sections: the column is air.
-    writeBool(buffer, false); // Not asking for subchunks one at a time.
-    writeBool(buffer, false); // No blob cache.
-    writeVarUInt(buffer, 0);  // No blobs.
+    writeVarUInt(buffer, 0); // No block sections: the column is air.
+    // 2168 always writes both the "how many subchunks at a time" question and the blob count; below
+    // it the first is not asked at all and the second only when the cache is on.
+    if (writesNativeShapes(protocol)) {
+        writeBool(buffer, false); // Not asking for subchunks one at a time.
+        writeBool(buffer, false); // No blob cache.
+        writeVarUInt(buffer, 0);  // No blobs.
+    } else {
+        writeBool(buffer, false); // No blob cache.
+    }
 
     io::ByteBuffer payload{static_cast<std::size_t>(subChunkCount) + 4};
     // One biome section written out, and the rest told to carry the previous one forward. The first
@@ -520,7 +548,33 @@ void writeImage(io::ByteBuffer& buffer, const std::uint32_t width, const std::ui
     buffer.writeBytes(pixels);
 }
 
-void writeSkin(io::ByteBuffer& buffer, const SkinInfo& skin) {
+void writeSkin(io::ByteBuffer& buffer, const SkinInfo& skin, const int protocol) {
+    if (!writesNativeShapes(protocol)) {
+        // The shape below 2168: every count is a little-endian int rather than a varint, the arm
+        // size and the colour are written as words, and there is no "trusted" or profile hash.
+        writeString(buffer, skin.skinId);
+        writeString(buffer, ""); // No PlayFab account behind it.
+        writeString(buffer, skin.resourcePatch);
+        writeImage(buffer, skin.width, skin.height, skin.image);
+        writeIntLE(buffer, 0); // No animations.
+        writeImage(buffer, 0, 0, {});
+        writeString(buffer, ""); // The geometry the patch names is one the client already has.
+        writeString(buffer, "");
+        writeString(buffer, ""); // Nothing animated.
+        writeString(buffer, ""); // No cape.
+        writeString(buffer, skin.skinId);
+        writeString(buffer, "wide");
+        writeString(buffer, "#0"); // The colour of a persona, which this is not.
+        writeIntLE(buffer, 0);     // Not a persona, so no pieces
+        writeIntLE(buffer, 0);     // and no tints.
+        writeBool(buffer, false);  // Not bought,
+        writeBool(buffer, false);  // not a persona,
+        writeBool(buffer, false);  // no cape over the old model,
+        writeBool(buffer, true);   // and it is this player's own.
+        writeBool(buffer, false);  // It does not override what the player chose, because there is none.
+        return;
+    }
+
     writeString(buffer, skin.skinId);
     writeString(buffer, ""); // No PlayFab account behind it.
     writeString(buffer, skin.resourcePatch);
@@ -564,26 +618,31 @@ void writeAirItem(io::ByteBuffer& buffer) {
 
 namespace {
 
-void writeMetadataHead(io::ByteBuffer& buffer, const EntityDataId id, const EntityDataFormat format) {
+void writeMetadataHead(io::ByteBuffer& buffer, const EntityDataId id, const EntityDataFormat format,
+                       const int protocol) {
     writeVarUInt(buffer, static_cast<std::uint32_t>(id));
     writeVarUInt(buffer, static_cast<std::uint32_t>(format));
-    buffer.writeByte(static_cast<std::uint8_t>(format));
+    // 2168 says the format twice and refuses a field where the two disagree. Below it, once.
+    if (writesNativeShapes(protocol)) {
+        buffer.writeByte(static_cast<std::uint8_t>(format));
+    }
 }
 
 } // namespace
 
-void writeMetadataLong(io::ByteBuffer& buffer, const EntityDataId id, const std::int64_t value) {
-    writeMetadataHead(buffer, id, EntityDataFormat::Long);
+void writeMetadataLong(io::ByteBuffer& buffer, const EntityDataId id, const std::int64_t value, const int protocol) {
+    writeMetadataHead(buffer, id, EntityDataFormat::Long, protocol);
     writeVarLong(buffer, value);
 }
 
-void writeMetadataFloat(io::ByteBuffer& buffer, const EntityDataId id, const float value) {
-    writeMetadataHead(buffer, id, EntityDataFormat::Float);
+void writeMetadataFloat(io::ByteBuffer& buffer, const EntityDataId id, const float value, const int protocol) {
+    writeMetadataHead(buffer, id, EntityDataFormat::Float, protocol);
     writeFloatLE(buffer, value);
 }
 
-void writeMetadataString(io::ByteBuffer& buffer, const EntityDataId id, const std::string_view value) {
-    writeMetadataHead(buffer, id, EntityDataFormat::String);
+void writeMetadataString(io::ByteBuffer& buffer, const EntityDataId id, const std::string_view value,
+                         const int protocol) {
+    writeMetadataHead(buffer, id, EntityDataFormat::String, protocol);
     writeString(buffer, value);
 }
 
@@ -606,38 +665,58 @@ SkinInfo flatSkin(const std::string_view name) {
     return skin;
 }
 
-void writePlayerListAdd(io::ByteBuffer& buffer, const std::span<const PlayerListEntry> entries) {
+void writePlayerListAdd(io::ByteBuffer& buffer, const std::span<const PlayerListEntry> entries, const int protocol) {
+    // Below 2168 the whole packet is one action, said once and in front: nought is arriving.
+    if (!writesNativeShapes(protocol)) {
+        buffer.writeByte(0);
+    }
     writeVarUInt(buffer, static_cast<std::uint32_t>(entries.size()));
     for (const PlayerListEntry& entry : entries) {
         // Since 2168 every line says for itself whether it is arriving or leaving, twice: once as
         // a number the client branches on and once as the action's own place in its list.
-        writeVarUInt(buffer, 1);
-        buffer.writeByte(0);
+        if (writesNativeShapes(protocol)) {
+            writeVarUInt(buffer, 1);
+            buffer.writeByte(0);
+        }
         writeUuid(buffer, entry.uuidHigh, entry.uuidLow);
         writeVarLong(buffer, entry.entityId);
         writeString(buffer, entry.name);
         writeString(buffer, entry.xuid);
         writeString(buffer, ""); // No platform chat of its own.
         writeIntLE(buffer, 0);   // Which device they play on, which this server does not ask.
-        writeSkin(buffer, entry.skin);
+        writeSkin(buffer, entry.skin, protocol);
         writeBool(buffer, false); // Not a teacher,
         writeBool(buffer, false); // not the host
         writeBool(buffer, false); // and not somebody's second player on one console.
-        writeIntLE(buffer, 0);
+        if (writesNativeShapes(protocol)) {
+            writeIntLE(buffer, 0);
+        }
+    }
+    // Below 2168 whether a skin is to be trusted is not part of the line: it is a run of booleans
+    // behind all of them, one each.
+    if (!writesNativeShapes(protocol)) {
+        for (std::size_t at = 0; at < entries.size(); ++at) {
+            writeBool(buffer, true);
+        }
     }
 }
 
-void writePlayerListRemove(io::ByteBuffer& buffer,
-                           const std::span<const std::pair<std::uint64_t, std::uint64_t>> uuids) {
+void writePlayerListRemove(io::ByteBuffer& buffer, const std::span<const std::pair<std::uint64_t, std::uint64_t>> uuids,
+                           const int protocol) {
+    if (!writesNativeShapes(protocol)) {
+        buffer.writeByte(1); // One is leaving, for the whole packet.
+    }
     writeVarUInt(buffer, static_cast<std::uint32_t>(uuids.size()));
     for (const auto& [high, low] : uuids) {
-        writeVarUInt(buffer, 0);
-        buffer.writeByte(1);
+        if (writesNativeShapes(protocol)) {
+            writeVarUInt(buffer, 0);
+            buffer.writeByte(1);
+        }
         writeUuid(buffer, high, low);
     }
 }
 
-void writeAddPlayer(io::ByteBuffer& buffer, const AddPlayerInfo& info) {
+void writeAddPlayer(io::ByteBuffer& buffer, const AddPlayerInfo& info, const int protocol) {
     writeUuid(buffer, info.uuidHigh, info.uuidLow);
     writeString(buffer, info.name);
     writeVarULong(buffer, info.runtimeEntityId);
@@ -659,11 +738,12 @@ void writeAddPlayer(io::ByteBuffer& buffer, const AddPlayerInfo& info) {
     writeVarUInt(buffer, 5);
     writeMetadataLong(buffer, EntityDataId::Flags,
                       flagBit(EntityFlag::HasCollision) | flagBit(EntityFlag::HasGravity) |
-                          flagBit(EntityFlag::Breathing) | flagBit(EntityFlag::CanShowName));
-    writeMetadataString(buffer, EntityDataId::Name, info.name);
-    writeMetadataFloat(buffer, EntityDataId::Scale, 1.0F);
-    writeMetadataFloat(buffer, EntityDataId::Width, 0.6F);
-    writeMetadataFloat(buffer, EntityDataId::Height, 1.8F);
+                          flagBit(EntityFlag::Breathing) | flagBit(EntityFlag::CanShowName),
+                      protocol);
+    writeMetadataString(buffer, EntityDataId::Name, info.name, protocol);
+    writeMetadataFloat(buffer, EntityDataId::Scale, 1.0F, protocol);
+    writeMetadataFloat(buffer, EntityDataId::Width, 0.6F, protocol);
+    writeMetadataFloat(buffer, EntityDataId::Height, 1.8F, protocol);
 
     writeVarUInt(buffer, 0); // No entity properties, of either kind.
     writeVarUInt(buffer, 0);
@@ -693,6 +773,46 @@ void writeMoveEntity(io::ByteBuffer& buffer, const std::uint64_t runtimeEntityId
 }
 
 void writeRemoveEntity(io::ByteBuffer& buffer, const std::int64_t entityId) { writeVarLong(buffer, entityId); }
+
+namespace {
+
+/// What a parameter is, as the symbol that carries it: the type's own number with the bit that says
+/// the number means a type at all rather than an index into the enums.
+constexpr std::int32_t kArgValid = 0x100000;
+
+/// The rest of the line, selectors and all. It is what `/say` and `/tell` declare, and the nearest
+/// thing Bedrock has to "whatever the server wants to parse".
+constexpr std::int32_t kArgMessage = 67;
+
+} // namespace
+
+void writeAvailableCommands(io::ByteBuffer& buffer, const std::span<const CommandInfo> commands) {
+    writeVarUInt(buffer, 0); // No enum values, because there are no enums,
+    writeVarUInt(buffer, 0); // no subcommand words,
+    writeVarUInt(buffer, 0); // no suffixes,
+    writeVarUInt(buffer, 0); // no enums
+    writeVarUInt(buffer, 0); // and no subcommands.
+
+    writeVarUInt(buffer, static_cast<std::uint32_t>(commands.size()));
+    for (const CommandInfo& command : commands) {
+        writeString(buffer, command.name);
+        writeString(buffer, command.description);
+        writeShortLE(buffer, 0);    // No flags: it is not a cheat, not a test, not hidden.
+        writeString(buffer, "any"); // Anybody the server told about it may run it.
+        writeIntLE(buffer, -1);     // No aliases,
+        writeVarUInt(buffer, 0);    // and no subcommands.
+        writeVarUInt(buffer, 1);    // One way to call it:
+        writeBool(buffer, false);   // which does not chain,
+        writeVarUInt(buffer, 1);    // and takes one thing.
+        writeString(buffer, "args");
+        writeIntLE(buffer, kArgMessage | kArgValid);
+        writeBool(buffer, true); // Optional, so the bare command is a complete line.
+        buffer.writeByte(0);     // With none of the options a parameter can carry.
+    }
+
+    writeVarUInt(buffer, 0); // No soft enums to fill in later,
+    writeVarUInt(buffer, 0); // and nothing constraining one.
+}
 
 void writeLevelEvent(io::ByteBuffer& buffer, const LevelEventType type, const float x, const float y, const float z,
                      const std::int32_t data) {

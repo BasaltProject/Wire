@@ -619,10 +619,10 @@ TEST_CASE("a bedrock client gets from its first packet to the world") {
     StartGameInfo info;
     info.vanillaVersion = "1.26.40";
     io::ByteBuffer start;
-    writeStartGame(start, info);
+    writeStartGame(start, info, kNativeBedrockProtocol);
     harness.connection.sendPacket(BedrockPacket::StartGame, start.readable());
     io::ByteBuffer chunk;
-    writeEmptyLevelChunk(chunk, 0, 0, 24, 0);
+    writeEmptyLevelChunk(chunk, 0, 0, 24, 0, kNativeBedrockProtocol);
     harness.connection.sendPacket(BedrockPacket::LevelChunk, chunk.readable());
     harness.connection.flush();
     harness.pump();
