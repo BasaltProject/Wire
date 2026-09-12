@@ -15,13 +15,9 @@
 namespace basalt::wire::bedrock {
 
 /// Where almost every shape in this window last changed: 2168 rewrote the skin, the metadata, the
-/// player list, the chunk, the two resource pack packets and two fields of `start_game`, and
-/// everything older reads the shape underneath. A writer that takes a protocol takes it for that
-/// reason and no other.
-///
-/// Written as its own number rather than as "the newest one this build speaks": 2169 came along and
-/// changed nothing, so tying the two together quietly gave 2168 the old shapes and left it at the
-/// door. The number is where the shapes moved, not where the window happens to end today.
+/// player list, the chunk and two fields of `start_game`, and everything older reads the shape
+/// underneath. Its own number rather than "the newest this build speaks", because 2169 changed
+/// nothing and tying the two together quietly gave 2168 the old shapes.
 inline constexpr int kShapesChangedProtocol = 2168;
 
 [[nodiscard]] constexpr bool writesNativeShapes(const int protocol) { return protocol >= kShapesChangedProtocol; }
@@ -244,6 +240,18 @@ using JavaSubChunk = std::span<const std::int32_t>;
 /// The index of a block inside a subchunk is `(x << 8) | (z << 4) | y` over there, which is the
 /// opposite nesting to Java's, so this is also where the two orders meet.
 void writeSubChunk(io::ByteBuffer& buffer, JavaSubChunk blocks, std::int8_t subChunkIndex, int protocol);
+
+/// The four things a client is told between the world's description and being let in; without them
+/// it drops the connection without saying why. Almost empty on purpose, since this server overrides
+/// neither the biomes nor the creative menu. The entity identifiers are the exception: a client
+/// told none refuses the ones it is shown.
+void writeAvailableEntityIdentifiers(io::ByteBuffer& buffer);
+
+void writeBiomeDefinitionList(io::ByteBuffer& buffer);
+
+void writeCreativeContent(io::ByteBuffer& buffer);
+
+void writeSetCommandsEnabled(io::ByteBuffer& buffer, bool enabled);
 
 /// A sound, at a place. The name is Bedrock's own, which `bedrockSoundName` translates from Java's.
 ///
