@@ -14,6 +14,8 @@ basalt_module(wire-bedrock
         src/BedrockBlockTables.cpp
         src/BedrockEffectIds.cpp
         src/BedrockEntityIdentifiers.cpp
+        src/BedrockItemNames.cpp
+        src/BedrockItems.cpp
         src/BedrockParticleNames.cpp
         src/BedrockParticles.cpp
         src/BedrockSoundNames.cpp
