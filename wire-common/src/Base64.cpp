@@ -90,3 +90,34 @@ std::optional<std::vector<std::uint8_t>> decode(std::string_view text) {
 }
 
 } // namespace basalt::wire::common::base64
+
+namespace basalt::wire::common::base64url {
+
+std::string encode(std::span<const std::uint8_t> bytes) {
+    std::string text = base64::encode(bytes);
+    while (!text.empty() && text.back() == '=') {
+        text.pop_back();
+    }
+    for (char& character : text) {
+        if (character == '+') {
+            character = '-';
+        } else if (character == '/') {
+            character = '_';
+        }
+    }
+    return text;
+}
+
+std::optional<std::vector<std::uint8_t>> decode(std::string_view text) {
+    std::string standard{text};
+    for (char& character : standard) {
+        if (character == '-') {
+            character = '+';
+        } else if (character == '_') {
+            character = '/';
+        }
+    }
+    return base64::decode(standard);
+}
+
+} // namespace basalt::wire::common::base64url
