@@ -319,6 +319,28 @@ void writeStartGame(io::ByteBuffer& buffer, const StartGameInfo& info) {
     writeString(buffer, ""); // No owner.
 }
 
+void writeTeleport(io::ByteBuffer& buffer, const std::uint64_t runtimeEntityId, const float x, const float y,
+                   const float z, const float yaw, const float pitch, const std::uint64_t tick) {
+    writeVarULong(buffer, runtimeEntityId);
+    writeFloatLE(buffer, x);
+    writeFloatLE(buffer, y);
+    writeFloatLE(buffer, z);
+    // The rotation is pitch, yaw and the head's own yaw, which for a teleport are all the same way.
+    writeFloatLE(buffer, pitch);
+    writeFloatLE(buffer, yaw);
+    writeFloatLE(buffer, yaw);
+    buffer.writeByte(2); // A teleport, not a step.
+    writeBool(buffer, false);
+    writeVarULong(buffer, 0); // Riding nothing.
+    // Only a teleport says why it happened, and this one always does.
+    writeBool(buffer, true);
+    writeIntLE(buffer, 3); // Because something asked for it, which is what a command is.
+    writeIntLE(buffer, 0);
+    writeVarULong(buffer, tick);
+}
+
+void writeSetPlayerGameType(io::ByteBuffer& buffer, const std::int32_t gameType) { writeVarInt(buffer, gameType); }
+
 void writeSetTitle(io::ByteBuffer& buffer, const TitleType type, const std::string_view text, const std::int32_t fadeIn,
                    const std::int32_t stay, const std::int32_t fadeOut) {
     writeVarInt(buffer, static_cast<std::int32_t>(type));
@@ -485,6 +507,218 @@ void writeEmptyLevelChunk(io::ByteBuffer& buffer, std::int32_t chunkX, std::int3
 
     writeVarUInt(buffer, static_cast<std::uint32_t>(payload.readableBytes()));
     buffer.writeBytes(payload.readable());
+}
+
+namespace {
+
+/// An image, as a skin carries one: its size and then the pixels, with nothing in between.
+void writeImage(io::ByteBuffer& buffer, const std::uint32_t width, const std::uint32_t height,
+                const std::span<const std::uint8_t> pixels) {
+    writeIntLE(buffer, static_cast<std::int32_t>(width));
+    writeIntLE(buffer, static_cast<std::int32_t>(height));
+    writeVarUInt(buffer, static_cast<std::uint32_t>(pixels.size()));
+    buffer.writeBytes(pixels);
+}
+
+void writeSkin(io::ByteBuffer& buffer, const SkinInfo& skin) {
+    writeString(buffer, skin.skinId);
+    writeString(buffer, ""); // No PlayFab account behind it.
+    writeString(buffer, skin.resourcePatch);
+    writeImage(buffer, skin.width, skin.height, skin.image);
+    writeVarUInt(buffer, 0); // No animations.
+    writeImage(buffer, 0, 0, {});
+    writeString(buffer, ""); // The geometry the patch names is one the client already has.
+    writeString(buffer, "");
+    writeString(buffer, ""); // Nothing animated.
+    writeString(buffer, ""); // No cape.
+    writeString(buffer, skin.skinId);
+    buffer.writeByte(1); // Arms the wide way round, which is the default body.
+    writeIntLE(buffer, 0);
+    writeVarUInt(buffer, 0);  // Not a persona, so no pieces
+    writeVarUInt(buffer, 0);  // and no tints.
+    writeBool(buffer, false); // Not bought,
+    writeBool(buffer, false); // not a persona,
+    writeBool(buffer, false); // no cape over the old model,
+    writeBool(buffer, true);  // and it is this player's own.
+    writeBool(buffer, false); // It does not override what the player chose, because there is none.
+    writeString(buffer, "true");
+    writeString(buffer, "");
+}
+
+/// A turn as the byte a movement packet has room for: a full circle over the whole range.
+void writeByteAngle(io::ByteBuffer& buffer, const float degrees) {
+    buffer.writeByte(static_cast<std::uint8_t>(static_cast<std::int8_t>(degrees / (360.0F / 256.0F))));
+}
+
+/// Nothing in a hand. Air is the one item that says its whole self in six numbers.
+void writeAirItem(io::ByteBuffer& buffer) {
+    writeShortLE(buffer, 0);  // No item,
+    writeShortLE(buffer, 0);  // none of it,
+    writeVarUInt(buffer, 0);  // undamaged,
+    writeBool(buffer, false); // with no net id,
+    writeVarUInt(buffer, 0);  // no block behind it
+    writeVarUInt(buffer, 0);  // and nothing written on it.
+}
+
+} // namespace
+
+namespace {
+
+void writeMetadataHead(io::ByteBuffer& buffer, const EntityDataId id, const EntityDataFormat format) {
+    writeVarUInt(buffer, static_cast<std::uint32_t>(id));
+    writeVarUInt(buffer, static_cast<std::uint32_t>(format));
+    buffer.writeByte(static_cast<std::uint8_t>(format));
+}
+
+} // namespace
+
+void writeMetadataLong(io::ByteBuffer& buffer, const EntityDataId id, const std::int64_t value) {
+    writeMetadataHead(buffer, id, EntityDataFormat::Long);
+    writeVarLong(buffer, value);
+}
+
+void writeMetadataFloat(io::ByteBuffer& buffer, const EntityDataId id, const float value) {
+    writeMetadataHead(buffer, id, EntityDataFormat::Float);
+    writeFloatLE(buffer, value);
+}
+
+void writeMetadataString(io::ByteBuffer& buffer, const EntityDataId id, const std::string_view value) {
+    writeMetadataHead(buffer, id, EntityDataFormat::String);
+    writeString(buffer, value);
+}
+
+SkinInfo flatSkin(const std::string_view name) {
+    // The colour is the name's own hash, so a player keeps theirs and two players rarely share one.
+    std::uint32_t hash = 2166136261U;
+    for (const char letter : name) {
+        hash = (hash ^ static_cast<std::uint8_t>(letter)) * 16777619U;
+    }
+
+    SkinInfo skin;
+    skin.skinId = "basalt-flat-" + std::to_string(hash);
+    skin.image.resize(static_cast<std::size_t>(skin.width) * skin.height * 4);
+    for (std::size_t at = 0; at < skin.image.size(); at += 4) {
+        skin.image[at] = static_cast<std::uint8_t>(hash >> 16U);
+        skin.image[at + 1] = static_cast<std::uint8_t>(hash >> 8U);
+        skin.image[at + 2] = static_cast<std::uint8_t>(hash);
+        skin.image[at + 3] = 0xFF;
+    }
+    return skin;
+}
+
+void writePlayerListAdd(io::ByteBuffer& buffer, const std::span<const PlayerListEntry> entries) {
+    writeVarUInt(buffer, static_cast<std::uint32_t>(entries.size()));
+    for (const PlayerListEntry& entry : entries) {
+        // Since 2168 every line says for itself whether it is arriving or leaving, twice: once as
+        // a number the client branches on and once as the action's own place in its list.
+        writeVarUInt(buffer, 1);
+        buffer.writeByte(0);
+        writeUuid(buffer, entry.uuidHigh, entry.uuidLow);
+        writeVarLong(buffer, entry.entityId);
+        writeString(buffer, entry.name);
+        writeString(buffer, entry.xuid);
+        writeString(buffer, ""); // No platform chat of its own.
+        writeIntLE(buffer, 0);   // Which device they play on, which this server does not ask.
+        writeSkin(buffer, entry.skin);
+        writeBool(buffer, false); // Not a teacher,
+        writeBool(buffer, false); // not the host
+        writeBool(buffer, false); // and not somebody's second player on one console.
+        writeIntLE(buffer, 0);
+    }
+}
+
+void writePlayerListRemove(io::ByteBuffer& buffer,
+                           const std::span<const std::pair<std::uint64_t, std::uint64_t>> uuids) {
+    writeVarUInt(buffer, static_cast<std::uint32_t>(uuids.size()));
+    for (const auto& [high, low] : uuids) {
+        writeVarUInt(buffer, 0);
+        buffer.writeByte(1);
+        writeUuid(buffer, high, low);
+    }
+}
+
+void writeAddPlayer(io::ByteBuffer& buffer, const AddPlayerInfo& info) {
+    writeUuid(buffer, info.uuidHigh, info.uuidLow);
+    writeString(buffer, info.name);
+    writeVarULong(buffer, info.runtimeEntityId);
+    writeString(buffer, ""); // No platform chat of its own.
+    writeFloatLE(buffer, info.x);
+    writeFloatLE(buffer, info.y);
+    writeFloatLE(buffer, info.z);
+    writeFloatLE(buffer, 0.0F); // Standing still as far as this packet says: the next move says more.
+    writeFloatLE(buffer, 0.0F);
+    writeFloatLE(buffer, 0.0F);
+    writeFloatLE(buffer, info.pitch);
+    writeFloatLE(buffer, info.yaw);
+    writeFloatLE(buffer, info.yaw);
+    writeAirItem(buffer);
+    writeVarInt(buffer, info.gameType);
+
+    // The metadata a player needs before a client will draw one at all: how big they are, what
+    // they are called, and the flags that say they fall, collide and breathe like everything else.
+    writeVarUInt(buffer, 5);
+    writeMetadataLong(buffer, EntityDataId::Flags,
+                      flagBit(EntityFlag::HasCollision) | flagBit(EntityFlag::HasGravity) |
+                          flagBit(EntityFlag::Breathing) | flagBit(EntityFlag::CanShowName));
+    writeMetadataString(buffer, EntityDataId::Name, info.name);
+    writeMetadataFloat(buffer, EntityDataId::Scale, 1.0F);
+    writeMetadataFloat(buffer, EntityDataId::Width, 0.6F);
+    writeMetadataFloat(buffer, EntityDataId::Height, 1.8F);
+
+    writeVarUInt(buffer, 0); // No entity properties, of either kind.
+    writeVarUInt(buffer, 0);
+
+    // The abilities a player has here, which is the plain set: no layer, and the permissions of
+    // somebody who is neither an operator nor locked down.
+    writeLongLE(buffer, info.entityId);
+    buffer.writeByte(1); // A member, in the client's own order of permissions.
+    buffer.writeByte(0); // With no command permission of its own.
+    writeVarUInt(buffer, 0);
+
+    writeVarUInt(buffer, 0); // Riding nothing and ridden by nobody.
+    writeString(buffer, ""); // No device id.
+    writeIntLE(buffer, 0);   // Nor a device.
+}
+
+void writeMoveEntity(io::ByteBuffer& buffer, const std::uint64_t runtimeEntityId, const float x, const float y,
+                     const float z, const float yaw, const float pitch, const bool onGround) {
+    writeVarULong(buffer, runtimeEntityId);
+    buffer.writeByte(onGround ? 0x01 : 0x00);
+    writeFloatLE(buffer, x);
+    writeFloatLE(buffer, y);
+    writeFloatLE(buffer, z);
+    writeByteAngle(buffer, pitch);
+    writeByteAngle(buffer, yaw);
+    writeByteAngle(buffer, yaw);
+}
+
+void writeRemoveEntity(io::ByteBuffer& buffer, const std::int64_t entityId) { writeVarLong(buffer, entityId); }
+
+void writeLevelEvent(io::ByteBuffer& buffer, const LevelEventType type, const float x, const float y, const float z,
+                     const std::int32_t data) {
+    writeVarInt(buffer, static_cast<std::int32_t>(type));
+    writeFloatLE(buffer, x);
+    writeFloatLE(buffer, y);
+    writeFloatLE(buffer, z);
+    writeVarInt(buffer, data);
+}
+
+void writeUpdateAttributes(io::ByteBuffer& buffer, const std::uint64_t runtimeEntityId,
+                           const std::span<const AttributeValue> attributes, const std::uint64_t tick) {
+    writeVarULong(buffer, runtimeEntityId);
+    writeVarUInt(buffer, static_cast<std::uint32_t>(attributes.size()));
+    for (const AttributeValue& attribute : attributes) {
+        writeFloatLE(buffer, attribute.minimum);
+        writeFloatLE(buffer, attribute.maximum);
+        writeFloatLE(buffer, attribute.value);
+        // The range it started with, which for everything here is the range it still has.
+        writeFloatLE(buffer, attribute.minimum);
+        writeFloatLE(buffer, attribute.maximum);
+        writeFloatLE(buffer, attribute.defaultValue);
+        writeString(buffer, attribute.name);
+        writeVarUInt(buffer, 0); // Nothing is modifying it: the server sends the number it wants.
+    }
+    writeVarULong(buffer, tick);
 }
 
 } // namespace basalt::wire::bedrock
