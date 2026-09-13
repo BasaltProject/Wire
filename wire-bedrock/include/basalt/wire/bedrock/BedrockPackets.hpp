@@ -50,6 +50,10 @@ inline constexpr int kHeldItemDescriptorProtocol = 2168;
 /// item is.
 inline constexpr int kItemCooldownProtocol = 944;
 
+/// Where the category of a creative group shrank from a four-byte little-endian number to the one
+/// byte it always needed. Three bytes, and everything after them in the packet reads shifted.
+inline constexpr int kCreativeCategoryByteProtocol = 2168;
+
 /// What a client asks for before anything else, and the only packet either side sends in the
 /// clear and uncompressed.
 struct RequestNetworkSettings {
@@ -453,7 +457,7 @@ void writeAvailableEntityIdentifiers(io::ByteBuffer& buffer);
 
 void writeBiomeDefinitionList(io::ByteBuffer& buffer);
 
-void writeCreativeContent(io::ByteBuffer& buffer);
+void writeCreativeContent(io::ByteBuffer& buffer, int protocol);
 
 void writeSetCommandsEnabled(io::ByteBuffer& buffer, bool enabled);
 

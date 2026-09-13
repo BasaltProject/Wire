@@ -321,10 +321,11 @@ void writeStartGame(io::ByteBuffer& buffer, const StartGameInfo& info, const int
     writeString(buffer, info.levelName);
     writeString(buffer, ""); // No premium world template.
     writeBool(buffer, false);
-    // How movement is settled, in three fields. The first says the server verifies it from
-    // `player_auth_input`, which is what this server reads and the only mode left: the client-side
-    // one was deprecated at 800 and this window starts at 924.
-    writeVarInt(buffer, 1);
+    // How movement is settled, in two fields. There used to be a third in front of them saying
+    // which mode it was, and **818 took it away**: from there the server always verifies movement
+    // from `player_auth_input` and there is nothing to choose. Writing it anyway puts one varint
+    // too many in the middle of the packet, and a client reads everything after it shifted: that is
+    // what an `InitialConnection-90` on a real 1.26 client looks like.
     writeVarInt(buffer, 0);   // No rewind history: this server does not rewind.
     writeBool(buffer, false); // Block breaking stays with the client for now.
     writeLongLE(buffer, info.currentTick);
@@ -1131,12 +1132,17 @@ void writeBiomeDefinitionList(io::ByteBuffer& buffer) {
     writeVarUInt(buffer, 0); // so no names to go with them.
 }
 
-void writeCreativeContent(io::ByteBuffer& buffer) {
+void writeCreativeContent(io::ByteBuffer& buffer, const int protocol) {
     // One group with everything in it. Vanilla sorts its creative menu into four tabs and a great
     // many groups, and that order is content rather than protocol: what the protocol needs is that
     // every item a player may take is in a group, and that the group exists.
     writeVarUInt(buffer, 1);
-    buffer.writeByte(0); // Everything, rather than one of the four tabs.
+    // Everything, rather than one of the four tabs.
+    if (protocol >= kCreativeCategoryByteProtocol) {
+        buffer.writeByte(0);
+    } else {
+        writeIntLE(buffer, 0);
+    }
     writeString(buffer, "itemGroup.name.basalt");
     writeItemInstance(buffer, BedrockItemStack{});
 
