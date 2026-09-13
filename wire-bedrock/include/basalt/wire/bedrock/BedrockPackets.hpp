@@ -305,6 +305,10 @@ struct PlayerAuthInput {
     float yaw = 0.0F;
     float headYaw = 0.0F;
 
+    /// Whether they are crouching, which is what decides between using a block and placing one
+    /// against it.
+    bool sneaking = false;
+
     /// What they did to a block, in the order they did it.
     std::vector<BedrockBlockAction> blockActions;
 
@@ -334,6 +338,12 @@ enum class BedrockContainerType : std::int8_t {
     BlastFurnace = 27,
     Smoker = 28,
 };
+
+/// What a block told the clients to do with it: the lid of a chest, the note of a note block, the
+/// shove of a piston. The two numbers mean whatever that block says they mean, and both editions
+/// read them the same way, so they travel as they arrive.
+void writeBlockEvent(io::ByteBuffer& buffer, std::int32_t x, std::int32_t y, std::int32_t z, std::int32_t b0,
+                     std::int32_t b1);
 
 /// A window opening on a block. The id is this server's own and comes back on everything the
 /// client says about that window, until it closes.

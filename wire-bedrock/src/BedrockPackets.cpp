@@ -453,6 +453,7 @@ namespace {
 
 /// Which of the flags this server acts on. They are positions in an enum the reference codec keeps,
 /// and nothing has moved them inside this window.
+constexpr std::int32_t kFlagSneaking = 8;
 constexpr std::int32_t kFlagItemInteraction = 34;
 constexpr std::int32_t kFlagBlockActions = 35;
 constexpr std::int32_t kFlagItemStackRequest = 36;
@@ -920,6 +921,7 @@ std::optional<PlayerAuthInput> readPlayerAuthInput(io::ByteBuffer& buffer, const
             }
         }
     }
+    input.sneaking = flags.contains(kFlagSneaking);
     static_cast<void>(readVarUInt(buffer)); // How they are playing: a keyboard, a pad, a screen,
     static_cast<void>(readVarUInt(buffer)); // where they are playing it,
     static_cast<void>(readVarUInt(buffer)); // and which of the two ways of touching things.
@@ -1245,6 +1247,13 @@ void writeInventoryContent(io::ByteBuffer& buffer, const std::uint32_t container
     buffer.writeByte(static_cast<std::uint8_t>(slot));
     writeBool(buffer, false);                             // No dynamic id: this window is one the client already knows.
     writeItemStack(buffer, BedrockItemStack{}, protocol); // Nothing stored beside it.
+}
+
+void writeBlockEvent(io::ByteBuffer& buffer, const std::int32_t x, const std::int32_t y, const std::int32_t z,
+                     const std::int32_t b0, const std::int32_t b1) {
+    writeBlockPosition(buffer, x, y, z);
+    writeVarInt(buffer, b0);
+    writeVarInt(buffer, b1);
 }
 
 void writeContainerOpen(io::ByteBuffer& buffer, const std::int32_t containerId, const BedrockContainerType type,
