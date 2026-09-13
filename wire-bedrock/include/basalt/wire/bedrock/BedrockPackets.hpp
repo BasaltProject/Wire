@@ -256,27 +256,6 @@ struct BedrockItemUse {
     float clickZ = 0.0F;
 };
 
-/// The containers a stack request can name that this server models. The numbers are that edition's
-/// own, and they are the ones every protocol in this window uses: the table shifted last at 560.
-enum class BedrockRequestContainer : std::int32_t {
-    Armour = 6,
-    /// What a block being looked into holds: a chest's own rows, a furnace seen as one list.
-    LevelEntity = 7,
-    /// The 36 a player carries, hotbar first.
-    HotbarAndInventory = 12,
-    CraftingInput = 13,
-    CraftingOutput = 14,
-    FurnaceFuel = 24,
-    FurnaceIngredient = 25,
-    FurnaceResult = 26,
-    Hotbar = 28,
-    Inventory = 29,
-    Offhand = 34,
-    /// What is being dragged. Bedrock keeps it in a container of its own rather than outside them.
-    Cursor = 59,
-    CreatedOutput = 60,
-};
-
 /// One end of a move: which window, which slot of it, and what the client believes is there.
 struct BedrockStackSlot {
     std::int32_t container = 0;
@@ -344,6 +323,34 @@ inline constexpr float kPlayerEyeHeight = 1.62001F;
 /// holds, and what it asked to be moved between its windows. What is left is input state, which
 /// this server works out for itself.
 [[nodiscard]] std::optional<PlayerAuthInput> readPlayerAuthInput(io::ByteBuffer& buffer, int protocol);
+
+/// The windows a block opens, by the number that edition gives them. Only the ones this server
+/// draws are named; the list has not moved in this protocol window.
+enum class BedrockContainerType : std::int8_t {
+    /// A chest, a barrel, a shulker box: rows of slots and nothing else.
+    Container = 0,
+    Workbench = 1,
+    Furnace = 2,
+    BlastFurnace = 27,
+    Smoker = 28,
+};
+
+/// A window opening on a block. The id is this server's own and comes back on everything the
+/// client says about that window, until it closes.
+void writeContainerOpen(io::ByteBuffer& buffer, std::int32_t containerId, BedrockContainerType type, std::int32_t x,
+                        std::int32_t y, std::int32_t z);
+
+/// A window closing. `serverInitiated` is what tells the client whether to close it or to just
+/// forget it, and a client that is told the wrong one leaves the screen up.
+void writeContainerClose(io::ByteBuffer& buffer, std::int32_t containerId, BedrockContainerType type,
+                         bool serverInitiated);
+
+struct BedrockContainerClose {
+    std::int32_t containerId = 0;
+    bool serverInitiated = false;
+};
+
+[[nodiscard]] std::optional<BedrockContainerClose> readContainerClose(io::ByteBuffer& buffer);
 
 /// What one slot of a window holds after a request was answered. The client draws what this says
 /// and drops its own guess.
@@ -545,10 +552,26 @@ struct BedrockItemStack {
 };
 
 /// Which part of a window a run of slots belongs to. The numbers have not moved in this window.
+/// Which window a run of slots belongs to. The numbers are that edition's own, and they are the
+/// ones every protocol in this window uses: the table shifted last at 560, which moved everything
+/// from 21 up by one. A window and a stack request name their slots from this same table.
 enum class BedrockContainerSlot : std::uint8_t {
     Armour = 6,
+    /// What a block being looked into holds: a chest's own rows, a furnace seen as one list.
+    LevelEntity = 7,
+    /// The 36 a player carries, hotbar first.
     HotbarAndInventory = 12,
-    Offhand = 33,
+    CraftingInput = 13,
+    CraftingOutput = 14,
+    FurnaceFuel = 24,
+    FurnaceIngredient = 25,
+    FurnaceResult = 26,
+    Hotbar = 28,
+    Inventory = 29,
+    Offhand = 34,
+    /// What is being dragged. Bedrock keeps it in a window of its own rather than outside them.
+    Cursor = 59,
+    CreatedOutput = 60,
 };
 
 /// The names of every item this server knows, with the id it wants each one called by. Bedrock has

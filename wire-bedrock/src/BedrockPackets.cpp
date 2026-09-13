@@ -1247,6 +1247,32 @@ void writeInventoryContent(io::ByteBuffer& buffer, const std::uint32_t container
     writeItemStack(buffer, BedrockItemStack{}, protocol); // Nothing stored beside it.
 }
 
+void writeContainerOpen(io::ByteBuffer& buffer, const std::int32_t containerId, const BedrockContainerType type,
+                        const std::int32_t x, const std::int32_t y, const std::int32_t z) {
+    buffer.writeByte(static_cast<std::uint8_t>(containerId));
+    buffer.writeByte(static_cast<std::uint8_t>(type));
+    writeBlockPosition(buffer, x, y, z);
+    writeVarLong(buffer, -1); // No entity behind it: every window this server opens is a block's.
+}
+
+void writeContainerClose(io::ByteBuffer& buffer, const std::int32_t containerId, const BedrockContainerType type,
+                         const bool serverInitiated) {
+    buffer.writeByte(static_cast<std::uint8_t>(containerId));
+    buffer.writeByte(static_cast<std::uint8_t>(type));
+    writeBool(buffer, serverInitiated);
+}
+
+std::optional<BedrockContainerClose> readContainerClose(io::ByteBuffer& buffer) {
+    BedrockContainerClose close;
+    close.containerId = static_cast<std::int8_t>(buffer.readByte());
+    static_cast<void>(buffer.readByte()); // Which kind it was, which this server already knows.
+    close.serverInitiated = buffer.readByte() != 0;
+    if (buffer.failed()) {
+        return std::nullopt;
+    }
+    return close;
+}
+
 void writeItemStackResponse(io::ByteBuffer& buffer, const std::int32_t requestId, const bool accepted,
                             const std::span<const BedrockResponseContainer> containers, const int protocol) {
     const bool native = writesNativeShapes(protocol);
