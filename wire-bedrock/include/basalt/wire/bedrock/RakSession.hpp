@@ -34,6 +34,20 @@ inline constexpr std::uint64_t kKeepAliveMs = 2500;
 /// address into a connection. It never touches a socket; the datagrams it builds go to a sink.
 class RakSession {
 public:
+    /// What the transport did for this peer, kept so a session that goes quiet can be told apart
+    /// from one that said goodbye. A client that stops acknowledging halfway through a burst is a
+    /// transport problem; one that acknowledges everything and then leaves read something it did
+    /// not like.
+    struct Stats {
+        std::uint64_t datagramsSent = 0;
+        std::uint64_t datagramsReceived = 0;
+        std::uint64_t datagramsResent = 0;
+        std::uint64_t datagramsAcknowledged = 0;
+        std::uint64_t datagramsAskedAgain = 0;
+        std::uint64_t splitMessages = 0;
+        std::uint64_t splitParts = 0;
+    };
+
     RakSession(io::UdpEndpoint peer, std::uint16_t mtu, std::uint64_t clientGuid, std::uint64_t nowMs);
 
     [[nodiscard]] const io::UdpEndpoint& peer() const noexcept { return peer_; }
@@ -46,6 +60,11 @@ public:
     [[nodiscard]] bool connected() const noexcept { return connected_; }
 
     [[nodiscard]] bool closed() const noexcept { return closed_; }
+
+    /// True when the peer sent a disconnection notification rather than simply going quiet.
+    [[nodiscard]] bool saidGoodbye() const noexcept { return saidGoodbye_; }
+
+    [[nodiscard]] const Stats& stats() const noexcept { return stats_; }
 
     [[nodiscard]] std::uint64_t lastHeardMs() const noexcept { return lastHeardMs_; }
 
@@ -106,6 +125,8 @@ private:
     std::uint64_t clientGuid_ = 0;
     bool connected_ = false;
     bool closed_ = false;
+    bool saidGoodbye_ = false;
+    Stats stats_;
     std::uint64_t lastHeardMs_ = 0;
     std::uint64_t lastSentMs_ = 0;
 
