@@ -1128,8 +1128,29 @@ void writeSubChunk(io::ByteBuffer& buffer, const JavaSubChunk blocks, const std:
 void writeAvailableEntityIdentifiers(io::ByteBuffer& buffer) { buffer.writeBytes(entityIdentifiers()); }
 
 void writeBiomeDefinitionList(io::ByteBuffer& buffer) {
-    writeVarUInt(buffer, 0); // No biome of its own,
-    writeVarUInt(buffer, 0); // so no names to go with them.
+    // One definition, and it is the one every chunk this server sends points at: the biome palette
+    // in `level_chunk` is a single entry saying zero, so zero has to name something. An empty list
+    // is not the same as sending nothing: a client told there are no biomes at all cannot resolve
+    // the one its own chunks name. The real table, with a definition per biome and its climate and
+    // surfaces, is still missing.
+    writeVarUInt(buffer, 1);
+    writeShortLE(buffer, 0);  // Its name is the first string below.
+    writeBool(buffer, false); // No id of its own: its place in this list is its id.
+    writeFloatLE(buffer, 0.8F);
+    writeFloatLE(buffer, 0.4F);
+    writeFloatLE(buffer, 0.0F); // No red spores,
+    writeFloatLE(buffer, 0.0F); // no blue ones,
+    writeFloatLE(buffer, 0.0F); // no ash,
+    writeFloatLE(buffer, 0.0F); // and no white ash: those belong to the nether.
+    writeFloatLE(buffer, 0.125F);
+    writeFloatLE(buffer, 0.05F);
+    writeIntLE(buffer, 0x0044aff5); // The water colour a map draws it in.
+    writeBool(buffer, true);        // It rains here,
+    writeBool(buffer, false);       // carries no tags,
+    writeBool(buffer, false);       // and says nothing about how it is generated.
+
+    writeVarUInt(buffer, 1);
+    writeString(buffer, "plains");
 }
 
 void writeCreativeContent(io::ByteBuffer& buffer, const int protocol) {

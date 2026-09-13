@@ -838,3 +838,42 @@ TEST_CASE("a subchunk goes out in the shape a client unpacks") {
     CHECK(blockAt(kX, kZ, kY) == bedrockBlockId(kAir, kNativeBedrockProtocol)); // nor with y and z swapped.
     CHECK(blockAt(0, 0, 0) == bedrockBlockId(kAir, kNativeBedrockProtocol));
 }
+
+TEST_CASE("a creative group's category is a word for an old client and a byte for a new one") {
+    // The one field of this packet whose width moved: 2168 shrank it to a byte, and writing the
+    // wrong one leaves everything after it in the packet three bytes out of place.
+    io::ByteBuffer older;
+    writeCreativeContent(older, kCreativeCategoryByteProtocol - 1);
+    REQUIRE(readVarUInt(older) == 1);
+    CHECK(readIntLE(older) == 0);
+    CHECK(readString(older) == "itemGroup.name.basalt");
+
+    io::ByteBuffer newer;
+    writeCreativeContent(newer, kCreativeCategoryByteProtocol);
+    REQUIRE(readVarUInt(newer) == 1);
+    CHECK(newer.readByte() == 0);
+    CHECK(readString(newer) == "itemGroup.name.basalt");
+}
+
+TEST_CASE("the biome list names the one every chunk points at") {
+    // A column's biome palette is a single entry saying zero, so a list saying there are no biomes
+    // at all contradicts every chunk this server sends. An empty list is a claim, not a stub.
+    io::ByteBuffer body;
+    writeBiomeDefinitionList(body);
+
+    REQUIRE(readVarUInt(body) == 1);
+    CHECK(readShortLE(body) == 0); // Its name is the first string below,
+    CHECK(body.readByte() == 0);   // and its place in the list is its id.
+    for (int field = 0; field < 8; ++field) {
+        static_cast<void>(readFloatLE(body));
+    }
+    static_cast<void>(readIntLE(body)); // The map water colour,
+    static_cast<void>(body.readByte()); // whether it rains,
+    CHECK(body.readByte() == 0);        // no tags,
+    CHECK(body.readByte() == 0);        // and nothing about how it is generated.
+
+    REQUIRE(readVarUInt(body) == 1);
+    CHECK(readString(body) == "plains");
+    CHECK_FALSE(body.failed());
+    CHECK(body.readableBytes() == 0);
+}
