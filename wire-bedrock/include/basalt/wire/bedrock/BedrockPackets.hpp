@@ -282,6 +282,9 @@ enum class BedrockStackActionType : std::int32_t {
 
 struct BedrockStackAction {
     BedrockStackActionType type = BedrockStackActionType::Other;
+    /// The number that line came as, which is each protocol's own. Kept for the log: a line this
+    /// build does not act on is worth naming by its number, because that is what says which it was.
+    std::int32_t line = 0;
     /// How many the line moves, for the five that move any.
     std::int32_t count = 0;
     BedrockStackSlot source;
@@ -373,6 +376,19 @@ void writeLevelEvent(io::ByteBuffer& buffer, std::int32_t event, float x, float 
 /// client says about that window, until it closes.
 void writeContainerOpen(io::ByteBuffer& buffer, std::int32_t containerId, BedrockContainerType type, std::int32_t x,
                         std::int32_t y, std::int32_t z);
+
+/// The numbers a window draws its own machinery from: a furnace's fire and its arrow. Each one is
+/// sent on its own, which is that edition's shape and not a convenience of ours.
+enum class BedrockContainerData : std::int32_t {
+    /// How far into the smelt it is. parity: Java's own property 2.
+    FurnaceCookTime = 0,
+    /// How much fire is left, and how much there was: the two the flame is drawn from.
+    FurnaceLitTime = 1,
+    FurnaceLitDuration = 2,
+};
+
+void writeContainerSetData(io::ByteBuffer& buffer, std::int32_t containerId, BedrockContainerData property,
+                           std::int32_t value);
 
 /// A window closing. `serverInitiated` is what tells the client whether to close it or to just
 /// forget it, and a client that is told the wrong one leaves the screen up.
