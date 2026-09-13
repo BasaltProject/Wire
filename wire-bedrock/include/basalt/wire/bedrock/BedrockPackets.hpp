@@ -345,6 +345,30 @@ enum class BedrockContainerType : std::int8_t {
 void writeBlockEvent(io::ByteBuffer& buffer, std::int32_t x, std::int32_t y, std::int32_t z, std::int32_t b0,
                      std::int32_t b1);
 
+/// What one of Java's numbered one-off effects is over on Bedrock: an effect of its own, a sound,
+/// or both. That edition splits what Java's single number carries, so a client told only half of it
+/// draws the sparkles in silence.
+struct BedrockLevelEffect {
+    /// Zero when this edition has no such effect and only the sound is worth sending.
+    std::int32_t event = 0;
+    /// The Java name of the sound that edition plays separately, or empty when there is none.
+    std::string_view sound;
+    /// Where it is drawn, from the block's own corner. The middle unless the effect says otherwise.
+    float x = 0.5F;
+    float y = 0.5F;
+    float z = 0.5F;
+    /// Whether the number the Java event carries means anything over there.
+    bool keepsData = false;
+};
+
+/// What to draw and play for one of Java's level events, or nothing on both counts when this build
+/// has no answer for it: the numbers are each edition's own and nothing lines them up.
+[[nodiscard]] BedrockLevelEffect bedrockLevelEffect(std::int32_t javaEvent, std::int32_t data);
+
+/// One of the numbered one-off effects, at a point rather than at a block: that edition draws them
+/// where the floats say, not where a block is.
+void writeLevelEvent(io::ByteBuffer& buffer, std::int32_t event, float x, float y, float z, std::int32_t data);
+
 /// A window opening on a block. The id is this server's own and comes back on everything the
 /// client says about that window, until it closes.
 void writeContainerOpen(io::ByteBuffer& buffer, std::int32_t containerId, BedrockContainerType type, std::int32_t x,
