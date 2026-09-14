@@ -295,6 +295,8 @@ enum class BedrockStackActionType : std::int32_t {
     Consume,
     Create,
     CraftResults,
+    /// A recipe the client asks to be made, named by the number this server gave it at login.
+    Craft,
 };
 
 struct BedrockStackAction {
@@ -306,6 +308,10 @@ struct BedrockStackAction {
     std::int32_t count = 0;
     BedrockStackSlot source;
     BedrockStackSlot destination;
+    /// Which recipe, for the line that asks for one. The number this server sent with it.
+    std::int32_t recipeNetId = 0;
+    /// How many times over, which the client counts for a stack crafted at once.
+    std::int32_t crafts = 1;
 };
 
 /// A client asking for stacks to be moved. It arrives inside a tick's own packet, and the answer
@@ -366,8 +372,16 @@ enum class BedrockContainerType : std::int8_t {
     Container = 0,
     Workbench = 1,
     Furnace = 2,
+    BrewingStand = 4,
+    /// The three that are boxes over here and screens of their own over there: a dispenser and a
+    /// dropper are drawn three by three, a hopper in one row of five.
+    Dispenser = 6,
+    Dropper = 7,
+    Hopper = 8,
     BlastFurnace = 27,
     Smoker = 28,
+    Stonecutter = 29,
+    Crafter = 36,
 };
 
 /// What a block told the clients to do with it: the lid of a chest, the note of a note block, the
@@ -491,7 +505,6 @@ void writeCreativeContent(io::ByteBuffer& buffer, int protocol, std::size_t item
 /// The recipe book, which this server has nothing to put in yet. It is sent empty rather than left
 /// out: the inventory screen is built around the book, and 2168 counts eleven kinds of recipe where
 /// older versions had one list.
-void writeCraftingData(io::ByteBuffer& buffer);
 
 /// The handful of rules a Bedrock client decides things by on its own. Every one of these exists to
 /// stop the client acting where the server already has: it heals nobody, empties nobody's bag and
@@ -634,9 +647,23 @@ struct BedrockEntityUse {
     std::int32_t hotbarSlot = 0;
 };
 
-/// Reads the one kind of transaction that is about an entity, and nothing when it is about a block
-/// or an item: those two already arrive inside the movement packet.
-[[nodiscard]] std::optional<BedrockEntityUse> readEntityUse(io::ByteBuffer& buffer, int protocol);
+/// The end of holding an item down: letting go of a bow, or finishing a mouthful. A Bedrock client
+/// eats on its own clock and says so here, which is the only word the server gets that it is done.
+struct BedrockItemRelease {
+    /// Zero lets go, one swallows.
+    std::int32_t action = 0;
+    std::int32_t hotbarSlot = 0;
+};
+
+/// What one transaction turned out to be. The kinds this server acts on are a click on an entity
+/// and an item being let go of; a block or an item used arrives inside the movement packet instead,
+/// so those two come back empty.
+struct BedrockTransaction {
+    std::optional<BedrockEntityUse> entityUse;
+    std::optional<BedrockItemRelease> itemRelease;
+};
+
+[[nodiscard]] BedrockTransaction readTransaction(io::ByteBuffer& buffer, int protocol);
 
 /// What a client did to something alive, or to its own screen. Most of these this server settles
 /// for itself; the one it must answer is the ask to open the bag.
@@ -787,6 +814,37 @@ struct BedrockItemStack {
     std::int32_t blockRuntimeId = 0;
 };
 
+/// One thing a recipe asks for: a named item, or a tag that stands for any of a set. A cell of a
+/// shaped recipe that asks for nothing is one of these with an empty name.
+struct BedrockIngredient {
+    /// The Bedrock item name, or the tag's own name when `tag` is set. Empty means an empty cell.
+    std::string_view name;
+    bool tag = false;
+    /// Which of the items under that name, or 32767 for any of them.
+    std::int32_t aux = 0;
+    std::int32_t count = 1;
+};
+
+/// One recipe as that edition draws it. Both kinds carry the same fields; a shaped one also has a
+/// grid, and its cells run left to right and top to bottom.
+struct BedrockRecipe {
+    /// The name the client echoes back when somebody crafts it.
+    std::string id;
+    /// Which screen makes it: a table by hand, or a stonecutter.
+    std::string_view tag;
+    bool shaped = false;
+    std::int32_t width = 0;
+    std::int32_t height = 0;
+    std::vector<BedrockIngredient> ingredients;
+    BedrockItemStack result;
+    /// Its own name again, as the number the client sends back instead of the string.
+    std::int32_t netId = 1;
+};
+
+/// Every recipe a client is told about at login. Without this a Bedrock client crafts nothing at
+/// all: the grid's result comes from the list the server sent, not from the client's own data.
+void writeCraftingData(io::ByteBuffer& buffer, std::span<const BedrockRecipe> recipes, int protocol);
+
 /// Which part of a window a run of slots belongs to. The numbers have not moved in this window.
 /// Which window a run of slots belongs to. The numbers are that edition's own, and they are the
 /// ones every protocol in this window uses: the table shifted last at 560, which moved everything
@@ -805,6 +863,9 @@ enum class BedrockContainerSlot : std::uint8_t {
     Hotbar = 28,
     Inventory = 29,
     Offhand = 34,
+    /// The one slot a stonecutter's screen has of its own, and where what it cuts appears.
+    StonecutterInput = 53,
+    StonecutterResult = 54,
     /// What is being dragged. Bedrock keeps it in a window of its own rather than outside them.
     Cursor = 59,
     CreatedOutput = 60,

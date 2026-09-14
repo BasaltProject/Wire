@@ -17,6 +17,7 @@
 
 #include <doctest.h>
 
+#include <array>
 #include <cstdint>
 #include <memory>
 #include <numeric>
@@ -916,6 +917,100 @@ TEST_CASE("the creative menu reads back exactly as long as it was written") {
         CHECK(readVarUInt(body) == 0); // and the one group everything is in.
     }
 
+    CHECK_FALSE(body.failed());
+    CHECK(body.readableBytes() == 0);
+}
+
+TEST_CASE("a recipe list reads back the way a client walks it") {
+    // Every field of a recipe is variable length, so a mistake in any of them shows up as bytes
+    // left over at the end rather than as a wrong number in the middle.
+    BedrockRecipe table;
+    table.id = "minecraft:crafting_table";
+    table.shaped = true;
+    table.width = 2;
+    table.height = 2;
+    table.ingredients = {BedrockIngredient{.name = "minecraft:planks", .tag = true},
+                         BedrockIngredient{.name = "minecraft:planks", .tag = true},
+                         BedrockIngredient{.name = "minecraft:planks", .tag = true}, BedrockIngredient{}};
+    table.result = BedrockItemStack{.runtimeId = 7, .count = 1};
+    table.netId = 1;
+
+    BedrockRecipe buttons;
+    buttons.id = "minecraft:oak_button";
+    buttons.ingredients = {BedrockIngredient{.name = "minecraft:oak_planks", .aux = 0, .count = 1}};
+    buttons.result = BedrockItemStack{.runtimeId = 9, .count = 1};
+    buttons.netId = 2;
+
+    const std::array<BedrockRecipe, 2> recipes{table, buttons};
+    io::ByteBuffer body;
+    writeCraftingData(body, recipes, kNativeBedrockProtocol);
+
+    const auto readIngredient = [&body] {
+        const std::uint32_t kind = readVarUInt(body);
+        if (kind == 0) {
+            static_cast<void>(readVarInt(body)); // Any of them, which is what an empty cell asks for,
+            static_cast<void>(readVarInt(body)); // and none of it.
+            return std::string{};
+        }
+        const std::string named = readString(body);
+        const std::string name = readString(body);
+        static_cast<void>(readVarInt(body)); // Which of them,
+        static_cast<void>(readVarInt(body)); // and how many.
+        return named == "item_tag" ? "#" + name : name;
+    };
+    const auto readResult = [&body] {
+        const std::int32_t id = readVarInt(body);
+        static_cast<void>(readShortLE(body));
+        static_cast<void>(readVarUInt(body));
+        static_cast<void>(readVarInt(body));
+        const std::uint32_t trailing = readVarUInt(body);
+        REQUIRE(trailing <= body.readableBytes());
+        static_cast<void>(body.readSpan(trailing));
+        return id;
+    };
+    const auto readTail = [&body] {
+        static_cast<void>(body.readSpan(16)); // The uuid,
+        CHECK(readString(body) == "crafting_table");
+        static_cast<void>(readVarInt(body)); // its priority,
+    };
+    const auto readUnlocking = [&body] {
+        CHECK(body.readByte() == 1);
+        CHECK(readVarInt(body) == 0);
+        CHECK(body.readByte() == 1);
+        CHECK(readVarUInt(body) == 0);
+    };
+
+    REQUIRE(readVarUInt(body) == 1); // One shaped recipe,
+    CHECK(readString(body) == "minecraft:crafting_table");
+    CHECK(readVarInt(body) == 2);
+    CHECK(readVarInt(body) == 2);
+    REQUIRE(readVarUInt(body) == 4);
+    CHECK(readIngredient() == "#minecraft:planks");
+    static_cast<void>(readIngredient());
+    static_cast<void>(readIngredient());
+    CHECK(readIngredient().empty());
+    REQUIRE(readVarUInt(body) == 1);
+    CHECK(readResult() == 7);
+    readTail();
+    CHECK(body.readByte() == 1); // mirrored is the same recipe,
+    readUnlocking();
+    CHECK(readVarUInt(body) == 1);
+
+    REQUIRE(readVarUInt(body) == 1); // and one shapeless,
+    CHECK(readString(body) == "minecraft:oak_button");
+    REQUIRE(readVarUInt(body) == 1);
+    CHECK(readIngredient() == "minecraft:oak_planks");
+    REQUIRE(readVarUInt(body) == 1);
+    CHECK(readResult() == 9);
+    readTail();
+    readUnlocking();
+    CHECK(readVarUInt(body) == 2);
+
+    // The nine kinds this server sends none of, and the flag that replaces what the client had.
+    for (int kind = 0; kind < 9; ++kind) {
+        CHECK(readVarUInt(body) == 0);
+    }
+    CHECK(body.readByte() == 1);
     CHECK_FALSE(body.failed());
     CHECK(body.readableBytes() == 0);
 }

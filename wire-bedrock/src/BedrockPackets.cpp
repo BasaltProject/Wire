@@ -744,6 +744,9 @@ enum class RequestAction : std::int32_t {
         return BedrockStackActionType::Create;
     case RequestAction::CraftResults:
         return BedrockStackActionType::CraftResults;
+    case RequestAction::CraftRecipe:
+    case RequestAction::CraftRecipeAuto:
+        return BedrockStackActionType::Craft;
     default:
         return BedrockStackActionType::Other;
     }
@@ -874,13 +877,16 @@ void readResultItem(io::ByteBuffer& buffer, const int protocol) {
             static_cast<void>(native ? readIntLE(buffer) : readVarInt(buffer)); // and which stack it was.
             break;
         case RequestAction::CraftRecipe:
+            action.recipeNetId = static_cast<std::int32_t>(readVarUInt(buffer));
+            action.crafts = std::int32_t{buffer.readByte()};
+            break;
         case RequestAction::CraftCreative:
             static_cast<void>(readVarUInt(buffer));
             static_cast<void>(buffer.readByte());
             break;
         case RequestAction::CraftRecipeAuto: {
-            static_cast<void>(readVarUInt(buffer));
-            static_cast<void>(buffer.readByte());
+            action.recipeNetId = static_cast<std::int32_t>(readVarUInt(buffer));
+            action.crafts = std::int32_t{buffer.readByte()};
             if (!native) {
                 static_cast<void>(buffer.readByte()); // How many times it was made, counted twice.
             }
@@ -1290,11 +1296,118 @@ void writeGameRulesChanged(io::ByteBuffer& buffer, const int protocol) {
     number("spawnradius", 0);
 }
 
-void writeCraftingData(io::ByteBuffer& buffer) {
-    // Shaped, shapeless, multi, user shapeless, chemistry shapeless, chemistry shaped, smithing
-    // transform, smithing trim, potion mixes, container mixes and material reducers.
-    constexpr int kKinds = 11;
-    for (int at = 0; at < kKinds; ++at) {
+namespace {
+
+/// What an ingredient's kind is called on the wire. The client reads the word, not the number.
+constexpr std::string_view kDescriptorByName = "name";
+constexpr std::string_view kDescriptorByTag = "item_tag";
+
+/// The aux value that means "any of them", which is what a tag and a damaged tool both ask for.
+constexpr std::int32_t kAnyAux = 32767;
+
+/// Which screen a recipe belongs to when it does not say: a table, or a hand, which are the same
+/// word to that client.
+constexpr std::string_view kCraftingTableTag = "crafting_table";
+
+void writeIngredient(io::ByteBuffer& buffer, const BedrockIngredient& ingredient) {
+    // An empty cell is the one kind that carries no name at all, and it says so with a nought
+    // where every other kind says one.
+    if (ingredient.name.empty()) {
+        writeVarUInt(buffer, 0);
+        writeVarInt(buffer, kAnyAux);
+        writeVarInt(buffer, 0);
+        return;
+    }
+    writeVarUInt(buffer, 1);
+    writeString(buffer, ingredient.tag ? kDescriptorByTag : kDescriptorByName);
+    writeString(buffer, ingredient.name);
+    writeVarInt(buffer, ingredient.tag ? kAnyAux : ingredient.aux);
+    writeVarInt(buffer, ingredient.count);
+}
+
+/// A stack as a recipe's result carries it, which is not the shape a window carries: the id is a
+/// varint here and there is no net id in front of the block.
+void writeItemInstance(io::ByteBuffer& buffer, const BedrockItemStack& item) {
+    writeVarInt(buffer, item.runtimeId);
+    writeShortLE(buffer, static_cast<std::uint16_t>(item.count));
+    writeVarUInt(buffer, static_cast<std::uint32_t>(item.data));
+    writeVarInt(buffer, item.blockRuntimeId);
+    // What is written on it and where it may be used, all three empty, as a stream of its own.
+    writeVarUInt(buffer, 10);
+    writeShortLE(buffer, 0);
+    writeIntLE(buffer, 0);
+    writeIntLE(buffer, 0);
+}
+
+/// Nothing has to be unlocked before this recipe can be used, said the long way the packet asks
+/// for: the context, then the optional list of what would unlock it.
+void writeNoUnlocking(io::ByteBuffer& buffer) {
+    writeVarInt(buffer, 0); // Unlocked by nothing in particular,
+    writeBool(buffer, true);
+    writeVarUInt(buffer, 0); // and there is no list of what it would take.
+}
+
+void writeRecipe(io::ByteBuffer& buffer, const BedrockRecipe& recipe, const std::uint32_t at) {
+    writeString(buffer, recipe.id);
+    if (recipe.shaped) {
+        writeVarInt(buffer, recipe.width);
+        writeVarInt(buffer, recipe.height);
+    }
+    writeVarUInt(buffer, static_cast<std::uint32_t>(recipe.ingredients.size()));
+    for (const BedrockIngredient& ingredient : recipe.ingredients) {
+        writeIngredient(buffer, ingredient);
+    }
+    writeVarUInt(buffer, 1); // One result, which is all this server makes.
+    writeItemInstance(buffer, recipe.result);
+    // Its own name as a number, which nothing here reads back: the string above is what a request
+    // names. It has to be there and it has to differ, so the place in the list serves.
+    writeUuid(buffer, 0, static_cast<std::uint64_t>(at) + 1);
+    writeString(buffer, recipe.tag.empty() ? kCraftingTableTag : recipe.tag);
+    writeVarInt(buffer, 0); // No priority over any other recipe.
+    if (recipe.shaped) {
+        writeBool(buffer, true); // Mirrored is the same recipe, which is what vanilla's are.
+    }
+    writeBool(buffer, true);
+    writeNoUnlocking(buffer);
+    writeVarUInt(buffer, static_cast<std::uint32_t>(recipe.netId));
+}
+
+} // namespace
+
+void writeCraftingData(io::ByteBuffer& buffer, const std::span<const BedrockRecipe> recipes, const int protocol) {
+    // Below 2168 the whole lot is one list with a kind in front of every entry. From there the
+    // packet is eleven lists, one per kind, and this server fills two of them.
+    if (!writesNativeShapes(protocol)) {
+        constexpr int kKinds = 4;
+        for (int at = 0; at < kKinds; ++at) {
+            writeVarUInt(buffer, 0);
+        }
+        writeBool(buffer, true);
+        return;
+    }
+
+    std::uint32_t shaped = 0;
+    std::uint32_t shapeless = 0;
+    for (const BedrockRecipe& recipe : recipes) {
+        (recipe.shaped ? shaped : shapeless)++;
+    }
+    writeVarUInt(buffer, shaped);
+    std::uint32_t at = 0;
+    for (const BedrockRecipe& recipe : recipes) {
+        if (recipe.shaped) {
+            writeRecipe(buffer, recipe, at++);
+        }
+    }
+    writeVarUInt(buffer, shapeless);
+    for (const BedrockRecipe& recipe : recipes) {
+        if (!recipe.shaped) {
+            writeRecipe(buffer, recipe, at++);
+        }
+    }
+    // Multi, user shapeless, chemistry shapeless, chemistry shaped, smithing transform, smithing
+    // trim, potion mixes, container mixes and material reducers: none of them yet.
+    constexpr int kEmptyKinds = 9;
+    for (int empty = 0; empty < kEmptyKinds; ++empty) {
         writeVarUInt(buffer, 0);
     }
     writeBool(buffer, true); // Replaces whatever the client had rather than adding to it.
@@ -2298,10 +2411,11 @@ void writeSleeping(io::ByteBuffer& buffer, const std::uint64_t runtimeEntityId, 
     writeVarULong(buffer, 0); // Which tick it belongs to, which only a replay cares about.
 }
 
-std::optional<BedrockEntityUse> readEntityUse(io::ByteBuffer& buffer, const int protocol) {
-    /// The three kinds of transaction. Only the third is about an entity.
-    constexpr std::uint32_t kUseOnEntity = 2;
+namespace {
 
+/// The head every transaction carries: the legacy request, the slots it names and the client's own
+/// idea of what moved in its bags. Answers which kind of transaction follows.
+[[nodiscard]] std::uint32_t readTransactionHead(io::ByteBuffer& buffer, const int protocol) {
     const std::int32_t legacyRequestId = readVarInt(buffer);
     if (buffer.readByte() != 0 && legacyRequestId < -1 && (legacyRequestId & 1) == 0) {
         const std::uint32_t windows = readVarUInt(buffer);
@@ -2314,8 +2428,7 @@ std::optional<BedrockEntityUse> readEntityUse(io::ByteBuffer& buffer, const int 
         }
     }
     const std::uint32_t kind = readVarUInt(buffer);
-    // The actions come before the body whatever kind it is, and they are the client's own idea of
-    // what moved in its bags. This server decides that for itself, so they are read and dropped.
+    // This server decides for itself what moved in a bag, so the client's list is read and dropped.
     const std::uint32_t actions = readVarUInt(buffer);
     for (std::uint32_t at = 0; at < actions && !buffer.failed(); ++at) {
         readInventorySource(buffer);
@@ -2323,19 +2436,48 @@ std::optional<BedrockEntityUse> readEntityUse(io::ByteBuffer& buffer, const int 
         static_cast<void>(readItem(buffer, protocol));
         static_cast<void>(readItem(buffer, protocol));
     }
-    if (kind != kUseOnEntity || buffer.failed()) {
-        return std::nullopt;
-    }
+    return kind;
+}
 
-    BedrockEntityUse use;
-    use.runtimeEntityId = readVarULong(buffer);
-    use.action = readVarInt(buffer);
-    use.hotbarSlot = readVarInt(buffer);
-    static_cast<void>(readItem(buffer, protocol)); // What they are holding, which this server knows.
-    for (int at = 0; at < 6; ++at) {
-        static_cast<void>(readFloatLE(buffer)); // Where they were, and where on it they clicked.
+} // namespace
+
+BedrockTransaction readTransaction(io::ByteBuffer& buffer, const int protocol) {
+    /// The five kinds. Only a click on an entity and an item let go of are acted on here.
+    constexpr std::uint32_t kUseOnEntity = 2;
+    constexpr std::uint32_t kItemRelease = 4;
+
+    BedrockTransaction transaction;
+    const std::uint32_t kind = readTransactionHead(buffer, protocol);
+    if (buffer.failed()) {
+        return transaction;
     }
-    return buffer.failed() ? std::nullopt : std::optional{use};
+    if (kind == kUseOnEntity) {
+        BedrockEntityUse use;
+        use.runtimeEntityId = readVarULong(buffer);
+        use.action = readVarInt(buffer);
+        use.hotbarSlot = readVarInt(buffer);
+        static_cast<void>(readItem(buffer, protocol)); // What they are holding, which this server knows.
+        for (int at = 0; at < 6; ++at) {
+            static_cast<void>(readFloatLE(buffer)); // Where they were, and where on it they clicked.
+        }
+        if (!buffer.failed()) {
+            transaction.entityUse = use;
+        }
+        return transaction;
+    }
+    if (kind == kItemRelease) {
+        BedrockItemRelease release;
+        release.action = static_cast<std::int32_t>(readVarUInt(buffer));
+        release.hotbarSlot = readVarInt(buffer);
+        static_cast<void>(readItem(buffer, protocol)); // What they were holding, which this server knows.
+        for (int at = 0; at < 3; ++at) {
+            static_cast<void>(readFloatLE(buffer)); // Where they were looking from.
+        }
+        if (!buffer.failed()) {
+            transaction.itemRelease = release;
+        }
+    }
+    return transaction;
 }
 
 std::optional<BedrockInteract> readInteract(io::ByteBuffer& buffer) {
