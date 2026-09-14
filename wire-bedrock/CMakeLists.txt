@@ -5,6 +5,7 @@ basalt_module(wire-bedrock
         src/BedrockConnection.cpp
         src/BedrockGate.cpp
         src/BedrockKeys.cpp
+        src/BedrockNbt.cpp
         src/BedrockPacketNames.cpp
         src/BedrockBlocks260.cpp
         src/BedrockBlocks2610.cpp
@@ -14,6 +15,7 @@ basalt_module(wire-bedrock
         src/BedrockBlockTables.cpp
         src/BedrockEffectIds.cpp
         src/BedrockEntityIdentifiers.cpp
+        src/BedrockEntityNames.cpp
         src/BedrockItemNames.cpp
         src/BedrockItems.cpp
         src/BedrockParticleNames.cpp
