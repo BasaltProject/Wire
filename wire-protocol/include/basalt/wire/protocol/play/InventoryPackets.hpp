@@ -4,8 +4,10 @@
 #include <basalt/wire/protocol/play/ItemComponent.hpp>
 #include <basalt/wire/text/Component.hpp>
 
+#include <cstddef>
 #include <cstdint>
 #include <optional>
+#include <string>
 #include <vector>
 
 namespace basalt::wire::protocol::play {
@@ -169,9 +171,11 @@ namespace menuType {
 inline constexpr std::int32_t kGeneric9x3 = 2;
 inline constexpr std::int32_t kGeneric9x6 = 5;
 inline constexpr std::int32_t kCrafter3x3 = 7;
+inline constexpr std::int32_t kAnvil = 8;
 inline constexpr std::int32_t kBlastFurnace = 10;
 inline constexpr std::int32_t kCrafting = 12;
 inline constexpr std::int32_t kFurnace = 14;
+inline constexpr std::int32_t kGrindstone = 15;
 inline constexpr std::int32_t kLectern = 17;
 inline constexpr std::int32_t kMerchant = 19;
 inline constexpr std::int32_t kSmithing = 21;
@@ -213,6 +217,9 @@ struct ContainerClosePacket {
 /// that fuel lasts, 2 is the progress and 3 the total.
 struct ContainerSetDataPacket {
     static constexpr std::int32_t kId = 0x13;
+
+    /// parity: `AnvilMenu`'s one data slot, the levels it is asking for.
+    static constexpr std::int16_t kAnvilCost = 0;
 
     /// parity: AbstractFurnaceMenu's own four data slots.
     static constexpr std::int16_t kFurnaceLitTime = 0;
@@ -290,6 +297,22 @@ struct SelectTradePacket {
     [[nodiscard]] static std::optional<SelectTradePacket> read(io::ByteBuffer& buffer);
 
     friend bool operator==(const SelectTradePacket&, const SelectTradePacket&) = default;
+};
+
+/// Serverbound, id 0x30: what the player typed into an anvil's name box. It arrives on every
+/// keystroke, and the result is worked out again each time.
+struct ServerboundRenameItemPacket {
+    static constexpr std::int32_t kId = 0x30;
+
+    /// parity: `AnvilMenu.MAX_NAME_LENGTH`, past which the jar ignores the name outright.
+    static constexpr std::size_t kMaxLength = 50;
+
+    std::string name;
+
+    void write(io::ByteBuffer& buffer) const;
+    [[nodiscard]] static std::optional<ServerboundRenameItemPacket> read(io::ByteBuffer& buffer);
+
+    friend bool operator==(const ServerboundRenameItemPacket&, const ServerboundRenameItemPacket&) = default;
 };
 
 /// Serverbound, id 0x11: a button inside an open window.

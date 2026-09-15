@@ -297,6 +297,11 @@ enum class BedrockStackActionType : std::int32_t {
     CraftResults,
     /// A recipe the client asks to be made, named by the number this server gave it at login.
     Craft,
+    /// What an anvil and a cartography table ask for, which is a recipe the client cannot name:
+    /// the server works out what it makes. It carries the typed name rather than a number.
+    CraftOptional,
+    /// What a grindstone asks for, which names no recipe either.
+    CraftGrindstone,
 };
 
 struct BedrockStackAction {
@@ -312,6 +317,9 @@ struct BedrockStackAction {
     std::int32_t recipeNetId = 0;
     /// How many times over, which the client counts for a stack crafted at once.
     std::int32_t crafts = 1;
+    /// Which of the request's typed strings this line meant, for the one line that has a name on
+    /// it. Negative where it named none.
+    std::int32_t textIndex = -1;
 };
 
 /// A client asking for stacks to be moved. It arrives inside a tick's own packet, and the answer
@@ -319,6 +327,9 @@ struct BedrockStackAction {
 struct BedrockStackRequest {
     std::int32_t requestId = 0;
     std::vector<BedrockStackAction> actions;
+    /// What the client typed where a server may filter it: an anvil's name box is the only one this
+    /// build reads. A line names one of these by its place in the list.
+    std::vector<std::string> typed;
 };
 
 struct PlayerAuthInput {
@@ -372,12 +383,14 @@ enum class BedrockContainerType : std::int8_t {
     Container = 0,
     Workbench = 1,
     Furnace = 2,
+    Anvil = 5,
     BrewingStand = 4,
     /// The three that are boxes over here and screens of their own over there: a dispenser and a
     /// dropper are drawn three by three, a hopper in one row of five.
     Dispenser = 6,
     Dropper = 7,
     Hopper = 8,
+    Grindstone = 26,
     BlastFurnace = 27,
     Smoker = 28,
     Stonecutter = 29,
@@ -841,6 +854,37 @@ struct BedrockRecipe {
     std::int32_t netId = 1;
 };
 
+/// One side of a trade, as that edition writes an item inside a trade: a name, how many and which
+/// of them. An empty name is a trade with no second cost.
+struct BedrockTradeItem {
+    std::string_view name;
+    std::int32_t count = 0;
+    std::int32_t damage = 0;
+};
+
+/// One line of a villager's book.
+struct BedrockTrade {
+    BedrockTradeItem costA;
+    BedrockTradeItem costB;
+    BedrockTradeItem sell;
+    /// What the two costs ask for before demand and a buyer's standing move them. The price that
+    /// is actually charged rides in the items above; this is the number drawn struck through.
+    std::int32_t baseCountA = 0;
+    std::int32_t baseCountB = 0;
+    std::int32_t maxUses = 12;
+    std::int32_t uses = 0;
+    std::int32_t experience = 0;
+    float priceMultiplier = 0.05F;
+    std::int32_t demand = 0;
+    /// Which of the five ranks it belongs to, counted from nought.
+    std::int32_t tier = 0;
+};
+
+/// What a villager has to offer, as that edition draws it: everything travels as one tag, and the
+/// window opens off this packet rather than off a container of its own.
+void writeUpdateTrade(io::ByteBuffer& buffer, std::int32_t containerId, std::int32_t tier, std::int64_t traderId,
+                      std::int64_t playerId, std::string_view displayName, std::span<const BedrockTrade> trades);
+
 /// Every recipe a client is told about at login. Without this a Bedrock client crafts nothing at
 /// all: the grid's result comes from the list the server sent, not from the client's own data.
 void writeCraftingData(io::ByteBuffer& buffer, std::span<const BedrockRecipe> recipes, int protocol);
@@ -850,6 +894,10 @@ void writeCraftingData(io::ByteBuffer& buffer, std::span<const BedrockRecipe> re
 /// ones every protocol in this window uses: the table shifted last at 560, which moved everything
 /// from 21 up by one. A window and a stack request name their slots from this same table.
 enum class BedrockContainerSlot : std::uint8_t {
+    /// An anvil's two inputs and what it makes of them.
+    AnvilInput = 0,
+    AnvilMaterial = 1,
+    AnvilResult = 2,
     Armour = 6,
     /// What a block being looked into holds: a chest's own rows, a furnace seen as one list.
     LevelEntity = 7,
@@ -863,6 +911,15 @@ enum class BedrockContainerSlot : std::uint8_t {
     Hotbar = 28,
     Inventory = 29,
     Offhand = 34,
+    /// A merchant's two payment slots and what it hands back. These are the second set of three:
+    /// the first went out with the trading screen that came before this one.
+    TradeIngredientA = 47,
+    TradeIngredientB = 48,
+    TradeResult = 49,
+    /// A grindstone's two inputs and what it makes of them.
+    GrindstoneInput = 50,
+    GrindstoneAdditional = 51,
+    GrindstoneResult = 52,
     /// The one slot a stonecutter's screen has of its own, and where what it cuts appears.
     StonecutterInput = 53,
     StonecutterResult = 54,

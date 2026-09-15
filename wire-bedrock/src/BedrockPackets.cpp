@@ -747,6 +747,10 @@ enum class RequestAction : std::int32_t {
     case RequestAction::CraftRecipe:
     case RequestAction::CraftRecipeAuto:
         return BedrockStackActionType::Craft;
+    case RequestAction::CraftRecipeOptional:
+        return BedrockStackActionType::CraftOptional;
+    case RequestAction::CraftGrindstone:
+        return BedrockStackActionType::CraftGrindstone;
     default:
         return BedrockStackActionType::Other;
     }
@@ -897,8 +901,8 @@ void readResultItem(io::ByteBuffer& buffer, const int protocol) {
             break;
         }
         case RequestAction::CraftRecipeOptional:
-            static_cast<void>(readVarUInt(buffer));
-            static_cast<void>(readIntLE(buffer));
+            action.recipeNetId = static_cast<std::int32_t>(readVarUInt(buffer));
+            action.textIndex = readIntLE(buffer);
             break;
         case RequestAction::CraftGrindstone:
             static_cast<void>(native ? readIntLE(buffer) : static_cast<std::int32_t>(readVarUInt(buffer)));
@@ -927,7 +931,7 @@ void readResultItem(io::ByteBuffer& buffer, const int protocol) {
     // What the client typed where a server may filter it, and where that text came from.
     const std::uint32_t filtered = readVarUInt(buffer);
     for (std::uint32_t at = 0; at < filtered && !buffer.failed(); ++at) {
-        static_cast<void>(readString(buffer));
+        request.typed.push_back(readString(buffer));
     }
     static_cast<void>(readIntLE(buffer));
     if (buffer.failed()) {
@@ -1373,6 +1377,68 @@ void writeRecipe(io::ByteBuffer& buffer, const BedrockRecipe& recipe, const std:
 }
 
 } // namespace
+
+namespace {
+
+/// One item inside a trade. Empty when there is nothing there, which is how a trade with one cost
+/// says so: the tag is present and holds nothing.
+void writeTradeItem(io::ByteBuffer& buffer, const std::string_view name, const BedrockTradeItem& item) {
+    nbt::beginNamed(buffer, name);
+    if (!item.name.empty() && item.count > 0) {
+        nbt::writeByte(buffer, "Count", static_cast<std::int8_t>(item.count));
+        nbt::writeShort(buffer, "Damage", static_cast<std::int16_t>(item.damage));
+        nbt::writeString(buffer, "Name", item.name);
+    }
+    nbt::end(buffer);
+}
+
+} // namespace
+
+void writeUpdateTrade(io::ByteBuffer& buffer, const std::int32_t containerId, const std::int32_t tier,
+                      const std::int64_t traderId, const std::int64_t playerId, const std::string_view displayName,
+                      const std::span<const BedrockTrade> trades) {
+    /// What this edition calls a villager's window.
+    constexpr std::uint8_t kTradeContainer = 15;
+
+    buffer.writeByte(static_cast<std::uint8_t>(containerId));
+    buffer.writeByte(kTradeContainer);
+    writeVarInt(buffer, 0); // No slots of its own: the trades are the window.
+    writeVarInt(buffer, tier);
+    writeVarLong(buffer, traderId);
+    writeVarLong(buffer, playerId);
+    writeString(buffer, displayName);
+    writeBool(buffer, true); // The newer of the two trading screens,
+    writeBool(buffer, true); // and the one that counts what a trade is worth.
+
+    nbt::beginCompound(buffer);
+    nbt::beginCompoundList(buffer, "Recipes", static_cast<std::int32_t>(trades.size()));
+    std::int32_t at = 0;
+    for (const BedrockTrade& trade : trades) {
+        nbt::writeInt(buffer, "netId", ++at);
+        nbt::writeInt(buffer, "maxUses", trade.uses >= trade.maxUses ? 0 : trade.maxUses);
+        nbt::writeInt(buffer, "traderExp", trade.experience);
+        nbt::writeFloat(buffer, "priceMultiplierA", trade.priceMultiplier);
+        nbt::writeFloat(buffer, "priceMultiplierB", 0.0F);
+        writeTradeItem(buffer, "sell", trade.sell);
+        nbt::writeInt(buffer, "buyCountA", trade.baseCountA);
+        nbt::writeInt(buffer, "buyCountB", trade.baseCountB);
+        nbt::writeInt(buffer, "demand", trade.demand);
+        nbt::writeInt(buffer, "tier", trade.tier);
+        writeTradeItem(buffer, "buyA", trade.costA);
+        writeTradeItem(buffer, "buyB", trade.costB);
+        nbt::writeInt(buffer, "uses", trade.uses);
+        nbt::writeByte(buffer, "rewardExp", 1);
+        nbt::end(buffer);
+    }
+    // What each rank costs, which the client draws the bar from. The numbers are the jar's own.
+    constexpr std::array<std::int32_t, 5> kRankCosts{0, 10, 70, 150, 250};
+    nbt::beginCompoundList(buffer, "TierExpRequirements", static_cast<std::int32_t>(kRankCosts.size()));
+    for (std::size_t rank = 0; rank < kRankCosts.size(); ++rank) {
+        nbt::writeInt(buffer, std::to_string(rank), kRankCosts[rank]);
+        nbt::end(buffer);
+    }
+    nbt::end(buffer);
+}
 
 void writeCraftingData(io::ByteBuffer& buffer, const std::span<const BedrockRecipe> recipes, const int protocol) {
     // Below 2168 the whole lot is one list with a kind in front of every entry. From there the

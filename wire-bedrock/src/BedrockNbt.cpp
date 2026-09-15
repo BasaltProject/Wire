@@ -8,9 +8,11 @@ namespace {
 /// The tag numbers, which both editions share even though nothing else about the format is shared.
 constexpr std::uint8_t kEnd = 0x00;
 constexpr std::uint8_t kByte = 0x01;
+constexpr std::uint8_t kShort = 0x02;
 constexpr std::uint8_t kInt = 0x03;
 constexpr std::uint8_t kFloat = 0x05;
 constexpr std::uint8_t kString = 0x08;
+constexpr std::uint8_t kList = 0x09;
 constexpr std::uint8_t kCompound = 0x0a;
 
 void writeName(io::ByteBuffer& buffer, const std::uint8_t tag, const std::string_view name) {
@@ -25,7 +27,18 @@ void beginCompound(io::ByteBuffer& buffer, const std::string_view name) { writeN
 
 void beginNamed(io::ByteBuffer& buffer, const std::string_view name) { writeName(buffer, kCompound, name); }
 
+void beginCompoundList(io::ByteBuffer& buffer, const std::string_view name, const std::int32_t count) {
+    writeName(buffer, kList, name);
+    buffer.writeByte(kCompound);
+    writeVarInt(buffer, count);
+}
+
 void end(io::ByteBuffer& buffer) { buffer.writeByte(kEnd); }
+
+void writeShort(io::ByteBuffer& buffer, const std::string_view name, const std::int16_t value) {
+    writeName(buffer, kShort, name);
+    writeShortLE(buffer, static_cast<std::uint16_t>(value));
+}
 
 void writeByte(io::ByteBuffer& buffer, const std::string_view name, const std::int8_t value) {
     writeName(buffer, kByte, name);

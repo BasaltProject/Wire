@@ -363,6 +363,13 @@ std::optional<SelectTradePacket> SelectTradePacket::read(io::ByteBuffer& buffer)
     return buffer.failed() ? std::nullopt : std::optional{packet};
 }
 
+void ServerboundRenameItemPacket::write(io::ByteBuffer& buffer) const { writeString(buffer, name); }
+
+std::optional<ServerboundRenameItemPacket> ServerboundRenameItemPacket::read(io::ByteBuffer& buffer) {
+    ServerboundRenameItemPacket packet{readString(buffer, kMaxLength)};
+    return buffer.failed() ? std::nullopt : std::optional{std::move(packet)};
+}
+
 void ContainerButtonClickPacket::write(io::ByteBuffer& buffer) const {
     varInt::write(buffer, containerId);
     varInt::write(buffer, buttonId);
