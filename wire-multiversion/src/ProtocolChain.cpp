@@ -359,12 +359,19 @@ void ProtocolChain::serverboundStepwise(protocol::ProtocolState state, std::size
     }
 }
 
+namespace {
+[[nodiscard]] std::int32_t opaqueId(std::int32_t id) {
+    return static_cast<std::int32_t>(static_cast<std::uint32_t>(ProtocolChain::kOpaqueBase) +
+                                     static_cast<std::uint32_t>(id));
+}
+} // namespace
+
 std::int32_t ProtocolChain::clientboundIdToNative(protocol::ProtocolState state, std::int32_t id) const {
     std::int32_t current = id;
     for (auto link = links_.rbegin(); link != links_.rend(); ++link) {
         const std::int32_t mapped = link->get().packets().clientboundToNative(state, current);
         if (mapped == PacketIdMap::kDropped) {
-            return kOpaqueBase + id;
+            return opaqueId(id);
         }
         current = mapped;
     }
@@ -390,7 +397,7 @@ std::int32_t ProtocolChain::serverboundIdToNative(protocol::ProtocolState state,
     for (auto link = links_.rbegin(); link != links_.rend(); ++link) {
         const std::int32_t mapped = link->get().packets().toNative(state, current);
         if (mapped == PacketIdMap::kDropped) {
-            return kOpaqueBase + id;
+            return opaqueId(id);
         }
         current = mapped;
     }
