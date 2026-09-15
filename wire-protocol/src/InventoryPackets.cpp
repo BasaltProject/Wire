@@ -370,6 +370,30 @@ std::optional<ServerboundRenameItemPacket> ServerboundRenameItemPacket::read(io:
     return buffer.failed() ? std::nullopt : std::optional{std::move(packet)};
 }
 
+void ServerboundSetBeaconPacket::write(io::ByteBuffer& buffer) const {
+    const auto put = [&buffer](const std::optional<std::int32_t>& effect) {
+        buffer.writeByte(effect.has_value() ? 1 : 0);
+        if (effect.has_value()) {
+            varInt::write(buffer, *effect);
+        }
+    };
+    put(primary);
+    put(secondary);
+}
+
+std::optional<ServerboundSetBeaconPacket> ServerboundSetBeaconPacket::read(io::ByteBuffer& buffer) {
+    const auto take = [&buffer]() -> std::optional<std::int32_t> {
+        if (buffer.readByte() == 0) {
+            return std::nullopt;
+        }
+        return varInt::read(buffer);
+    };
+    ServerboundSetBeaconPacket packet;
+    packet.primary = take();
+    packet.secondary = take();
+    return buffer.failed() ? std::nullopt : std::optional{packet};
+}
+
 void ContainerButtonClickPacket::write(io::ByteBuffer& buffer) const {
     varInt::write(buffer, containerId);
     varInt::write(buffer, buttonId);

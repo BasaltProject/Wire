@@ -172,12 +172,14 @@ inline constexpr std::int32_t kGeneric9x3 = 2;
 inline constexpr std::int32_t kGeneric9x6 = 5;
 inline constexpr std::int32_t kCrafter3x3 = 7;
 inline constexpr std::int32_t kAnvil = 8;
+inline constexpr std::int32_t kBeacon = 9;
 inline constexpr std::int32_t kBlastFurnace = 10;
 inline constexpr std::int32_t kCrafting = 12;
 inline constexpr std::int32_t kEnchantment = 13;
 inline constexpr std::int32_t kFurnace = 14;
 inline constexpr std::int32_t kGrindstone = 15;
 inline constexpr std::int32_t kLectern = 17;
+inline constexpr std::int32_t kLoom = 18;
 inline constexpr std::int32_t kMerchant = 19;
 inline constexpr std::int32_t kSmithing = 21;
 inline constexpr std::int32_t kSmoker = 22;
@@ -218,6 +220,15 @@ struct ContainerClosePacket {
 /// that fuel lasts, 2 is the progress and 3 the total.
 struct ContainerSetDataPacket {
     static constexpr std::int32_t kId = 0x13;
+
+    /// parity: `BeaconMenu`'s three: the pyramid, then the two effects as registry ids shifted up
+    /// one so that zero can mean "none".
+    static constexpr std::int16_t kBeaconLevels = 0;
+    static constexpr std::int16_t kBeaconPrimary = 1;
+    static constexpr std::int16_t kBeaconSecondary = 2;
+
+    /// parity: `LoomMenu`'s one data slot, which row of patterns is picked. -1 is none.
+    static constexpr std::int16_t kLoomPattern = 0;
 
     /// parity: `AnvilMenu`'s one data slot, the levels it is asking for.
     static constexpr std::int16_t kAnvilCost = 0;
@@ -321,6 +332,21 @@ struct ServerboundRenameItemPacket {
     [[nodiscard]] static std::optional<ServerboundRenameItemPacket> read(io::ByteBuffer& buffer);
 
     friend bool operator==(const ServerboundRenameItemPacket&, const ServerboundRenameItemPacket&) = default;
+};
+
+/// Serverbound, id 0x34: the two effects picked in a beacon's window, each of them a mob effect's
+/// registry id. parity: `ServerboundSetBeaconPacket`, whose two fields are both optional because
+/// "none" is a choice the window can make.
+struct ServerboundSetBeaconPacket {
+    static constexpr std::int32_t kId = 0x34;
+
+    std::optional<std::int32_t> primary;
+    std::optional<std::int32_t> secondary;
+
+    void write(io::ByteBuffer& buffer) const;
+    [[nodiscard]] static std::optional<ServerboundSetBeaconPacket> read(io::ByteBuffer& buffer);
+
+    friend bool operator==(const ServerboundSetBeaconPacket&, const ServerboundSetBeaconPacket&) = default;
 };
 
 /// Serverbound, id 0x11: a button inside an open window.
