@@ -295,6 +295,8 @@ void SctpEngine::shutdown() {
         impl.dead = true;
     }
     if (impl.handle != nullptr) {
+        const struct linger abortOnClose{1, 0};
+        usrsctp_setsockopt(impl.handle, SOL_SOCKET, SO_LINGER, &abortOnClose, sizeof(abortOnClose));
         usrsctp_close(impl.handle);
         impl.handle = nullptr;
         usrsctp_deregister_address(&impl);
