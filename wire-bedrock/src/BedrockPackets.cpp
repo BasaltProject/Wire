@@ -1394,6 +1394,87 @@ void writeTradeItem(io::ByteBuffer& buffer, const std::string_view name, const B
 
 } // namespace
 
+/// Every enchantment that edition has, in its own order: the number on the wire is the place in
+/// this list. A protocol fact, the same as the block and item palettes.
+constexpr auto kBedrockEnchantments = std::to_array<std::string_view>({"protection",
+                                                                       "fire_protection",
+                                                                       "feather_falling",
+                                                                       "blast_protection",
+                                                                       "projectile_protection",
+                                                                       "thorns",
+                                                                       "respiration",
+                                                                       "depth_strider",
+                                                                       "aqua_affinity",
+                                                                       "sharpness",
+                                                                       "smite",
+                                                                       "bane_of_arthropods",
+                                                                       "knockback",
+                                                                       "fire_aspect",
+                                                                       "looting",
+                                                                       "efficiency",
+                                                                       "silk_touch",
+                                                                       "unbreaking",
+                                                                       "fortune",
+                                                                       "power",
+                                                                       "punch",
+                                                                       "flame",
+                                                                       "infinity",
+                                                                       "luck_of_the_sea",
+                                                                       "lure",
+                                                                       "frost_walker",
+                                                                       "mending",
+                                                                       "binding_curse",
+                                                                       "vanishing_curse",
+                                                                       "impaling",
+                                                                       "riptide",
+                                                                       "loyalty",
+                                                                       "channeling",
+                                                                       "multishot",
+                                                                       "piercing",
+                                                                       "quick_charge",
+                                                                       "soul_speed",
+                                                                       "swift_sneak",
+                                                                       "wind_burst",
+                                                                       "density",
+                                                                       "breach",
+                                                                       "lunge"});
+
+std::optional<std::int32_t> bedrockEnchantment(std::string_view name) {
+    if (name.starts_with("minecraft:")) {
+        name.remove_prefix(std::string_view{"minecraft:"}.size());
+    }
+    for (std::size_t at = 0; at < kBedrockEnchantments.size(); ++at) {
+        if (kBedrockEnchantments[at] == name) {
+            return static_cast<std::int32_t>(at);
+        }
+    }
+    return std::nullopt;
+}
+
+void writePlayerEnchantOptions(io::ByteBuffer& buffer, const std::span<const BedrockEnchantOption> options,
+                               const int protocol) {
+    writeVarUInt(buffer, static_cast<std::uint32_t>(options.size()));
+    for (const BedrockEnchantOption& option : options) {
+        if (protocol >= kEnchantCostByteProtocol) {
+            buffer.writeByte(static_cast<std::uint8_t>(std::clamp(option.cost, 0, 0xFF)));
+        } else {
+            writeVarUInt(buffer, static_cast<std::uint32_t>(std::max(option.cost, 0)));
+        }
+        writeIntLE(buffer, option.primarySlot);
+        // Three lists: what a book would take, what this item takes, and what a curse would add.
+        // Only the middle one is filled, which is the one the row is drawn from.
+        writeVarUInt(buffer, 0);
+        writeVarUInt(buffer, static_cast<std::uint32_t>(option.enchants.size()));
+        for (const BedrockEnchant& enchant : option.enchants) {
+            writeVarUInt(buffer, static_cast<std::uint32_t>(enchant.type));
+            buffer.writeByte(static_cast<std::uint8_t>(std::clamp(enchant.level, 0, 0xFF)));
+        }
+        writeVarUInt(buffer, 0);
+        writeString(buffer, option.name);
+        writeVarUInt(buffer, static_cast<std::uint32_t>(option.netId));
+    }
+}
+
 void writeUpdateTrade(io::ByteBuffer& buffer, const std::int32_t containerId, const std::int32_t tier,
                       const std::int64_t traderId, const std::int64_t playerId, const std::string_view displayName,
                       const std::span<const BedrockTrade> trades) {
@@ -2433,6 +2514,39 @@ void writeBedData(io::ByteBuffer& buffer, const std::int32_t x, const std::int32
                   const std::uint8_t colour) {
     writeBlockPosition(buffer, x, y, z);
     writeBedTag(buffer, x, y, z, colour);
+}
+
+std::optional<BedrockSignEdit> readSignEdit(io::ByteBuffer& buffer) {
+    constexpr std::array<std::string_view, 2> kFront{"FrontText", "Text"};
+
+    BedrockSignEdit edit;
+    edit.x = readVarInt(buffer);
+    edit.y = static_cast<std::int32_t>(readVarUInt(buffer));
+    edit.z = readVarInt(buffer);
+    const std::optional<std::string> text = nbt::readStringAt(buffer, kFront);
+    if (buffer.failed() || !text.has_value()) {
+        return std::nullopt;
+    }
+    edit.text = *text;
+    return edit;
+}
+
+std::optional<BedrockAnimation2> readAnimate(io::ByteBuffer& buffer) {
+    BedrockAnimation2 animation;
+    animation.action = readVarInt(buffer);
+    animation.runtimeEntityId = readVarULong(buffer);
+    return buffer.failed() ? std::nullopt : std::optional{animation};
+}
+
+std::optional<BedrockBlockPick> readBlockPickRequest(io::ByteBuffer& buffer) {
+    BedrockBlockPick pick;
+    pick.x = readVarInt(buffer);
+    pick.y = readVarInt(buffer);
+    pick.z = readVarInt(buffer);
+    static_cast<void>(buffer.readByte()); // Whether the block's own data comes with it, which only
+                                          // a creative client asks for and this server always gives.
+    pick.hotbarSlot = std::int32_t{buffer.readByte()};
+    return buffer.failed() ? std::nullopt : std::optional{pick};
 }
 
 void writeOpenSign(io::ByteBuffer& buffer, const std::int32_t x, const std::int32_t y, const std::int32_t z,

@@ -1103,3 +1103,18 @@ TEST_CASE("a villager's book is one tag a client can walk to the end of") {
     CHECK_FALSE(body.failed());
     CHECK(body.readableBytes() == 0);
 }
+
+TEST_CASE("a sign's editor sends back what a client typed into it") {
+    basalt::wire::io::ByteBuffer written;
+    basalt::wire::bedrock::writeSignData(written, -5, 70, 12, "one\ntwo", "back", false);
+
+    basalt::wire::io::ByteBuffer body;
+    body.writeBytes(written.readable());
+    const std::optional<basalt::wire::bedrock::BedrockSignEdit> edit = basalt::wire::bedrock::readSignEdit(body);
+
+    REQUIRE(edit.has_value());
+    CHECK(edit->x == -5);
+    CHECK(edit->y == 70);
+    CHECK(edit->z == 12);
+    CHECK(edit->text == "one\ntwo");
+}

@@ -174,6 +174,7 @@ inline constexpr std::int32_t kCrafter3x3 = 7;
 inline constexpr std::int32_t kAnvil = 8;
 inline constexpr std::int32_t kBlastFurnace = 10;
 inline constexpr std::int32_t kCrafting = 12;
+inline constexpr std::int32_t kEnchantment = 13;
 inline constexpr std::int32_t kFurnace = 14;
 inline constexpr std::int32_t kGrindstone = 15;
 inline constexpr std::int32_t kLectern = 17;
@@ -220,6 +221,13 @@ struct ContainerSetDataPacket {
 
     /// parity: `AnvilMenu`'s one data slot, the levels it is asking for.
     static constexpr std::int16_t kAnvilCost = 0;
+
+    /// parity: `EnchantmentMenu`'s ten: three costs, the seed, then the three enchantments it is
+    /// hinting at and the three levels they would come at.
+    static constexpr std::int16_t kEnchantmentCost = 0;
+    static constexpr std::int16_t kEnchantmentSeed = 3;
+    static constexpr std::int16_t kEnchantmentClue = 4;
+    static constexpr std::int16_t kEnchantmentLevelClue = 7;
 
     /// parity: AbstractFurnaceMenu's own four data slots.
     static constexpr std::int16_t kFurnaceLitTime = 0;
