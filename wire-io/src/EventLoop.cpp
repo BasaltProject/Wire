@@ -284,7 +284,6 @@ std::expected<void, int> EventLoop::watch(std::int64_t handle, IoInterest intere
     }
     impl_->watched.insert_or_assign(handle, item);
     impl_->handles.emplace(item.serial, handle);
-    impl_->ready.reserve(impl_->watched.size());
     impl_->pollEntries.reserve(impl_->watched.size() + 1);
     impl_->pollSerials.reserve(impl_->watched.size() + 1);
     return {};
@@ -319,6 +318,7 @@ std::expected<std::span<const IoReady>, int> EventLoop::wait(std::optional<int> 
         return std::unexpected{impl_->error};
     }
     impl_->ready.clear();
+    impl_->ready.reserve(impl_->watched.size());
     const auto deadline =
         timeoutMillis
             ? std::optional{std::chrono::steady_clock::now() + std::chrono::milliseconds{std::max(0, *timeoutMillis)}}
