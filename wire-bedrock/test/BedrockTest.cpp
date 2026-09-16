@@ -1118,3 +1118,106 @@ TEST_CASE("a sign's editor sends back what a client typed into it") {
     CHECK(edit->z == 12);
     CHECK(edit->text == "one\ntwo");
 }
+
+TEST_CASE("a locator bar line carries every field a client reads, in both shapes") {
+    namespace bedrock = basalt::wire::bedrock;
+
+    bedrock::BedrockWaypoint waypoint;
+    waypoint.groupHigh = 0x0123456789abcdefULL;
+    waypoint.groupLow = 0xfedcba9876543210ULL;
+    waypoint.x = 12.5F;
+    waypoint.y = 71.0F;
+    waypoint.z = -34.25F;
+    waypoint.dimension = bedrock::BedrockDimension::Nether;
+    waypoint.colour = 0xff0000;
+    waypoint.distance = 10.0F;
+    waypoint.entityId = 77;
+
+    basalt::wire::io::ByteBuffer written;
+    bedrock::writeLocatorBar(written, waypoint, bedrock::BedrockWaypointAction::Add, 2168);
+
+    basalt::wire::io::ByteBuffer read;
+    read.writeBytes(written.readable());
+    CHECK(bedrock::readVarUInt(read) == 1);
+    CHECK(bedrock::readLongLE(read) == static_cast<std::int64_t>(waypoint.groupHigh));
+    CHECK(bedrock::readLongLE(read) == static_cast<std::int64_t>(waypoint.groupLow));
+    // Every field is being set at once, which is what an arrival says.
+    CHECK(bedrock::readIntLE(read) == 0b111111);
+    CHECK(read.readByte() == 1);
+    CHECK(read.readByte() == 1); // Drawn.
+    CHECK(read.readByte() == 1);
+    CHECK(bedrock::readFloatLE(read) == 12.5F);
+    CHECK(bedrock::readFloatLE(read) == 71.0F);
+    CHECK(bedrock::readFloatLE(read) == -34.25F);
+    CHECK(bedrock::readVarInt(read) == 1);
+    CHECK(read.readByte() == 1);
+    // Near enough to be the first dot, drawn at its full size.
+    CHECK(bedrock::readString(read) == "textures/ui/locator_bar_dot_0");
+    CHECK(read.readByte() == 1);
+    CHECK(bedrock::readFloatLE(read) == 1.0F);
+    CHECK(bedrock::readFloatLE(read) == 1.0F);
+    CHECK(read.readByte() == 1);
+    // The alpha is the writer's, since a dot drawn see-through is a dot nobody sees.
+    CHECK(static_cast<std::uint32_t>(bedrock::readIntLE(read)) == 0xff'ff0000U);
+    CHECK(read.readByte() == 1);
+    CHECK(read.readByte() == 1); // The client moves it itself,
+    CHECK(read.readByte() == 1);
+    CHECK(bedrock::readVarLong(read) == 77); // following this entity.
+    CHECK(read.readByte() == 1);             // Arriving.
+    CHECK(!read.failed());
+
+    // 944 has no textures: the dot is a number, and the far ones are drawn smaller by the client.
+    waypoint.distance = 400.0F;
+    basalt::wire::io::ByteBuffer old;
+    bedrock::writeLocatorBar(old, waypoint, bedrock::BedrockWaypointAction::Update, 944);
+    basalt::wire::io::ByteBuffer back;
+    back.writeBytes(old.readable());
+    CHECK(bedrock::readVarUInt(back) == 1);
+    CHECK(bedrock::readLongLE(back) == static_cast<std::int64_t>(waypoint.groupHigh));
+    CHECK(bedrock::readLongLE(back) == static_cast<std::int64_t>(waypoint.groupLow));
+    CHECK(bedrock::readIntLE(back) == 0b111111);
+    CHECK(back.readByte() == 1);
+    CHECK(back.readByte() == 1);
+    CHECK(back.readByte() == 1);
+    CHECK(bedrock::readFloatLE(back) == 12.5F);
+    CHECK(bedrock::readFloatLE(back) == 71.0F);
+    CHECK(bedrock::readFloatLE(back) == -34.25F);
+    CHECK(bedrock::readVarInt(back) == 1);
+    CHECK(back.readByte() == 1);
+    CHECK(bedrock::readIntLE(back) == 5);
+    CHECK(back.readByte() == 1);
+    CHECK(static_cast<std::uint32_t>(bedrock::readIntLE(back)) == 0xff'ff0000U);
+    CHECK(back.readByte() == 1);
+    CHECK(back.readByte() == 1);
+    CHECK(back.readByte() == 1);
+    CHECK(bedrock::readVarLong(back) == 77);
+    CHECK(back.readByte() == 3); // Moved rather than added.
+    CHECK(!back.failed());
+}
+
+TEST_CASE("a client's complaint about a packet names the packet and the field") {
+    namespace bedrock = basalt::wire::bedrock;
+
+    basalt::wire::io::ByteBuffer written;
+    // parity: both numbers go out one below their place in the list, so a malformed packet is
+    // nought and a warning is nought as well.
+    bedrock::writeVarInt(written, 0);
+    bedrock::writeVarInt(written, 2);
+    bedrock::writeVarInt(written, 341);
+    bedrock::writeString(written, "Unable to read LocatorBarPacket");
+
+    basalt::wire::io::ByteBuffer read;
+    read.writeBytes(written.readable());
+    const std::optional<bedrock::BedrockPacketViolation> violation = bedrock::readPacketViolationWarning(read);
+
+    REQUIRE(violation.has_value());
+    CHECK(violation->type == 0);
+    CHECK(violation->severity == 2);
+    CHECK(violation->packetId == 341);
+    CHECK(violation->context == "Unable to read LocatorBarPacket");
+
+    // A short line is not one of these, and nothing is read out of what is not there.
+    basalt::wire::io::ByteBuffer cut;
+    cut.writeBytes(std::span{written.readable().data(), 2});
+    CHECK(!bedrock::readPacketViolationWarning(cut).has_value());
+}
