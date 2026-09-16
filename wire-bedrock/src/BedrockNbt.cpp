@@ -105,6 +105,17 @@ void beginCompoundList(io::ByteBuffer& buffer, const std::string_view name, cons
     writeVarInt(buffer, count);
 }
 
+void writeStringList(io::ByteBuffer& buffer, const std::string_view name,
+                     const std::span<const std::string_view> values) {
+    writeName(buffer, kList, name);
+    buffer.writeByte(kString);
+    writeVarInt(buffer, static_cast<std::int32_t>(values.size()));
+    for (const std::string_view value : values) {
+        writeVarUInt(buffer, static_cast<std::uint32_t>(value.size()));
+        buffer.writeBytes(std::span{reinterpret_cast<const std::uint8_t*>(value.data()), value.size()});
+    }
+}
+
 void end(io::ByteBuffer& buffer) { buffer.writeByte(kEnd); }
 
 void writeShort(io::ByteBuffer& buffer, const std::string_view name, const std::int16_t value) {

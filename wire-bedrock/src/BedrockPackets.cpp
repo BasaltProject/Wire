@@ -2005,6 +2005,11 @@ void writeMetadataLong(io::ByteBuffer& buffer, const EntityDataId id, const std:
     writeVarLong(buffer, value);
 }
 
+void writeMetadataInt(io::ByteBuffer& buffer, const EntityDataId id, const std::int32_t value, const int protocol) {
+    writeMetadataHead(buffer, id, EntityDataFormat::Int, protocol);
+    writeVarInt(buffer, value);
+}
+
 void writeMetadataShort(io::ByteBuffer& buffer, const EntityDataId id, const std::int16_t value, const int protocol) {
     writeMetadataHead(buffer, id, EntityDataFormat::Short, protocol);
     writeShortLE(buffer, static_cast<std::uint16_t>(value));
@@ -2549,6 +2554,43 @@ void writeSignData(io::ByteBuffer& buffer, const std::int32_t x, const std::int3
     writeSignTag(buffer, x, y, z, front, back, waxed);
 }
 
+void writeItemFrameBlock(io::ByteBuffer& buffer, const std::int32_t x, const std::int32_t y, const std::int32_t z,
+                         const bool glowing, const int face, const int protocol) {
+    writeBlockPosition(buffer, x, y, z);
+    writeVarUInt(buffer, itemFrameBlockId(glowing, face, protocol));
+    // Tell the neighbours, and say it came over the network rather than from the client itself.
+    writeVarUInt(buffer, 0b11);
+    writeVarUInt(buffer, 0); // The layer of blocks, not the one water sits in.
+}
+
+void writeItemFrameData(io::ByteBuffer& buffer, const std::int32_t x, const std::int32_t y, const std::int32_t z,
+                        const bool glowing, const std::string_view item, const std::int32_t count,
+                        const std::int32_t rotation) {
+    /// parity: the client looks a frame's data up by these two names and no other.
+    constexpr std::string_view kPlain = "ItemFrame";
+    constexpr std::string_view kGlowing = "GlowItemFrame";
+    /// An eighth of a turn, which is what one step of the other edition's rotation comes to.
+    constexpr float kStepDegrees = 45.0F;
+
+    writeBlockPosition(buffer, x, y, z);
+    nbt::beginCompound(buffer);
+    nbt::writeString(buffer, "id", glowing ? kGlowing : kPlain);
+    nbt::writeInt(buffer, "x", x);
+    nbt::writeInt(buffer, "y", y);
+    nbt::writeInt(buffer, "z", z);
+    nbt::writeByte(buffer, "isMovable", 1);
+    if (!item.empty()) {
+        nbt::beginNamed(buffer, "Item");
+        nbt::writeString(buffer, "Name", item);
+        nbt::writeByte(buffer, "Count", static_cast<std::int8_t>(count));
+        nbt::writeShort(buffer, "Damage", 0);
+        nbt::end(buffer);
+        nbt::writeFloat(buffer, "ItemDropChance", 1.0F);
+        nbt::writeFloat(buffer, "ItemRotation", static_cast<float>(rotation) * kStepDegrees);
+    }
+    nbt::end(buffer);
+}
+
 void writeBedTag(io::ByteBuffer& buffer, const std::int32_t x, const std::int32_t y, const std::int32_t z,
                  const std::uint8_t colour) {
     // What the client calls a bed's own data, which it looks up by this name and no other.
@@ -2789,6 +2831,90 @@ void writeSetEntityLink(io::ByteBuffer& buffer, const std::int64_t vehicleId, co
 
 void writeSetDifficulty(io::ByteBuffer& buffer, const std::int32_t difficulty) {
     writeVarUInt(buffer, static_cast<std::uint32_t>(difficulty));
+}
+
+void writeAddPainting(io::ByteBuffer& buffer, const std::int64_t entityId, const std::uint64_t runtimeEntityId,
+                      const float x, const float y, const float z, const std::int32_t direction,
+                      const std::string_view motive) {
+    writeVarLong(buffer, entityId);
+    writeVarULong(buffer, runtimeEntityId);
+    writeFloatLE(buffer, x);
+    writeFloatLE(buffer, y);
+    writeFloatLE(buffer, z);
+    writeVarInt(buffer, direction);
+    writeString(buffer, motive);
+}
+
+void writeSyncEntityProperty(io::ByteBuffer& buffer, const std::string_view entityType, const std::string_view property,
+                             const std::span<const std::string_view> choices) {
+    /// What kind of property it is, of which this server sends only the one that picks from a list.
+    constexpr std::int32_t kEnumProperty = 3;
+
+    nbt::beginCompound(buffer);
+    nbt::beginCompoundList(buffer, "properties", 1);
+    nbt::writeString(buffer, "name", property);
+    nbt::writeStringList(buffer, "enum", choices);
+    nbt::writeInt(buffer, "type", kEnumProperty);
+    nbt::end(buffer);
+    nbt::writeString(buffer, "type", entityType);
+    nbt::end(buffer);
+}
+
+void writeEntityIntProperty(io::ByteBuffer& buffer, const std::uint64_t runtimeEntityId, const std::uint32_t index,
+                            const std::int32_t value) {
+    writeVarULong(buffer, runtimeEntityId);
+    writeVarUInt(buffer, 0); // Nothing in the metadata itself: the property is the message.
+    writeVarUInt(buffer, 1);
+    writeVarUInt(buffer, index);
+    writeVarInt(buffer, value);
+    writeVarUInt(buffer, 0);  // No properties that are a fraction.
+    writeVarULong(buffer, 0); // Which tick it belongs to, which only a replay cares about.
+}
+
+bool hasAnything(const BedrockLook& look) {
+    return look.variant != 0 || look.markVariant != 0 || look.colour.has_value() || look.colour2.has_value() ||
+           look.scale.has_value() || look.horns.has_value() || look.strength.has_value();
+}
+
+void writeEntityLook(io::ByteBuffer& buffer, const std::uint64_t runtimeEntityId, const BedrockLook& look,
+                     const int protocol) {
+    std::uint32_t fields = 0;
+    fields += look.variant != 0 ? 1U : 0U;
+    fields += look.markVariant != 0 ? 1U : 0U;
+    fields += look.colour.has_value() ? 1U : 0U;
+    fields += look.colour2.has_value() ? 1U : 0U;
+    fields += look.scale.has_value() ? 1U : 0U;
+    fields += look.horns.has_value() ? 1U : 0U;
+    fields += look.strength.has_value() ? 1U : 0U;
+
+    writeVarULong(buffer, runtimeEntityId);
+    writeVarUInt(buffer, fields);
+    if (look.variant != 0) {
+        writeMetadataInt(buffer, EntityDataId::Variant, look.variant, protocol);
+    }
+    if (look.markVariant != 0) {
+        writeMetadataInt(buffer, EntityDataId::MarkVariant, look.markVariant, protocol);
+    }
+    if (look.colour.has_value()) {
+        writeMetadataHead(buffer, EntityDataId::Color, EntityDataFormat::Byte, protocol);
+        buffer.writeByte(static_cast<std::uint8_t>(*look.colour));
+    }
+    if (look.colour2.has_value()) {
+        writeMetadataHead(buffer, EntityDataId::Color2, EntityDataFormat::Byte, protocol);
+        buffer.writeByte(static_cast<std::uint8_t>(*look.colour2));
+    }
+    if (look.scale.has_value()) {
+        writeMetadataFloat(buffer, EntityDataId::Scale, *look.scale, protocol);
+    }
+    if (look.horns.has_value()) {
+        writeMetadataInt(buffer, EntityDataId::GoatHornCount, *look.horns, protocol);
+    }
+    if (look.strength.has_value()) {
+        writeMetadataInt(buffer, EntityDataId::Strength, *look.strength, protocol);
+    }
+    writeVarUInt(buffer, 0); // No entity properties, of either kind.
+    writeVarUInt(buffer, 0);
+    writeVarULong(buffer, 0); // Which tick it belongs to, which only a replay cares about.
 }
 
 void writeEntityFlags(io::ByteBuffer& buffer, const std::uint64_t runtimeEntityId, const std::uint64_t flags,

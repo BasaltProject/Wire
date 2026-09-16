@@ -33,4 +33,8 @@ inline constexpr std::uint16_t kBedrockAir = 0;
     return bedrockBlockIdsFor(protocol)[static_cast<std::size_t>(javaState)];
 }
 
+/// Where an item frame hangs, which is a block on that edition rather than the entity it is here.
+/// `face` is down, up, north, south, west, east, the order both editions number the six by.
+[[nodiscard]] std::uint16_t itemFrameBlockId(bool glowing, int face, int protocol);
+
 } // namespace basalt::wire::bedrock
