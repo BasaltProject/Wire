@@ -517,7 +517,8 @@ bool Link776::serverbound(ProtocolState state, MutablePacket& packet) {
     case play::ServerboundPlayerActionPacket::kId:
         rewrite(packet, [](io::ByteBuffer& input, io::ByteBuffer& output) {
             const std::int32_t action = protocol::varInt::read(input);
-            protocol::varInt::write(output, action >= kChangeDestroyDirection ? action + 1 : action);
+            protocol::varInt::write(output,
+                                    action >= kChangeDestroyDirection && action < INT32_MAX ? action + 1 : action);
             output.writeBytes(input.readable());
         });
         break;
