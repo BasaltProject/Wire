@@ -168,6 +168,7 @@ enum class BedrockPacket : std::uint16_t {
     PlayerFog = 160,
     CorrectPlayerMovePrediction = 161,
     ItemComponent = 162,
+    FilterText = 163,
     ClientboundDebugRenderer = 164,
     SyncEntityProperty = 165,
     AddVolumeEntity = 166,

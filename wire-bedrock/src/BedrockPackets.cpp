@@ -2560,6 +2560,90 @@ std::optional<BedrockEntityPick> readEntityPickRequest(io::ByteBuffer& buffer) {
     return buffer.failed() ? std::nullopt : std::optional{pick};
 }
 
+void writeSetSpawnPosition(io::ByteBuffer& buffer, const BedrockDimension dimension, const std::int32_t x,
+                           const std::int32_t y, const std::int32_t z) {
+    /// parity: `SetSpawnPositionPacket.Type.WORLD_SPAWN`, the one a server sets.
+    constexpr std::int32_t kWorldSpawn = 1;
+
+    writeVarInt(buffer, kWorldSpawn);
+    writeBlockPosition(buffer, x, y, z);
+    writeVarInt(buffer, static_cast<std::int32_t>(dimension));
+    writeBlockPosition(buffer, x, y, z);
+}
+
+void writeStopSound(io::ByteBuffer& buffer, const std::string_view sound, const bool stopAll) {
+    writeString(buffer, sound);
+    writeBool(buffer, stopAll);
+}
+
+void writePlayerStartItemCooldown(io::ByteBuffer& buffer, const std::string_view category,
+                                  const std::int32_t durationTicks) {
+    writeString(buffer, category);
+    writeVarInt(buffer, durationTicks);
+}
+
+std::optional<BedrockCredits> readShowCredits(io::ByteBuffer& buffer) {
+    static_cast<void>(readVarULong(buffer)); // Whose poem it is, which is always the reader's own.
+    const std::int32_t status = readVarInt(buffer);
+    if (buffer.failed() || status < 0 || status > static_cast<std::int32_t>(BedrockCredits::Finished)) {
+        return std::nullopt;
+    }
+    return static_cast<BedrockCredits>(status);
+}
+
+std::optional<BedrockEntityEventIn> readEntityEvent(io::ByteBuffer& buffer) {
+    BedrockEntityEventIn event;
+    event.runtimeEntityId = readVarULong(buffer);
+    event.event = buffer.readByte();
+    event.data = readVarInt(buffer);
+    return buffer.failed() ? std::nullopt : std::optional{event};
+}
+
+std::optional<BedrockBookEdit> readBookEdit(io::ByteBuffer& buffer) {
+    BedrockBookEdit edit;
+    edit.slot = readVarInt(buffer);
+    const std::uint32_t action = readVarUInt(buffer);
+    if (action > static_cast<std::uint32_t>(BedrockBookEdit::Action::Sign)) {
+        return std::nullopt;
+    }
+    edit.action = static_cast<BedrockBookEdit::Action>(action);
+    switch (edit.action) {
+    case BedrockBookEdit::Action::ReplacePage:
+    case BedrockBookEdit::Action::AddPage:
+        edit.page = readVarInt(buffer);
+        edit.text = readString(buffer);
+        static_cast<void>(readString(buffer)); // The photo on the page, which that edition dropped.
+        break;
+    case BedrockBookEdit::Action::DeletePage:
+        edit.page = readVarInt(buffer);
+        break;
+    case BedrockBookEdit::Action::SwapPages:
+        edit.page = readVarInt(buffer);
+        edit.otherPage = readVarInt(buffer);
+        break;
+    case BedrockBookEdit::Action::Sign:
+        edit.title = readString(buffer);
+        edit.author = readString(buffer);
+        static_cast<void>(readString(buffer)); // The signer's own account number, which nothing here reads.
+        break;
+    }
+    return buffer.failed() ? std::nullopt : std::optional{std::move(edit)};
+}
+
+std::optional<std::string> readFilterText(io::ByteBuffer& buffer) {
+    std::string text = readString(buffer);
+    static_cast<void>(buffer.readByte()); // Whether it came from the server, which on the way in it did not.
+    if (buffer.failed()) {
+        return std::nullopt;
+    }
+    return text;
+}
+
+void writeFilterText(io::ByteBuffer& buffer, const std::string_view text) {
+    writeString(buffer, text);
+    buffer.writeByte(1); // From the server, which is what marks it as looked over.
+}
+
 std::optional<BedrockLecternPage> readLecternUpdate(io::ByteBuffer& buffer, const int protocol) {
     /// Where the flag that said the book was being taken went away: that edition drops it on the
     /// ground itself and tells the server through the block instead.
@@ -2662,6 +2746,20 @@ void writeEntityFlags(io::ByteBuffer& buffer, const std::uint64_t runtimeEntityI
     writeVarULong(buffer, runtimeEntityId);
     writeVarUInt(buffer, 1);
     writeMetadataLong(buffer, EntityDataId::Flags, static_cast<std::int64_t>(flags), protocol);
+    writeVarUInt(buffer, 0); // No entity properties, of either kind.
+    writeVarUInt(buffer, 0);
+    writeVarULong(buffer, 0); // Which tick it belongs to, which only a replay cares about.
+}
+
+void writeNameTag(io::ByteBuffer& buffer, const std::uint64_t runtimeEntityId, const std::string_view nameTag,
+                  const bool always, const int protocol) {
+    writeVarULong(buffer, runtimeEntityId);
+    writeVarUInt(buffer, 2);
+    writeMetadataString(buffer, EntityDataId::Name, nameTag, protocol);
+    // parity: a name is drawn through walls and at any distance only while this is set, which is
+    // what `never` and `hideForOtherTeams` come to once the line itself has been worked out.
+    writeMetadataHead(buffer, EntityDataId::NametagAlwaysShow, EntityDataFormat::Byte, protocol);
+    buffer.writeByte(always ? 1 : 0);
     writeVarUInt(buffer, 0); // No entity properties, of either kind.
     writeVarUInt(buffer, 0);
     writeVarULong(buffer, 0); // Which tick it belongs to, which only a replay cares about.
