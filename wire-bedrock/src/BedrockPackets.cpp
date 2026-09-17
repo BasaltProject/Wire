@@ -2215,12 +2215,8 @@ namespace {
 /// the number means a type at all rather than an index into the enums.
 constexpr std::int32_t kArgValid = 0x100000;
 
-/// The rest of the line, selectors and all. It is what `/say` and `/tell` declare, and the nearest
-/// thing Bedrock has to "whatever the server wants to parse".
-/// What an argument whose shape this server does not describe is called. Not `message`, which is
-/// the kind that swallows the rest of the line: a client building its suggestions has to make sense
-/// of that while the line is still being typed, and it is what Geyser reaches for only when a
-/// command really does take a sentence.
+/// An argument this server does not describe. Not `message`, which swallows the rest of the line
+/// and confuses the client's suggestions while typing.
 constexpr std::int32_t kArgString = 56;
 
 } // namespace
@@ -2247,6 +2243,22 @@ void writeRespawn(io::ByteBuffer& buffer, const float x, const float y, const fl
     writeFloatLE(buffer, z);
     buffer.writeByte(static_cast<std::uint8_t>(state));
     writeVarULong(buffer, runtimeEntityId);
+}
+
+std::optional<BedrockPlayerAction> readPlayerAction(io::ByteBuffer& buffer) {
+    static_cast<void>(readVarULong(buffer)); // Whose action it is, which is always the sender's own.
+    const std::int32_t action = readVarInt(buffer);
+    if (buffer.failed()) {
+        return std::nullopt;
+    }
+    switch (action) {
+    case static_cast<std::int32_t>(BedrockPlayerAction::StopSleep):
+    case static_cast<std::int32_t>(BedrockPlayerAction::Respawn):
+    case static_cast<std::int32_t>(BedrockPlayerAction::DimensionChanged):
+        return static_cast<BedrockPlayerAction>(action);
+    default:
+        return std::nullopt;
+    }
 }
 
 std::optional<RespawnState> readRespawn(io::ByteBuffer& buffer) {
@@ -2552,6 +2564,34 @@ void writeSignData(io::ByteBuffer& buffer, const std::int32_t x, const std::int3
                    const std::string_view front, const std::string_view back, const bool waxed) {
     writeBlockPosition(buffer, x, y, z);
     writeSignTag(buffer, x, y, z, front, back, waxed);
+}
+
+void writePlayerHotbar(io::ByteBuffer& buffer, const std::int32_t slot) {
+    // The only container a hotbar slot can live in, and the one Java's packet never names.
+    constexpr std::uint8_t kInventoryContainer = 0;
+
+    writeVarUInt(buffer, static_cast<std::uint32_t>(slot));
+    buffer.writeByte(kInventoryContainer);
+    writeBool(buffer, true); // Select it, rather than only redraw the row.
+}
+
+void writeLevelSoundEvent(io::ByteBuffer& buffer, const std::int32_t event, const float x, const float y, const float z,
+                          const int protocol) {
+    // What a numbered sound this server sends carries past its own number: nothing at all.
+    constexpr std::int32_t kNoExtraData = -1;
+
+    writeVarUInt(buffer, static_cast<std::uint32_t>(event));
+    writeFloatLE(buffer, x);
+    writeFloatLE(buffer, y);
+    writeFloatLE(buffer, z);
+    writeVarInt(buffer, kNoExtraData);
+    writeString(buffer, "");  // No entity to name: these are the sounds a place makes.
+    writeBool(buffer, false); // Not a young one's voice,
+    writeBool(buffer, false); // and it gets quieter with distance like everything else.
+    writeLongLE(buffer, 0);   // Nothing it belongs to, which 786 added.
+    if (protocol >= kServerSoundHandleProtocol) {
+        writeBool(buffer, false); // And nowhere for a fire to start, which 975 added.
+    }
 }
 
 void writeItemFrameBlock(io::ByteBuffer& buffer, const std::int32_t x, const std::int32_t y, const std::int32_t z,

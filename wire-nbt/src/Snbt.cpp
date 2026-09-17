@@ -1,3 +1,4 @@
+#include <basalt/wire/common/JavaNumbers.hpp>
 #include <basalt/wire/nbt/NbtIO.hpp>
 #include <basalt/wire/nbt/Snbt.hpp>
 
@@ -81,11 +82,12 @@ void appendTag(std::string& out, const NbtTag& tag) {
         out += 'L';
         break;
     case NbtType::Float:
-        appendNumber(out, *tag.get<float>());
+        // parity: `SnbtPrinterTagVisitor` appends the value itself, which is `Float.toString`.
+        out += common::javaToString(*tag.get<float>());
         out += 'f';
         break;
     case NbtType::Double:
-        appendNumber(out, *tag.get<double>());
+        out += common::javaToString(*tag.get<double>());
         out += 'd';
         break;
     case NbtType::String:

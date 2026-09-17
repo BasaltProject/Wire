@@ -4,9 +4,11 @@
 #include <basalt/wire/io/ByteBuffer.hpp>
 #include <basalt/wire/protocol/play/BlockPos.hpp>
 #include <basalt/wire/protocol/play/InventoryPackets.hpp>
+#include <basalt/wire/protocol/play/ParticleOptions.hpp>
 #include <basalt/wire/text/Component.hpp>
 
 #include <cstdint>
+#include <functional>
 #include <optional>
 #include <variant>
 #include <vector>
@@ -182,8 +184,20 @@ struct SetEntityDataPacket {
         friend bool operator==(const RegistryIdValue&, const RegistryIdValue&) = default;
     };
 
+    /// A particle type and its options. parity: `ParticleTypes.STREAM_CODEC`, the id then the type's
+    /// own codec.
+    struct ParticleValue {
+        std::int32_t particleId = 0;
+        std::optional<ParticleOptions> options;
+        friend bool operator==(const ParticleValue&, const ParticleValue&) = default;
+    };
+
     using Value = std::variant<ByteValue, IntValue, FloatValue, TextValue, OptionalTextValue, ItemValue, BoolValue,
-                               RotationsValue, VillagerDataValue, OptionalBlockPosValue, PoseValue, RegistryIdValue>;
+                               RotationsValue, VillagerDataValue, OptionalBlockPosValue, PoseValue, RegistryIdValue,
+                               ParticleValue>;
+
+    /// Which option shape a particle type carries; nothing for a type with none.
+    using ParticleShapeOf = std::function<std::optional<ParticleOptionShape>(std::int32_t particleId)>;
 
     struct Entry {
         std::uint8_t index = 0;
@@ -196,7 +210,10 @@ struct SetEntityDataPacket {
     std::vector<Entry> entries;
 
     void write(io::ByteBuffer& buffer) const;
-    [[nodiscard]] static std::optional<SetEntityDataPacket> read(io::ByteBuffer& buffer);
+    /// A particle entry can only be read with `shapeOf`, since the wire does not say how long its
+    /// options are; without one it is refused.
+    [[nodiscard]] static std::optional<SetEntityDataPacket> read(io::ByteBuffer& buffer,
+                                                                 const ParticleShapeOf& shapeOf = {});
 
     /// The one entry a dropped item needs.
     [[nodiscard]] static SetEntityDataPacket item(std::int32_t entityId, std::optional<WireItemStack> stack);

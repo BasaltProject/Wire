@@ -1185,6 +1185,20 @@ TEST_CASE("entity metadata round trips every serializer this build writes") {
     unknown.writeByte(0);
     varInt::write(unknown, 99);
     CHECK_FALSE(Data::read(unknown).has_value());
+
+    // parity: a dragon's breath cloud, `dragon_breath` with its power.
+    Data breath;
+    breath.entityId = 7;
+    breath.entries.push_back(
+        {.index = 10,
+         .value = Data::ParticleValue{.particleId = 9, .options = ParticleOptions{ParticleOptions::Number{1.0F}}}});
+    io::ByteBuffer breathBuffer;
+    breath.write(breathBuffer);
+    const Data::ParticleShapeOf shapes = [](std::int32_t) { return ParticleOptionShape::Number; };
+    CHECK(Data::read(breathBuffer, shapes) == breath);
+    io::ByteBuffer blind;
+    breath.write(blind);
+    CHECK_FALSE(Data::read(blind).has_value());
 }
 
 TEST_CASE("the entity metadata helpers write the indices vanilla expects") {
