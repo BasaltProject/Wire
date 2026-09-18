@@ -53,7 +53,8 @@ struct SpawnEntityPacket {
     friend bool operator==(const SpawnEntityPacket&, const SpawnEntityPacket&) = default;
 };
 
-/// The registry-specific holder serializers, in 26.2's registration order.
+/// The registry-specific holder serializers, in 26.2's registration order, and the id-mapped enums
+/// after them that travel the same way, as one VarInt.
 enum class RegistryHolder : std::int32_t {
     CatVariant = 21,
     CatSoundVariant = 22,
@@ -68,6 +69,10 @@ enum class RegistryHolder : std::int32_t {
     ChickenSoundVariant = 31,
     ZombieNautilusVariant = 32,
     PaintingVariant = 34,
+    SnifferState = 35,
+    ArmadilloState = 36,
+    CopperGolemState = 37,
+    WeatheringCopperState = 38,
 };
 
 /// Clientbound, id 0x63: entity metadata. A stream of entries, each an index byte, a serializer id
@@ -192,9 +197,15 @@ struct SetEntityDataPacket {
         friend bool operator==(const ParticleValue&, const ParticleValue&) = default;
     };
 
+    /// A list of particles. parity: `EntityDataSerializers.PARTICLES`, a living entity's effect swirl.
+    struct ParticlesValue {
+        std::vector<ParticleValue> particles;
+        friend bool operator==(const ParticlesValue&, const ParticlesValue&) = default;
+    };
+
     using Value = std::variant<ByteValue, IntValue, FloatValue, TextValue, OptionalTextValue, ItemValue, BoolValue,
                                RotationsValue, VillagerDataValue, OptionalBlockPosValue, PoseValue, RegistryIdValue,
-                               ParticleValue>;
+                               ParticleValue, ParticlesValue>;
 
     /// Which option shape a particle type carries; nothing for a type with none.
     using ParticleShapeOf = std::function<std::optional<ParticleOptionShape>(std::int32_t particleId)>;
