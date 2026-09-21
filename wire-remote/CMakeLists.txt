@@ -4,8 +4,11 @@ basalt_module(wire-remote
         src/AttemptTracker.cpp
         src/Http.cpp
         src/HttpServer.cpp
-    DEPENDS basalt::wire-common basalt::wire-io
+        src/QueryServer.cpp
+        src/UpdateChecker.cpp
+    DEPENDS basalt::wire-auth basalt::wire-common basalt::wire-io
     PRIVATE_DEPENDS basalt::mbedtls
 )
+
 
 
