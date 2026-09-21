@@ -6,9 +6,11 @@ basalt_module(wire-plugins
         src/PacketRegistry.cpp
         src/PacketView.cpp
         src/PluginFolder.cpp
+        src/PluginListeners.cpp
         src/PluginManifest.cpp
         src/PluginOrder.cpp
         src/PluginPackage.cpp
+        src/PluginScheduling.cpp
         src/PluginSignature.cpp
         src/PluginText.cpp
         src/PluginToml.cpp
