@@ -38,8 +38,9 @@ void SpawnInfo::write(io::ByteBuffer& buffer) const {
     varInt::write(buffer, dimension);
     writeString(buffer, dimensionName);
     buffer.writeLong(hashedSeed);
-    buffer.writeByte(static_cast<std::uint8_t>(gamemode));
-    buffer.writeByte(static_cast<std::uint8_t>(previousGamemode));
+    varInt::write(buffer, static_cast<std::int32_t>(gamemode));
+    // parity: GameType.OPTIONAL_STREAM_CODEC, zero for none and the id plus one otherwise.
+    varInt::write(buffer, previousGamemode >= 0 && previousGamemode <= 3 ? previousGamemode + 1 : 0);
     writeBoolean(buffer, isDebug);
     writeBoolean(buffer, isFlat);
     writeBoolean(buffer, death.has_value());
@@ -55,12 +56,12 @@ std::optional<SpawnInfo> SpawnInfo::read(io::ByteBuffer& buffer) {
     info.dimension = varInt::read(buffer);
     info.dimensionName = readString(buffer);
     info.hashedSeed = buffer.readLong();
-    const std::optional<Gamemode> gamemode = fromOrdinal<Gamemode>(buffer.readByte(), 4);
+    const std::optional<Gamemode> gamemode = fromOrdinal<Gamemode>(varInt::read(buffer), 4);
     if (!gamemode) {
         return std::nullopt;
     }
     info.gamemode = *gamemode;
-    info.previousGamemode = buffer.readByte();
+    info.previousGamemode = varInt::read(buffer) - 1;
     info.isDebug = readBoolean(buffer);
     info.isFlat = readBoolean(buffer);
     if (readBoolean(buffer)) {

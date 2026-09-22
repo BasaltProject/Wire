@@ -12,11 +12,9 @@
 #include <vector>
 
 /// Protocol-level read and write helpers over the network buffer. Strings are plain UTF-8 with a
-/// varint byte-length prefix, unlike NBT's modified UTF-8: confirmed against the decompiled
-/// `net.minecraft.network.Utf8String`.
-///
-/// Reads never throw. A malformed field raises the buffer's failure flag and returns a default, and
-/// the caller checks once after decoding a whole packet.
+/// varint byte-length prefix, unlike NBT's modified UTF-8 (`net.minecraft.network.Utf8String`).
+/// Reads never throw: a malformed field raises the buffer's failure flag and returns a default, and
+/// the caller checks once per packet.
 namespace basalt::wire::protocol {
 
 inline constexpr std::int32_t kDefaultMaxStringLength = 32767;
@@ -47,6 +45,12 @@ inline void writeUuid(io::ByteBuffer& buffer, const common::Uuid& uuid) {
     const auto low = static_cast<std::uint64_t>(buffer.readLong());
     return common::Uuid{high, low};
 }
+
+/// parity: ByteBufCodecs.BIT_SET, `BitSet.toByteArray` behind a varint length. The words are
+/// `toLongArray`'s, and a read gives them back with the trailing zero words dropped.
+void writeBitSet(io::ByteBuffer& buffer, std::span<const std::int64_t> words);
+
+[[nodiscard]] std::vector<std::int64_t> readBitSet(io::ByteBuffer& buffer);
 
 /// "Network NBT": a root tag with no name field, which is what chat, registry data and disconnect
 /// reasons carry.

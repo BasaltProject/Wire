@@ -30,16 +30,6 @@ constexpr std::int32_t kParticlesAll = 0;
     return static_cast<std::uint8_t>(std::lround(degrees * 256.0F / 360.0F));
 }
 
-[[nodiscard]] std::size_t varIntSize(std::int32_t value) {
-    std::size_t size = 1;
-    auto remaining = static_cast<std::uint32_t>(value) >> 7;
-    while (remaining != 0) {
-        size++;
-        remaining >>= 7;
-    }
-    return size;
-}
-
 } // namespace
 
 bool Link767::clientbound(ProtocolState state, MutablePacket& packet) {
@@ -63,17 +53,14 @@ bool Link767::clientbound(ProtocolState state, MutablePacket& packet) {
         encode(packet, [&](io::ByteBuffer& out) { login.write(out, false, false); });
         break;
     }
-    case play::RespawnPacket::kId: {
-        const auto respawn = decode(packet, [](io::ByteBuffer& in) { return play::RespawnPacket::read(in); });
-        if (!respawn.has_value()) {
-            return true;
-        }
-        encode(packet, [&](io::ByteBuffer& output) {
-            writeSpawnInfoWithoutSeaLevel(output, respawn->spawnInfo);
-            output.writeByte(respawn->dataToKeep);
+    case play::RespawnPacket::kId:
+        rewrite(packet, [](io::ByteBuffer& input, io::ByteBuffer& output) {
+            const LoginFields::SpawnFields spawn = LoginFields::SpawnFields::read(input, true);
+            const std::uint8_t dataToKeep = input.readByte();
+            spawn.write(output, false);
+            output.writeByte(dataToKeep);
         });
         break;
-    }
     case play::PlayerPositionPacket::kId: {
         const auto position = decode(packet, [](io::ByteBuffer& in) { return play::PlayerPositionPacket::read(in); });
         if (!position.has_value()) {
@@ -92,23 +79,20 @@ bool Link767::clientbound(ProtocolState state, MutablePacket& packet) {
         });
         break;
     }
-    case play::EntityPositionSyncPacket::kId: {
-        const auto sync = decode(packet, [](io::ByteBuffer& in) { return play::EntityPositionSyncPacket::read(in); });
-        if (!sync.has_value()) {
-            return true;
-        }
+    case play::EntityPositionSyncPacket::kId:
         packet.overrideId(kTeleportEntity767);
-        encode(packet, [&](io::ByteBuffer& output) {
-            protocol::varInt::write(output, sync->entityId);
-            output.writeDouble(sync->x);
-            output.writeDouble(sync->y);
-            output.writeDouble(sync->z);
-            output.writeByte(angleOf(sync->yaw));
-            output.writeByte(angleOf(sync->pitch));
-            protocol::writeBoolean(output, sync->onGround);
+        rewrite(packet, [](io::ByteBuffer& input, io::ByteBuffer& output) {
+            protocol::varInt::write(output, protocol::varInt::read(input));
+            output.writeBytes(input.readSpan(3 * 8));
+            // The velocity has nowhere to go below 1.21.2.
+            input.skip(3 * 8);
+            const float yaw = input.readFloat();
+            const float pitch = input.readFloat();
+            output.writeByte(angleOf(yaw));
+            output.writeByte(angleOf(pitch));
+            protocol::writeBoolean(output, input.readByte() != 0);
         });
         break;
-    }
     case play::EntityTeleportPacket::kId: {
         const auto teleport = decode(packet, [](io::ByteBuffer& in) { return play::EntityTeleportPacket::read(in); });
         if (!teleport.has_value()) {
@@ -183,15 +167,6 @@ void Link767::widenContainer(MutablePacket& packet) {
         protocol::varInt::write(output, container);
         output.writeBytes(input.readable());
     });
-}
-
-void Link767::writeSpawnInfoWithoutSeaLevel(io::ByteBuffer& output, const play::SpawnInfo& spawn) {
-    io::ByteBuffer whole;
-    spawn.write(whole);
-    // Walk to the sea level and stop: it is a varint at the very end, so what comes before it is
-    // written straight out.
-    const std::span<const std::uint8_t> bytes = whole.readable();
-    output.writeBytes(bytes.first(bytes.size() - varIntSize(spawn.seaLevel)));
 }
 
 } // namespace basalt::wire::multiversion::java

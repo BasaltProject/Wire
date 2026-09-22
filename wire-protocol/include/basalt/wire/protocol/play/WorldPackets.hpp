@@ -37,15 +37,13 @@ struct Heightmap {
     friend bool operator==(const Heightmap&, const Heightmap&) = default;
 };
 
-/// Clientbound, id 0x26: a miscellaneous world or game-state notification, one of a fixed set of
+/// Clientbound, id 0x27: a miscellaneous world or game-state notification, one of a fixed set of
 /// numeric event types.
 ///
-/// The chunk-load-start event is what vanilla's join sequence sends right before chunk data, and the
-/// client only starts waiting for chunks once it sees it: without it the loading screen never
-/// dismisses, even with correct chunks and a correct batch wrapper. A game mode change rides on this
-/// packet too; vanilla has no dedicated one.
+/// The chunk-load-start event goes right before chunk data on join: without it the loading screen
+/// never dismisses. A game mode change rides on this packet too.
 struct GameEventPacket {
-    static constexpr std::int32_t kId = 0x26;
+    static constexpr std::int32_t kId = 0x27;
     static constexpr std::uint8_t kStartRaining = 1;
     static constexpr std::uint8_t kStopRaining = 2;
     static constexpr std::uint8_t kChangeGameMode = 3;
@@ -90,9 +88,9 @@ struct LightData {
     friend bool operator==(const LightData&, const LightData&) = default;
 };
 
-/// Clientbound, id 0x2d: one chunk column's block and biome data.
+/// Clientbound, id 0x2e: one chunk column's block and biome data.
 struct MapChunkPacket {
-    static constexpr std::int32_t kId = 0x2d;
+    static constexpr std::int32_t kId = 0x2e;
 
     std::int32_t x = 0;
     std::int32_t z = 0;
@@ -102,7 +100,8 @@ struct MapChunkPacket {
     LightData light;
 
     void write(io::ByteBuffer& buffer) const;
-    [[nodiscard]] static std::optional<MapChunkPacket> read(io::ByteBuffer& buffer);
+    /// Without `withLight` the light is left unread, for a caller that knows an older shape of it.
+    [[nodiscard]] static std::optional<MapChunkPacket> read(io::ByteBuffer& buffer, bool withLight = true);
 
     friend bool operator==(const MapChunkPacket&, const MapChunkPacket&) = default;
 };
@@ -110,10 +109,10 @@ struct MapChunkPacket {
 /// Clientbound, id 0x0c: marks the start of a batch of chunk sends. No payload.
 inline constexpr std::int32_t kChunkBatchStartId = 0x0c;
 
-/// Clientbound, id 0x25: discard a chunk column that fell outside the view distance. Its body is one
+/// Clientbound, id 0x26: discard a chunk column that fell outside the view distance. Its body is one
 /// packed chunk position, not two separate ints like the chunk packet.
 struct ForgetLevelChunkPacket {
-    static constexpr std::int32_t kId = 0x25;
+    static constexpr std::int32_t kId = 0x26;
 
     std::int32_t chunkX = 0;
     std::int32_t chunkZ = 0;
@@ -151,9 +150,9 @@ struct ChunkBatchReceivedPacket {
     friend bool operator==(const ChunkBatchReceivedPacket&, const ChunkBatchReceivedPacket&) = default;
 };
 
-/// Clientbound, id 0x30: the light half of chunk sync, sent alongside the chunk itself.
+/// Clientbound, id 0x31: the light half of chunk sync, sent alongside the chunk itself.
 struct UpdateLightPacket {
-    static constexpr std::int32_t kId = 0x30;
+    static constexpr std::int32_t kId = 0x31;
 
     std::int32_t chunkX = 0;
     std::int32_t chunkZ = 0;
@@ -165,11 +164,11 @@ struct UpdateLightPacket {
     friend bool operator==(const UpdateLightPacket&, const UpdateLightPacket&) = default;
 };
 
-/// Clientbound, id 0x5e: which chunk is the centre of the client's loaded area. Sent on join before
+/// Clientbound, id 0x60: which chunk is the centre of the client's loaded area. Sent on join before
 /// any chunk data: without it the loading screen never dismisses, because the client never learns
 /// which chunks to expect.
 struct SetChunkCacheCenterPacket {
-    static constexpr std::int32_t kId = 0x5e;
+    static constexpr std::int32_t kId = 0x60;
 
     std::int32_t chunkX = 0;
     std::int32_t chunkZ = 0;
@@ -180,10 +179,10 @@ struct SetChunkCacheCenterPacket {
     friend bool operator==(const SetChunkCacheCenterPacket&, const SetChunkCacheCenterPacket&) = default;
 };
 
-/// Clientbound, id 0x5f: how many chunks around the centre to expect. It has to match what the
+/// Clientbound, id 0x61: how many chunks around the centre to expect. It has to match what the
 /// server actually sends, or the client waits for chunks that never arrive.
 struct SetChunkCacheRadiusPacket {
-    static constexpr std::int32_t kId = 0x5f;
+    static constexpr std::int32_t kId = 0x61;
 
     std::int32_t radius = 0;
 
@@ -193,9 +192,9 @@ struct SetChunkCacheRadiusPacket {
     friend bool operator==(const SetChunkCacheRadiusPacket&, const SetChunkCacheRadiusPacket&) = default;
 };
 
-/// Clientbound, id 0x6f: the server's simulation distance.
+/// Clientbound, id 0x71: the server's simulation distance.
 struct SetSimulationDistancePacket {
-    static constexpr std::int32_t kId = 0x6f;
+    static constexpr std::int32_t kId = 0x71;
 
     std::int32_t simulationDistance = 0;
 
@@ -218,6 +217,21 @@ struct ClientboundBlockUpdatePacket {
     friend bool operator==(const ClientboundBlockUpdatePacket&, const ClientboundBlockUpdatePacket&) = default;
 };
 
+/// Clientbound, id 0x25: a block shown to the client that the world does not hold.
+///
+/// parity: `ClientboundAddTransientBlockPacket`; the client draws it until the next update there.
+struct AddTransientBlockPacket {
+    static constexpr std::int32_t kId = 0x25;
+
+    BlockPos pos;
+    std::int32_t blockStateId = 0;
+
+    void write(io::ByteBuffer& buffer) const;
+    [[nodiscard]] static std::optional<AddTransientBlockPacket> read(io::ByteBuffer& buffer);
+
+    friend bool operator==(const AddTransientBlockPacket&, const AddTransientBlockPacket&) = default;
+};
+
 /// One clock's state: how many ticks it has counted, where it is between ticks, and how fast it
 /// runs. A rate of zero is how a paused clock is expressed, since there is no paused flag.
 struct ClockUpdate {
@@ -230,13 +244,12 @@ struct ClockUpdate {
     friend bool operator==(const ClockUpdate&, const ClockUpdate&) = default;
 };
 
-/// Clientbound, id 0x71: the world clocks' state.
+/// Clientbound, id 0x73: the world clocks' state.
 ///
-/// 26.2 stopped sending a day-time number and sends clocks instead, each a registry entry the
-/// dimension type points at. A dimension with no clock, the Nether, is simply never updated, which
-/// is why its sky never moves.
+/// Since 26.2 these are clocks, registry entries the dimension type points at, not a day-time number.
+/// A dimension with no clock (the Nether) is never updated.
 struct SetTimePacket {
-    static constexpr std::int32_t kId = 0x71;
+    static constexpr std::int32_t kId = 0x73;
     /// parity: WorldClocks, whose registration order is the id the holder carries.
     static constexpr std::int32_t kOverworldClock = 0;
     static constexpr std::int32_t kEndClock = 1;
@@ -263,13 +276,12 @@ struct ChangeDifficultyPacket {
     friend bool operator==(const ChangeDifficultyPacket&, const ChangeDifficultyPacket&) = default;
 };
 
-/// Clientbound, id 0x54: every block that changed inside one section, in one packet.
+/// Clientbound, id 0x56: every block that changed inside one section, in one packet.
 ///
-/// The section coordinate packs as SectionPos.asLong (22 bits of x, 20 of y, 22 of z), and each
-/// change as a varlong of the state id shifted over a packed relative position, which is why a
-/// section can only carry 4096 distinct positions.
+/// The section packs as `SectionPos.asLong` (22 bits of x, 20 of y, 22 of z), each change as a varlong
+/// of the state id shifted over a 12-bit relative position.
 struct SectionBlocksUpdatePacket {
-    static constexpr std::int32_t kId = 0x54;
+    static constexpr std::int32_t kId = 0x56;
 
     struct Change {
         /// A section-relative position, already packed the way the wire wants it.

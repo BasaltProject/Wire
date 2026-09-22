@@ -554,10 +554,31 @@ void readBedrockBlockPosition(io::ByteBuffer& buffer, std::int32_t& x, std::int3
     return id;
 }
 
-/// Where a stack came from. Two of the five kinds carry a number of their own.
-void readInventorySource(io::ByteBuffer& buffer) {
+/// Whether an optional field follows, said with `flags` booleans in a row. The reading stops at the
+/// first one that is off, the way the client writes them.
+[[nodiscard]] bool presentFlags(io::ByteBuffer& buffer, const int flags) {
+    for (int at = 0; at < flags; ++at) {
+        if (buffer.readByte() == 0) {
+            return false;
+        }
+    }
+    return true;
+}
+
+/// Where a stack came from. Unflagged (`flags` zero), three of the kinds carry a number of their
+/// own; flagged, a window and what the world did are both always announced, with that many flags.
+void readInventorySource(io::ByteBuffer& buffer, const int flags) {
     const std::uint32_t kind = readVarUInt(buffer);
-    if (kind == 0 || kind == 99999) {
+    if (flags > 0) {
+        if (presentFlags(buffer, flags)) {
+            static_cast<void>(buffer.readByte()); // Which window,
+        }
+        if (presentFlags(buffer, flags)) {
+            static_cast<void>(readVarUInt(buffer)); // or what the world did with it.
+        }
+        return;
+    }
+    if (kind == 0 || kind == 100 || kind == 99999) {
         static_cast<void>(readVarInt(buffer)); // Which window,
     } else if (kind == 2) {
         static_cast<void>(readVarUInt(buffer)); // or what the world did with it.
@@ -567,9 +588,10 @@ void readInventorySource(io::ByteBuffer& buffer) {
 /// The click itself. Everything before the block it names is walked past: this server does not let
 /// a client tell it what moved where, only what was clicked.
 [[nodiscard]] std::optional<BedrockItemUse> readItemUseTransaction(io::ByteBuffer& buffer, const int protocol) {
-    // 2168 put a boolean in front of each of the two lists, and turned three of the small numbers
-    // from varints into single bytes. Everything else is the same run of fields.
+    // 2168 put a boolean in front of each of the two lists, two in front of the second, and turned
+    // three of the small numbers from varints into single bytes. 26.50 dropped the pair again.
     const bool native = protocol >= kHeldItemDescriptorProtocol;
+    const bool single = protocol >= kSingleFlagProtocol;
     const std::int32_t legacyRequestId = readVarInt(buffer);
     const bool legacySlots = native ? (buffer.readByte() != 0) : true;
     if (legacySlots && legacyRequestId < -1 && (legacyRequestId & 1) == 0) {
@@ -582,10 +604,10 @@ void readInventorySource(io::ByteBuffer& buffer) {
             }
         }
     }
-    if (!native || ((buffer.readByte() != 0) && (buffer.readByte() != 0))) {
+    if (!native || single || presentFlags(buffer, 2)) {
         const std::uint32_t actions = readVarUInt(buffer);
         for (std::uint32_t at = 0; at < actions && !buffer.failed(); ++at) {
-            readInventorySource(buffer);
+            readInventorySource(buffer, single ? 1 : native ? 2 : 0);
             static_cast<void>(readVarUInt(buffer));        // Which slot,
             static_cast<void>(readItem(buffer, protocol)); // what was there,
             static_cast<void>(readItem(buffer, protocol)); // and what is now.
@@ -599,6 +621,9 @@ void readInventorySource(io::ByteBuffer& buffer) {
     readBedrockBlockPosition(buffer, use.x, use.y, use.z);
     use.face = native ? std::int32_t{buffer.readByte()} : readVarInt(buffer);
     use.hotbarSlot = readVarInt(buffer);
+    if (protocol >= kItemUseHandProtocol) {
+        static_cast<void>(buffer.readByte()); // Which hand, which the held slot already says.
+    }
     use.itemRuntimeId = readItem(buffer, protocol);
     static_cast<void>(readFloatLE(buffer)); // Where the player was,
     static_cast<void>(readFloatLE(buffer));
@@ -969,7 +994,7 @@ std::optional<PlayerAuthInput> readPlayerAuthInput(io::ByteBuffer& buffer, const
     // run of bits into a list of the ones that are on; below it they are one long varint.
     std::set<std::int32_t> flags;
     if (protocol >= kInputFlagListProtocol) {
-        if ((buffer.readByte() != 0)) {
+        if (protocol >= kSingleFlagProtocol || (buffer.readByte() != 0)) {
             const std::uint32_t count = readVarUInt(buffer);
             for (std::uint32_t at = 0; at < count && !buffer.failed(); ++at) {
                 flags.insert(readVarInt(buffer));
@@ -1010,12 +1035,13 @@ std::optional<PlayerAuthInput> readPlayerAuthInput(io::ByteBuffer& buffer, const
     }
 
     // From here the packet is a run of optional pieces, each one there because a flag says so. 2168
-    // puts a pair of booleans in front of each: the first says the field exists at all.
+    // puts a pair of booleans in front of each, the first saying the field exists at all; 26.50
+    // keeps one.
     const auto present = [&buffer, protocol](const bool flagged) {
         if (protocol < kInputFlagListProtocol) {
             return flagged;
         }
-        return (buffer.readByte() != 0) && (buffer.readByte() != 0);
+        return presentFlags(buffer, protocol >= kSingleFlagProtocol ? 1 : 2);
     };
     if (present(flags.contains(kFlagItemInteraction))) {
         input.itemUse = readItemUseTransaction(buffer, protocol);
@@ -1765,7 +1791,9 @@ void writeItemStackResponse(io::ByteBuffer& buffer, const std::int32_t requestId
     buffer.writeByte(accepted ? 0 : 1);
     writeVarInt(buffer, requestId);
     if (native) {
-        writeBool(buffer, true);
+        if (protocol < kSingleFlagProtocol) {
+            writeBool(buffer, true);
+        }
         if (containers.empty()) {
             writeBool(buffer, false);
             return;
@@ -1786,7 +1814,9 @@ void writeItemStackResponse(io::ByteBuffer& buffer, const std::int32_t requestId
             buffer.writeByte(static_cast<std::uint8_t>(slot.slot)); // The same slot, as the hotbar numbers it.
             buffer.writeByte(static_cast<std::uint8_t>(slot.count));
             if (native) {
-                writeBool(buffer, true);
+                if (protocol < kSingleFlagProtocol) {
+                    writeBool(buffer, true);
+                }
                 writeBool(buffer, slot.stackNetworkId > 0);
                 if (slot.stackNetworkId > 0) {
                     writeVarInt(buffer, slot.stackNetworkId);
@@ -1826,9 +1856,15 @@ void writePlaySound(io::ByteBuffer& buffer, const std::string_view sound, const 
     if (writesNativeShapes(protocol)) {
         writeVarUInt(buffer, 0); // Played once, not looped.
     }
+    if (protocol >= kSoundPlaybackProtocol) {
+        writeBool(buffer, false); // Heard only by those in range.
+    }
     // 26.20 and up let the server name a sound it holds itself. This one never does.
     if (protocol >= kServerSoundHandleProtocol) {
         writeBool(buffer, false);
+    }
+    if (protocol >= kSoundPlaybackProtocol) {
+        writeBool(buffer, false); // Played from the start.
     }
 }
 
@@ -2503,10 +2539,12 @@ void writeRemoveScores(io::ByteBuffer& buffer, const std::span<const std::int64_
 }
 
 void writeBossEvent(io::ByteBuffer& buffer, const std::int64_t bossEntityId, const BedrockBossAction action,
-                    const std::string_view title, const float progress) {
+                    const std::string_view title, const float progress, const int protocol) {
     writeVarLong(buffer, bossEntityId);
-    writeVarLong(buffer, 0); // Which player it is for, which a server drawing one for everybody
-                             // leaves alone.
+    if (protocol < kBossBarPlayerlessProtocol) {
+        writeVarLong(buffer, 0); // Which player it is for, which a server drawing one for everybody
+                                 // leaves alone.
+    }
     buffer.writeByte(static_cast<std::uint8_t>(action));
     writeString(buffer, title);
     writeString(buffer, ""); // The same title again, filtered, which this server does not filter.
@@ -3028,8 +3066,12 @@ namespace {
 /// The head every transaction carries: the legacy request, the slots it names and the client's own
 /// idea of what moved in its bags. Answers which kind of transaction follows.
 [[nodiscard]] std::uint32_t readTransactionHead(io::ByteBuffer& buffer, const int protocol) {
+    // 1001 announced the old slots, the kind and the list each with a flag, and 26.50 kept only the
+    // first. Before 1001 there were none.
+    const bool flagged = protocol >= kTransactionFlagsProtocol;
+    const bool single = protocol >= kSingleFlagProtocol;
     const std::int32_t legacyRequestId = readVarInt(buffer);
-    if (buffer.readByte() != 0 && legacyRequestId < -1 && (legacyRequestId & 1) == 0) {
+    if ((!flagged || buffer.readByte() != 0) && legacyRequestId < -1 && (legacyRequestId & 1) == 0) {
         const std::uint32_t windows = readVarUInt(buffer);
         for (std::uint32_t at = 0; at < windows && !buffer.failed(); ++at) {
             static_cast<void>(buffer.readByte());
@@ -3039,11 +3081,17 @@ namespace {
             }
         }
     }
+    if (flagged && !single) {
+        static_cast<void>(buffer.readByte()); // The kind is there,
+    }
     const std::uint32_t kind = readVarUInt(buffer);
+    if (flagged && !single) {
+        static_cast<void>(buffer.readByte()); // and so is the list.
+    }
     // This server decides for itself what moved in a bag, so the client's list is read and dropped.
     const std::uint32_t actions = readVarUInt(buffer);
     for (std::uint32_t at = 0; at < actions && !buffer.failed(); ++at) {
-        readInventorySource(buffer);
+        readInventorySource(buffer, single ? 1 : flagged ? 2 : 0);
         static_cast<void>(readVarUInt(buffer));
         static_cast<void>(readItem(buffer, protocol));
         static_cast<void>(readItem(buffer, protocol));
@@ -3054,8 +3102,9 @@ namespace {
 } // namespace
 
 BedrockTransaction readTransaction(io::ByteBuffer& buffer, const int protocol) {
-    /// The five kinds. Only a click on an entity and an item let go of are acted on here.
-    constexpr std::uint32_t kUseOnEntity = 2;
+    /// The five kinds: a plain move, a mismatch, a use, a use on an entity and a release. Only the
+    /// last two are acted on here.
+    constexpr std::uint32_t kUseOnEntity = 3;
     constexpr std::uint32_t kItemRelease = 4;
 
     BedrockTransaction transaction;
@@ -3357,13 +3406,17 @@ void writeAbsent(io::ByteBuffer& buffer) { writeBool(buffer, false); }
 
 } // namespace
 
-void writeCameraPresets(io::ByteBuffer& buffer) {
+void writeCameraPresets(io::ByteBuffer& buffer, const int protocol) {
     writeVarUInt(buffer, static_cast<std::uint32_t>(kCameraPresets.size()));
     for (const std::string_view named : kCameraPresets) {
         writeString(buffer, named);
         writeString(buffer, ""); // Inherits from nothing: these are the client's own.
         for (int at = 0; at < kCameraPresetOptionals; ++at) {
             writeAbsent(buffer);
+        }
+        if (protocol >= kCameraStartRotationProtocol) {
+            writeBool(buffer, false); // Not the parent's starting rotation,
+            writeAbsent(buffer);      // nor one of its own.
         }
     }
 }

@@ -20,19 +20,17 @@ struct TitleTextPacket {
     friend bool operator==(const TitleTextPacket&, const TitleTextPacket&) = default;
 };
 
-/// Clientbound, id 0x72: the big line of a title.
-inline constexpr std::int32_t kSetTitleTextId = 0x72;
-/// Clientbound, id 0x70: the smaller line under it.
-inline constexpr std::int32_t kSetSubtitleTextId = 0x70;
-/// Clientbound, id 0x57: the line above the hotbar.
-///
-/// Distinct from a system chat message with its action-bar flag: this one is the *title* system's
-/// action bar, which `/title ... actionbar` sets and `/title ... clear` removes.
-inline constexpr std::int32_t kSetActionBarTextId = 0x57;
+/// Clientbound, id 0x74: the big line of a title.
+inline constexpr std::int32_t kSetTitleTextId = 0x74;
+/// Clientbound, id 0x72: the smaller line under it.
+inline constexpr std::int32_t kSetSubtitleTextId = 0x72;
+/// Clientbound, id 0x59: the title system's line above the hotbar (not a system chat message with
+/// the action-bar flag), which `/title ... actionbar` sets and `/title ... clear` removes.
+inline constexpr std::int32_t kSetActionBarTextId = 0x59;
 
-/// Clientbound, id 0x73: how long a title fades in, stays and fades out, in ticks.
+/// Clientbound, id 0x75: how long a title fades in, stays and fades out, in ticks.
 struct SetTitlesAnimationPacket {
-    static constexpr std::int32_t kId = 0x73;
+    static constexpr std::int32_t kId = 0x75;
 
     std::int32_t fadeIn = 0;
     std::int32_t stay = 0;
@@ -76,14 +74,11 @@ enum class SoundSource : std::uint8_t {
 
 [[nodiscard]] std::optional<SoundSource> soundSourceByCommandName(std::string_view name) noexcept;
 
-/// Clientbound, id 0x75: play a sound at a position.
-///
-/// The sound travels as a *direct* holder (a leading zero, then the id) rather than as a registry
-/// index: the client resolves the name itself that way, so a server that has not built the
-/// sound_event table can still name any sound. Coordinates are eighths of a block, which is
-/// vanilla's own LOCATION_ACCURACY.
+/// Clientbound, id 0x77: play a sound at a position. The sound goes as a direct holder (a zero,
+/// then the id) so the client resolves the name itself; coordinates are eighths of a block
+/// (vanilla's LOCATION_ACCURACY).
 struct SoundPacket {
-    static constexpr std::int32_t kId = 0x75;
+    static constexpr std::int32_t kId = 0x77;
     static constexpr double kLocationAccuracy = 8.0;
 
     std::string sound;
@@ -101,10 +96,10 @@ struct SoundPacket {
     friend bool operator==(const SoundPacket&, const SoundPacket&) = default;
 };
 
-/// Clientbound, id 0x77: stop one sound, every sound from one source, or all of them. The flag byte
+/// Clientbound, id 0x79: stop one sound, every sound from one source, or all of them. The flag byte
 /// is vanilla's: 1 means a source follows, 2 a name.
 struct StopSoundPacket {
-    static constexpr std::int32_t kId = 0x77;
+    static constexpr std::int32_t kId = 0x79;
 
     std::optional<std::string> sound;
     std::optional<SoundSource> source;
@@ -116,9 +111,7 @@ struct StopSoundPacket {
 };
 
 /// The line being typed, asked while it is typed. parity: ServerboundCommandSuggestionPacket.
-///
-/// The id comes back untouched in the answer: the client drops a reply carrying an older id, so a
-/// slow answer never lands on top of a newer keystroke.
+/// The id comes back untouched: the client drops a reply with an older id.
 struct CommandSuggestionRequestPacket {
     static constexpr std::int32_t kId = 0x0f;
     /// parity: vanilla's own cap on the line it will ask about.

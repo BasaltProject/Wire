@@ -30,7 +30,7 @@ struct ProtocolVersion {
 namespace protocolVersions {
 
 /// The version this build speaks without translating anything.
-inline constexpr std::int32_t kNative = 776;
+inline constexpr std::int32_t kNative = 777;
 
 inline constexpr std::int32_t kV1_8 = 47;
 inline constexpr std::int32_t kV1_9 = 107;
@@ -80,6 +80,7 @@ inline constexpr std::int32_t kV1_21_7 = 772;
 inline constexpr std::int32_t kV1_21_9 = 773;
 inline constexpr std::int32_t kV1_21_11 = 774;
 inline constexpr std::int32_t kV26_1 = 775;
+inline constexpr std::int32_t kV26_2 = 776;
 
 /// A snapshot sets bit 30 of its protocol number, and what is left is a counter that has been
 /// climbing since 15w32a rather than anything comparable to a release number.

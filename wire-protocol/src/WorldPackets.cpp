@@ -6,22 +6,22 @@
 namespace basalt::wire::protocol::play {
 namespace {
 
-/// A bitset per world section, matching java.util.BitSet.toLongArray.
-void writeLongBitset(io::ByteBuffer& buffer, const std::vector<std::int64_t>& bits) {
-    varInt::write(buffer, static_cast<std::int32_t>(bits.size()));
-    for (const std::int64_t word : bits) {
+/// parity: ByteBufCodecs.LONG_ARRAY, what a heightmap travels as.
+void writeLongArray(io::ByteBuffer& buffer, const std::vector<std::int64_t>& words) {
+    varInt::write(buffer, static_cast<std::int32_t>(words.size()));
+    for (const std::int64_t word : words) {
         buffer.writeLong(word);
     }
 }
 
-std::vector<std::int64_t> readLongBitset(io::ByteBuffer& buffer) {
+std::vector<std::int64_t> readLongArray(io::ByteBuffer& buffer) {
     const std::int32_t count = readCollectionSize(buffer, 8);
-    std::vector<std::int64_t> bits;
-    bits.reserve(static_cast<std::size_t>(count));
+    std::vector<std::int64_t> words;
+    words.reserve(static_cast<std::size_t>(count));
     for (std::int32_t i = 0; i < count && !buffer.failed(); ++i) {
-        bits.push_back(buffer.readLong());
+        words.push_back(buffer.readLong());
     }
-    return bits;
+    return words;
 }
 
 void writeByteArrayList(io::ByteBuffer& buffer, const std::vector<std::vector<std::uint8_t>>& arrays) {
@@ -63,7 +63,7 @@ std::string_view heightmapName(HeightmapType type) noexcept {
 
 void Heightmap::write(io::ByteBuffer& buffer) const {
     varInt::write(buffer, static_cast<std::int32_t>(type));
-    writeLongBitset(buffer, data);
+    writeLongArray(buffer, data);
 }
 
 std::optional<Heightmap> Heightmap::read(io::ByteBuffer& buffer) {
@@ -74,7 +74,7 @@ std::optional<Heightmap> Heightmap::read(io::ByteBuffer& buffer) {
     }
     Heightmap heightmap;
     heightmap.type = static_cast<HeightmapType>(type);
-    heightmap.data = readLongBitset(buffer);
+    heightmap.data = readLongArray(buffer);
     return buffer.failed() ? std::nullopt : std::optional{std::move(heightmap)};
 }
 
@@ -113,20 +113,20 @@ std::optional<ChunkBlockEntityInfo> ChunkBlockEntityInfo::read(io::ByteBuffer& b
 }
 
 void LightData::write(io::ByteBuffer& buffer) const {
-    writeLongBitset(buffer, skyLightMask);
-    writeLongBitset(buffer, blockLightMask);
-    writeLongBitset(buffer, emptySkyLightMask);
-    writeLongBitset(buffer, emptyBlockLightMask);
+    writeBitSet(buffer, skyLightMask);
+    writeBitSet(buffer, blockLightMask);
+    writeBitSet(buffer, emptySkyLightMask);
+    writeBitSet(buffer, emptyBlockLightMask);
     writeByteArrayList(buffer, skyLight);
     writeByteArrayList(buffer, blockLight);
 }
 
 std::optional<LightData> LightData::read(io::ByteBuffer& buffer) {
     LightData light;
-    light.skyLightMask = readLongBitset(buffer);
-    light.blockLightMask = readLongBitset(buffer);
-    light.emptySkyLightMask = readLongBitset(buffer);
-    light.emptyBlockLightMask = readLongBitset(buffer);
+    light.skyLightMask = readBitSet(buffer);
+    light.blockLightMask = readBitSet(buffer);
+    light.emptySkyLightMask = readBitSet(buffer);
+    light.emptyBlockLightMask = readBitSet(buffer);
     light.skyLight = readByteArrayList(buffer);
     light.blockLight = readByteArrayList(buffer);
     return buffer.failed() ? std::nullopt : std::optional{std::move(light)};
@@ -147,7 +147,7 @@ void MapChunkPacket::write(io::ByteBuffer& buffer) const {
     light.write(buffer);
 }
 
-std::optional<MapChunkPacket> MapChunkPacket::read(io::ByteBuffer& buffer) {
+std::optional<MapChunkPacket> MapChunkPacket::read(io::ByteBuffer& buffer, bool withLight) {
     MapChunkPacket packet;
     packet.x = buffer.readInt();
     packet.z = buffer.readInt();
@@ -174,11 +174,13 @@ std::optional<MapChunkPacket> MapChunkPacket::read(io::ByteBuffer& buffer) {
         packet.blockEntities.push_back(std::move(*info));
     }
 
-    auto light = LightData::read(buffer);
-    if (!light) {
-        return std::nullopt;
+    if (withLight) {
+        auto light = LightData::read(buffer);
+        if (!light) {
+            return std::nullopt;
+        }
+        packet.light = std::move(*light);
     }
-    packet.light = std::move(*light);
     return buffer.failed() ? std::nullopt : std::optional{std::move(packet)};
 }
 
@@ -258,6 +260,18 @@ void ClientboundBlockUpdatePacket::write(io::ByteBuffer& buffer) const {
 
 std::optional<ClientboundBlockUpdatePacket> ClientboundBlockUpdatePacket::read(io::ByteBuffer& buffer) {
     ClientboundBlockUpdatePacket packet;
+    packet.pos = BlockPos::unpack(buffer.readLong());
+    packet.blockStateId = varInt::read(buffer);
+    return buffer.failed() ? std::nullopt : std::optional{packet};
+}
+
+void AddTransientBlockPacket::write(io::ByteBuffer& buffer) const {
+    buffer.writeLong(pos.pack());
+    varInt::write(buffer, blockStateId);
+}
+
+std::optional<AddTransientBlockPacket> AddTransientBlockPacket::read(io::ByteBuffer& buffer) {
+    AddTransientBlockPacket packet;
     packet.pos = BlockPos::unpack(buffer.readLong());
     packet.blockStateId = varInt::read(buffer);
     return buffer.failed() ? std::nullopt : std::optional{packet};

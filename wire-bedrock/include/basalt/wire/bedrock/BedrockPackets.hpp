@@ -62,6 +62,28 @@ inline constexpr int kAirItemInstanceGrewProtocol = 2168;
 /// byte it always needed. Three bytes, and everything after them in the packet reads shifted.
 inline constexpr int kCreativeCategoryByteProtocol = 2168;
 
+/// Where a transaction started announcing its old slots, its kind and its list each with a flag,
+/// and where the stack it moved came from with two.
+inline constexpr int kTransactionFlagsProtocol = 1001;
+
+/// Where 26.50 took back the doubled presence flags 2168 put in front of optional fields: the input
+/// flags, the pieces of a click, a stack's number in a result and where a moved stack came from
+/// each carry one flag again, or none.
+inline constexpr int kSingleFlagProtocol = 2193;
+
+/// Where a click gained a byte naming the hand it was made with.
+inline constexpr int kItemUseHandProtocol = 2193;
+
+/// Where a boss bar stopped naming the player it is for.
+inline constexpr int kBossBarPlayerlessProtocol = 2193;
+
+/// Where a camera preset gained a starting rotation and whether to inherit its parent's.
+inline constexpr int kCameraStartRotationProtocol = 2193;
+
+/// Where a played sound gained a flag to skip the listener's range check and an optional point to
+/// start playing from.
+inline constexpr int kSoundPlaybackProtocol = 2193;
+
 /// What a client asks for before anything else, and the only packet either side sends in the
 /// clear and uncompressed.
 struct RequestNetworkSettings {
@@ -629,7 +651,7 @@ enum class BedrockBossAction : std::int32_t {
 };
 
 void writeBossEvent(io::ByteBuffer& buffer, std::int64_t bossEntityId, BedrockBossAction action, std::string_view title,
-                    float progress);
+                    float progress, int protocol);
 
 /// Sends this client to another server, which is what a proxy does with a command.
 void writeTransfer(io::ByteBuffer& buffer, std::string_view address, std::uint16_t port, int protocol);
@@ -1451,7 +1473,7 @@ enum class BedrockCameraPreset : std::int32_t {
 
 /// Names those four for the client. Sent once, on the way in: an instruction that names a preset
 /// the client was never sent is dropped.
-void writeCameraPresets(io::ByteBuffer& buffer);
+void writeCameraPresets(io::ByteBuffer& buffer, int protocol);
 
 /// Where the camera is and what it looks at. parity: `CameraInstructionPacket`, of which this
 /// writes the two pieces a server needs: putting the camera somewhere and handing it back.

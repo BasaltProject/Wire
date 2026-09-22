@@ -6,7 +6,7 @@
 namespace basalt::wire::multiversion {
 namespace {
 
-constexpr std::array<ProtocolVersion, 49> kAll = {{
+constexpr std::array<ProtocolVersion, 50> kAll = {{
     ProtocolVersion{47, "1.8-1.8.9"},      ProtocolVersion{107, "1.9"},
     ProtocolVersion{108, "1.9.1"},         ProtocolVersion{109, "1.9.2"},
     ProtocolVersion{110, "1.9.3-1.9.4"},   ProtocolVersion{210, "1.10-1.10.2"},
@@ -31,7 +31,7 @@ constexpr std::array<ProtocolVersion, 49> kAll = {{
     ProtocolVersion{770, "1.21.5"},        ProtocolVersion{771, "1.21.6"},
     ProtocolVersion{772, "1.21.7-1.21.8"}, ProtocolVersion{773, "1.21.9-1.21.10"},
     ProtocolVersion{774, "1.21.11"},       ProtocolVersion{775, "26.1-26.1.2"},
-    ProtocolVersion{776, "26.2"},
+    ProtocolVersion{776, "26.2"},          ProtocolVersion{777, "26.3"},
 }};
 
 } // namespace

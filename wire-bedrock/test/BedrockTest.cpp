@@ -745,43 +745,54 @@ TEST_CASE("the generated block tables say what each client already has") {
     // recalled: every number here is the position that palette gives the block, read back out of
     // it. They are here so that regenerating against the wrong version, whose order is different,
     // fails loudly instead of drawing the wrong blocks.
-    CHECK(bedrockBlockIds2640().size() == kJavaBlockStates);
-    CHECK(bedrockBlockId(0, kNativeBedrockProtocol) == 13629);   // minecraft:air
-    CHECK(bedrockBlockId(1, kNativeBedrockProtocol) == 2736);    // minecraft:stone
-    CHECK(bedrockBlockId(10, kNativeBedrockProtocol) == 10854);  // minecraft:dirt
-    CHECK(bedrockBlockId(85, kNativeBedrockProtocol) == 14348);  // minecraft:bedrock
-    CHECK(bedrockBlockId(86, kNativeBedrockProtocol) == 10270);  // minecraft:water, at its full depth
-    CHECK(bedrockBlockId(3918, kNativeBedrockProtocol) == 1551); // minecraft:oak_stairs, one way round
+    CHECK(bedrockBlockIds2650().size() == kJavaBlockStates);
+    CHECK(bedrockBlockId(0, kNativeBedrockProtocol) == 17025);    // minecraft:air
+    CHECK(bedrockBlockId(1, kNativeBedrockProtocol) == 3317);     // minecraft:stone
+    CHECK(bedrockBlockId(10, kNativeBedrockProtocol) == 13456);   // minecraft:dirt
+    CHECK(bedrockBlockId(88, kNativeBedrockProtocol) == 17901);   // minecraft:bedrock
+    CHECK(bedrockBlockId(89, kNativeBedrockProtocol) == 12753);   // minecraft:water, at its full depth
+    CHECK(bedrockBlockId(5474, kNativeBedrockProtocol) == 1861);  // minecraft:oak_stairs, one way round
+    CHECK(bedrockBlockId(167, kNativeBedrockProtocol) == 20921);  // minecraft:poplar_log, upright
+    CHECK(bedrockBlockId(2436, kNativeBedrockProtocol) == 19992); // minecraft:white_wool_stairs
 
     SUBCASE("each protocol reads its own table, and they do not agree") {
         // The palettes are ordered by the hash of the name and grow between versions, so the same
         // block sits somewhere else in each. Two tables agreeing everywhere would mean one is wrong.
         CHECK(bedrockBlockIdsFor(kNativeBedrockProtocol).size() == kJavaBlockStates);
-        CHECK(&bedrockBlockIdsFor(kNativeBedrockProtocol) == &bedrockBlockIds2640());
+        CHECK(&bedrockBlockIdsFor(kNativeBedrockProtocol) == &bedrockBlockIds2650());
+        CHECK(&bedrockBlockIdsFor(2169) == &bedrockBlockIds2640());
+        CHECK(&bedrockBlockIdsFor(2168) == &bedrockBlockIds2640());
         CHECK(&bedrockBlockIdsFor(1001) == &bedrockBlockIds2630());
-        CHECK(&bedrockBlockIdsFor(975) == &bedrockBlockIds2620());
-        CHECK(&bedrockBlockIdsFor(944) == &bedrockBlockIds2610());
-        CHECK(&bedrockBlockIdsFor(924) == &bedrockBlockIds260());
         // Anything newer than this build knows reads the newest table, which is the only answer
         // that can be right for a client from the future.
-        CHECK(&bedrockBlockIdsFor(kNativeBedrockProtocol + 1) == &bedrockBlockIds2640());
-        CHECK(bedrockBlockIds260() != bedrockBlockIds2640());
+        CHECK(&bedrockBlockIdsFor(kNativeBedrockProtocol + 1) == &bedrockBlockIds2650());
+        CHECK(bedrockBlockIds2630() != bedrockBlockIds2650());
+    }
+
+    SUBCASE("an older palette keeps the blocks whose states only grew") {
+        // 26.50 gave stairs a corner of their own; 26.40 works it out and has no such state, so
+        // the stair is found without it rather than turning into a hole.
+        CHECK(bedrockBlockId(5474, 2169) == 1551);
+        CHECK(bedrockBlockId(5474, 1001) == 1523);
     }
 
     SUBCASE("a state a version never had is a hole, not another block") {
-        // 26.0 has no sulfur at all: the blocks are newer than it. Air is honest where a guess
-        // would be a lie, and the generator counts them out loud when it writes the table.
-        CHECK(bedrockBlockId(-1, kNativeBedrockProtocol) == kBedrockAir);
-        CHECK(bedrockBlockId(static_cast<std::int32_t>(kJavaBlockStates), kNativeBedrockProtocol) == kBedrockAir);
+        // Wool stairs are newer than 26.40. Air is honest where a guess would be a lie, and the
+        // generator counts them out loud when it writes the table.
+        CHECK(bedrockBlockId(2436, 2169) == bedrockAirId(2169));
+        CHECK(bedrockAirId(2169) == 13629);
+        CHECK(bedrockBlockId(-1, kNativeBedrockProtocol) == bedrockAirId(kNativeBedrockProtocol));
+        CHECK(bedrockBlockId(static_cast<std::int32_t>(kJavaBlockStates), kNativeBedrockProtocol) ==
+              bedrockAirId(kNativeBedrockProtocol));
     }
 
     SUBCASE("every state lands inside the palette it was generated from") {
-        constexpr std::uint16_t kNativePaletteSize = 17499;
-        for (const std::uint16_t id : bedrockBlockIds2640()) {
+        constexpr std::uint16_t kNativePaletteSize = 22091;
+        for (const std::uint16_t id : bedrockBlockIds2650()) {
             REQUIRE(id < kNativePaletteSize);
         }
-        constexpr std::uint16_t kOldestPaletteSize = 15845;
-        for (const std::uint16_t id : bedrockBlockIds260()) {
+        constexpr std::uint16_t kOldestPaletteSize = 16913;
+        for (const std::uint16_t id : bedrockBlockIds2630()) {
             REQUIRE(id < kOldestPaletteSize);
         }
     }

@@ -8,12 +8,10 @@ basalt_module(wire-bedrock
         src/BedrockNbt.cpp
         src/BedrockPacketNames.cpp
         src/BedrockBanners.cpp
-        src/BedrockBlocks260.cpp
         src/BedrockItemFrames.cpp
-        src/BedrockBlocks2610.cpp
-        src/BedrockBlocks2620.cpp
         src/BedrockBlocks2630.cpp
         src/BedrockBlocks2640.cpp
+        src/BedrockBlocks2650.cpp
         src/BedrockBlockTables.cpp
         src/BedrockEffectIds.cpp
         src/BedrockEntityIdentifiers.cpp
@@ -38,5 +36,6 @@ basalt_module(wire-bedrock
 basalt_test(wire-bedrock-test
     SOURCES
         test/BedrockTest.cpp
+        test/BedrockShapeTest.cpp
     DEPENDS basalt::wire-bedrock
 )

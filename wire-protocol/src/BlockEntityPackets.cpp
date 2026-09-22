@@ -37,33 +37,42 @@ std::optional<BlockEventPacket> BlockEventPacket::read(io::ByteBuffer& buffer) {
     return buffer.failed() ? std::nullopt : std::optional{packet};
 }
 
+namespace {
+
+// parity: SignTextSlot, BACK 0 and FRONT 1, anything else reading as back.
+void writeSignSlot(io::ByteBuffer& buffer, bool front) { varInt::write(buffer, front ? 1 : 0); }
+
+bool readSignSlot(io::ByteBuffer& buffer) { return varInt::read(buffer) == 1; }
+
+} // namespace
+
 void OpenSignEditorPacket::write(io::ByteBuffer& buffer) const {
     buffer.writeLong(pos.pack());
-    writeBoolean(buffer, isFrontText);
+    writeSignSlot(buffer, isFrontText);
 }
 
 std::optional<OpenSignEditorPacket> OpenSignEditorPacket::read(io::ByteBuffer& buffer) {
     OpenSignEditorPacket packet;
     packet.pos = BlockPos::unpack(buffer.readLong());
-    packet.isFrontText = readBoolean(buffer);
+    packet.isFrontText = readSignSlot(buffer);
     return buffer.failed() ? std::nullopt : std::optional{packet};
 }
 
 void SignUpdatePacket::write(io::ByteBuffer& buffer) const {
     buffer.writeLong(pos.pack());
-    writeBoolean(buffer, isFrontText);
     for (const std::string& line : lines) {
         writeString(buffer, line);
     }
+    writeSignSlot(buffer, isFrontText);
 }
 
 std::optional<SignUpdatePacket> SignUpdatePacket::read(io::ByteBuffer& buffer) {
     SignUpdatePacket packet;
     packet.pos = BlockPos::unpack(buffer.readLong());
-    packet.isFrontText = readBoolean(buffer);
     for (std::string& line : packet.lines) {
         line = readString(buffer, kMaxLineLength);
     }
+    packet.isFrontText = readSignSlot(buffer);
     return buffer.failed() ? std::nullopt : std::optional{std::move(packet)};
 }
 

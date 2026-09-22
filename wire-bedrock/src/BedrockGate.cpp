@@ -1,6 +1,7 @@
 #include <basalt/wire/bedrock/BedrockGate.hpp>
 
 #include <algorithm>
+#include <iterator>
 
 namespace basalt::wire::bedrock {
 
@@ -22,7 +23,7 @@ std::set<std::int32_t> BedrockGate::buildSupport() {
     // paper, and claiming one whose packets are shaped differently is worse than turning it away.
     // 2169 is 2168 with a different number: not one packet id, packet shape, metadata field or
     // entity flag moved between them, and they share a block palette. Measured, not assumed.
-    return {924, 944, 975, 1001, 2168, kNativeBedrockProtocol};
+    return {std::begin(kBedrockProtocols), std::end(kBedrockProtocols)};
 }
 
 BedrockVerdict BedrockGate::verdict(const std::int32_t protocol) const {

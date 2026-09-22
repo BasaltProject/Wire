@@ -101,10 +101,23 @@ std::optional<PlayerPositionPacket> PlayerPositionPacket::read(io::ByteBuffer& b
     return buffer.failed() ? std::nullopt : std::optional{packet};
 }
 
-void AcceptTeleportationPacket::write(io::ByteBuffer& buffer) const { varInt::write(buffer, teleportId); }
+void AcceptTeleportationPacket::write(io::ByteBuffer& buffer) const {
+    varInt::write(buffer, teleportId);
+    buffer.writeDouble(x);
+    buffer.writeDouble(y);
+    buffer.writeDouble(z);
+    buffer.writeFloat(yaw);
+    buffer.writeFloat(pitch);
+}
 
 std::optional<AcceptTeleportationPacket> AcceptTeleportationPacket::read(io::ByteBuffer& buffer) {
-    AcceptTeleportationPacket packet{varInt::read(buffer)};
+    AcceptTeleportationPacket packet;
+    packet.teleportId = varInt::read(buffer);
+    packet.x = buffer.readDouble();
+    packet.y = buffer.readDouble();
+    packet.z = buffer.readDouble();
+    packet.yaw = buffer.readFloat();
+    packet.pitch = buffer.readFloat();
     return buffer.failed() ? std::nullopt : std::optional{packet};
 }
 
@@ -368,7 +381,7 @@ void ServerboundPlayerActionPacket::write(io::ByteBuffer& buffer) const {
 }
 
 std::optional<ServerboundPlayerActionPacket> ServerboundPlayerActionPacket::read(io::ByteBuffer& buffer) {
-    const auto action = fromOrdinal<Action>(varInt::read(buffer), 8);
+    const auto action = fromOrdinal<Action>(varInt::read(buffer), 9);
     if (!action) {
         buffer.markFailed();
         return std::nullopt;

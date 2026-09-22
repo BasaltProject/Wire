@@ -31,6 +31,7 @@
 #include <basalt/wire/multiversion/java/Link773.hpp>
 #include <basalt/wire/multiversion/java/Link774.hpp>
 #include <basalt/wire/multiversion/java/Link775.hpp>
+#include <basalt/wire/multiversion/java/Link776.hpp>
 #include <basalt/wire/multiversion/java/RenumberingLink.hpp>
 #include <basalt/wire/multiversion/java/Tables107.hpp>
 #include <basalt/wire/multiversion/java/Tables108.hpp>
@@ -80,6 +81,7 @@
 #include <basalt/wire/multiversion/java/Tables773.hpp>
 #include <basalt/wire/multiversion/java/Tables774.hpp>
 #include <basalt/wire/multiversion/java/Tables775.hpp>
+#include <basalt/wire/multiversion/java/Tables776.hpp>
 
 #include <algorithm>
 #include <array>
@@ -102,14 +104,15 @@ std::unique_ptr<ProtocolLink> plain(const VersionTables& tables, const ComposedT
     return std::make_unique<T>(tables);
 }
 
-/// The three links that have to look things up in the far end's own numbering.
+/// The links that have to look things up in the far end's own numbering.
 template <typename T>
 std::unique_ptr<ProtocolLink> composed(const VersionTables& tables, const ComposedTables& target) {
     return std::make_unique<T>(tables, target);
 }
 
 /// Newest first. Each entry is what translates *into* that version from the one above it.
-constexpr std::array<LinkEntry, 48> kLinks = {{
+constexpr std::array<LinkEntry, 49> kLinks = {{
+    {protocolVersions::kV26_2, &tables776, &composed<Link776>},
     {protocolVersions::kV26_1, &tables775, &plain<Link775>},
     {protocolVersions::kV1_21_11, &tables774, &plain<Link774>},
     {protocolVersions::kV1_21_9, &tables773, &plain<Link773>},

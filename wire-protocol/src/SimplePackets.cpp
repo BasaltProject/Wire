@@ -110,6 +110,7 @@ void ExplodePacket::write(io::ByteBuffer& buffer) const {
         buffer.writeFloat(particle.speed);
         varInt::write(buffer, particle.weight);
     }
+    writeBoolean(buffer, playSound);
 }
 
 std::optional<ExplodePacket> ExplodePacket::read(io::ByteBuffer& buffer) {
@@ -137,6 +138,8 @@ std::optional<ExplodePacket> ExplodePacket::read(io::ByteBuffer& buffer) {
         packet.blockParticles.push_back(
             ExplosionParticle{varInt::read(buffer), buffer.readFloat(), buffer.readFloat(), varInt::read(buffer)});
     }
+    // Absent in 26.2, whose shape the translators below this one read with this same codec.
+    packet.playSound = buffer.readableBytes() == 0 || readBoolean(buffer);
     return buffer.failed() ? std::nullopt : std::optional{std::move(packet)};
 }
 

@@ -1,4 +1,5 @@
 #include <basalt/wire/multiversion/java/Link769.hpp>
+#include <basalt/wire/multiversion/java/LongMaskLight.hpp>
 #include <basalt/wire/protocol/ProtocolBuffer.hpp>
 #include <basalt/wire/protocol/VarInt.hpp>
 #include <basalt/wire/protocol/play/SimplePackets.hpp>
@@ -40,7 +41,15 @@ bool Link769::clientbound(ProtocolState state, MutablePacket& packet) {
     }
     switch (packet.nativeId()) {
     case play::MapChunkPacket::kId: {
-        const auto chunk = decode(packet, [](io::ByteBuffer& in) { return play::MapChunkPacket::read(in); });
+        const auto chunk = decode(packet, [](io::ByteBuffer& in) -> std::optional<play::MapChunkPacket> {
+            auto read = play::MapChunkPacket::read(in, false);
+            auto light = readLongMaskLight(in);
+            if (!read.has_value() || !light.has_value()) {
+                return std::nullopt;
+            }
+            read->light = std::move(*light);
+            return read;
+        });
         if (!chunk.has_value()) {
             return true;
         }
@@ -64,26 +73,15 @@ bool Link769::clientbound(ProtocolState state, MutablePacket& packet) {
 }
 
 void Link769::writeOlderChunk(const play::MapChunkPacket& chunk, io::ByteBuffer& output) {
-    // Everything after the heightmaps is the same in both versions, so it is written once by the
-    // packet itself and copied across rather than spelled out again here.
-    play::MapChunkPacket modernChunk = chunk;
-    modernChunk.chunkData = olderChunks_.rewrite(chunk.chunkData);
-    io::ByteBuffer modern;
-    modernChunk.write(modern);
-    static_cast<void>(modern.readInt());
-    static_cast<void>(modern.readInt());
-    const std::int32_t heightmaps = protocol::varInt::read(modern);
-    for (std::int32_t i = 0; i < heightmaps && !modern.failed(); ++i) {
-        static_cast<void>(protocol::varInt::read(modern));
-        const std::int32_t longs = protocol::varInt::read(modern);
-        for (std::int32_t j = 0; j < longs && !modern.failed(); ++j) {
-            static_cast<void>(modern.readLong());
-        }
-    }
     output.writeInt(chunk.x);
     output.writeInt(chunk.z);
     protocol::writeAnonymousNbt(output, nbt::NbtTag::ofCompound(namedHeightmaps(chunk.heightmaps)));
-    output.writeBytes(modern.readable());
+    protocol::writeByteArray(output, olderChunks_.rewrite(chunk.chunkData));
+    protocol::varInt::write(output, static_cast<std::int32_t>(chunk.blockEntities.size()));
+    for (const play::ChunkBlockEntityInfo& blockEntity : chunk.blockEntities) {
+        blockEntity.write(output);
+    }
+    writeLongMaskLight(output, chunk.light);
 }
 
 } // namespace basalt::wire::multiversion::java

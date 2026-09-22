@@ -16,9 +16,9 @@
 /// actions a client takes on the world.
 namespace basalt::wire::protocol::play {
 
-/// Clientbound, id 0x31: everything the client needs to enter the game.
+/// Clientbound, id 0x32: everything the client needs to enter the game.
 struct LoginPlayPacket {
-    static constexpr std::int32_t kId = 0x31;
+    static constexpr std::int32_t kId = 0x32;
 
     std::int32_t entityId = 0;
     bool isHardcore = false;
@@ -42,10 +42,13 @@ struct LoginPlayPacket {
 /// Serverbound, id 0x2c: the client confirming it finished loading the world. No payload.
 inline constexpr std::int32_t kPlayerLoadedId = 0x2c;
 
-/// Clientbound, id 0x48: an authoritative position sync, either the initial spawn or a forced
+/// Serverbound, id 0x2e: the player punched the air or a block. No payload.
+inline constexpr std::int32_t kPunchId = 0x2e;
+
+/// Clientbound, id 0x49: an authoritative position sync, either the initial spawn or a forced
 /// teleport.
 struct PlayerPositionPacket {
-    static constexpr std::int32_t kId = 0x48;
+    static constexpr std::int32_t kId = 0x49;
 
     std::int32_t teleportId = 0;
     double x = 0.0;
@@ -69,6 +72,12 @@ struct AcceptTeleportationPacket {
     static constexpr std::int32_t kId = 0;
 
     std::int32_t teleportId = 0;
+    /// Where the client put itself, which it no longer confirms with a separate move packet.
+    double x = 0.0;
+    double y = 0.0;
+    double z = 0.0;
+    float yaw = 0.0F;
+    float pitch = 0.0F;
 
     void write(io::ByteBuffer& buffer) const;
     [[nodiscard]] static std::optional<AcceptTeleportationPacket> read(io::ByteBuffer& buffer);
@@ -76,9 +85,9 @@ struct AcceptTeleportationPacket {
     friend bool operator==(const AcceptTeleportationPacket&, const AcceptTeleportationPacket&) = default;
 };
 
-/// Clientbound, id 0x61: the world spawn point the compass points at.
+/// Clientbound, id 0x63: the world spawn point the compass points at.
 struct SpawnPositionPacket {
-    static constexpr std::int32_t kId = 0x61;
+    static constexpr std::int32_t kId = 0x63;
 
     GlobalPos globalPos;
     float yaw = 0.0F;
@@ -106,7 +115,7 @@ struct PlayerInfoEntry {
     friend bool operator==(const PlayerInfoEntry&, const PlayerInfoEntry&) = default;
 };
 
-/// Clientbound, id 0x46: adds or updates tab list entries.
+/// Clientbound, id 0x47: adds or updates tab list entries.
 ///
 /// Carries a set of actions and, per entry, the fields those actions call for, in the enum's own
 /// order: the set is a bitset over that enum, so the ordinals are protocol.
@@ -114,7 +123,7 @@ struct PlayerInfoEntry {
 /// The game mode is not cosmetic: a client reads its own tab-list entry to decide it is a spectator,
 /// so the game event alone switches the HUD while the player still collides.
 struct PlayerInfoUpdatePacket {
-    static constexpr std::int32_t kId = 0x46;
+    static constexpr std::int32_t kId = 0x47;
 
     /// The bits are positions in vanilla's own action enum, and the four this build does not write
     /// still hold their places.
@@ -149,9 +158,9 @@ struct PlayerInfoUpdatePacket {
     friend bool operator==(const PlayerInfoUpdatePacket&, const PlayerInfoUpdatePacket&) = default;
 };
 
-/// Clientbound, id 0x45: removes entries from the tab list.
+/// Clientbound, id 0x46: removes entries from the tab list.
 struct PlayerInfoRemovePacket {
-    static constexpr std::int32_t kId = 0x45;
+    static constexpr std::int32_t kId = 0x46;
 
     std::vector<common::Uuid> players;
 
@@ -161,14 +170,14 @@ struct PlayerInfoRemovePacket {
     friend bool operator==(const PlayerInfoRemovePacket&, const PlayerInfoRemovePacket&) = default;
 };
 
-/// Clientbound, id 0x7d: an absolute position and rotation update for an entity other than the
+/// Clientbound, id 0x80: an absolute position and rotation update for an entity other than the
 /// receiving player.
 ///
 /// parity: PositionMoveRotation is position, then velocity, then two floats of rotation. The
 /// velocity is not optional, and leaving it out is what made a client read three doubles it was
 /// owed, run off the end of the packet and drop the connection.
 struct EntityTeleportPacket {
-    static constexpr std::int32_t kId = 0x7d;
+    static constexpr std::int32_t kId = 0x80;
 
     std::int32_t entityId = 0;
     double x = 0.0;
@@ -194,7 +203,7 @@ struct EntityTeleportPacket {
 
 /// Both directions in play, with different ids.
 struct PlayKeepAlivePacket {
-    static constexpr std::int32_t kClientboundId = 0x2c;
+    static constexpr std::int32_t kClientboundId = 0x2d;
     static constexpr std::int32_t kServerboundId = 0x1c;
 
     std::int64_t keepAliveId = 0;
@@ -205,13 +214,13 @@ struct PlayKeepAlivePacket {
     friend bool operator==(const PlayKeepAlivePacket&, const PlayKeepAlivePacket&) = default;
 };
 
-/// Clientbound, id 0x79: an unsigned chat message.
+/// Clientbound, id 0x7c: an unsigned chat message.
 ///
 /// Used both for real system messages and, for now, to relay player chat: signed player chat, with
 /// its session registration and message signing, is a documented gap, so relayed messages render
 /// with system styling rather than a player name and head.
 struct SystemChatPacket {
-    static constexpr std::int32_t kId = 0x79;
+    static constexpr std::int32_t kId = 0x7c;
 
     text::Component content;
     bool isActionBar = false;
@@ -308,6 +317,7 @@ struct ServerboundPlayerActionPacket {
 
     enum class Action : std::uint8_t {
         StartDestroyBlock,
+        ChangeDestroyDirection,
         AbortDestroyBlock,
         StopDestroyBlock,
         DropAllItems,

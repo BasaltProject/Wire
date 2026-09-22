@@ -118,9 +118,9 @@ struct RecipeBookEntry {
     friend bool operator==(const RecipeBookEntry&, const RecipeBookEntry&) = default;
 };
 
-/// Clientbound, id 0x4a: adds recipes to the book.
+/// Clientbound, id 0x4b: adds recipes to the book.
 struct RecipeBookAddPacket {
-    static constexpr std::int32_t kId = 0x4a;
+    static constexpr std::int32_t kId = 0x4b;
 
     std::vector<RecipeBookEntry> entries;
     bool replace = false;
@@ -131,9 +131,9 @@ struct RecipeBookAddPacket {
     friend bool operator==(const RecipeBookAddPacket&, const RecipeBookAddPacket&) = default;
 };
 
-/// Clientbound, id 0x4b: takes recipes back out of the book.
+/// Clientbound, id 0x4c: takes recipes back out of the book.
 struct RecipeBookRemovePacket {
-    static constexpr std::int32_t kId = 0x4b;
+    static constexpr std::int32_t kId = 0x4c;
 
     std::vector<std::int32_t> recipeIds;
 
@@ -152,12 +152,12 @@ struct StonecutterOption {
     friend bool operator==(const StonecutterOption&, const StonecutterOption&) = default;
 };
 
-/// Clientbound, id 0x85: the recipes a client needs to have itself.
+/// Clientbound, id 0x88: the recipes a client needs to have itself.
 ///
 /// The stonecutter is why it exists: the client draws its buttons from this list and sends back an
 /// index into it. The item property sets are the recipe book's highlighting and go out empty.
 struct UpdateRecipesPacket {
-    static constexpr std::int32_t kId = 0x85;
+    static constexpr std::int32_t kId = 0x88;
 
     std::vector<StonecutterOption> stonecutter;
 

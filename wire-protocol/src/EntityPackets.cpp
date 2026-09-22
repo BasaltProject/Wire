@@ -120,6 +120,38 @@ std::optional<AnimatePacket> AnimatePacket::read(io::ByteBuffer& buffer) {
     return buffer.failed() ? std::nullopt : std::optional{packet};
 }
 
+void SwingAnimation::write(io::ByteBuffer& buffer) const {
+    varInt::write(buffer, static_cast<std::int32_t>(type));
+    varInt::write(buffer, duration);
+}
+
+std::optional<SwingAnimation> SwingAnimation::read(io::ByteBuffer& buffer) {
+    SwingAnimation animation;
+    // parity: ByIdMap with OutOfBoundsStrategy.ZERO, so an unknown type reads as none.
+    const std::int32_t type = varInt::read(buffer);
+    animation.type = type >= 0 && type <= 2 ? static_cast<SwingAnimationType>(type) : SwingAnimationType::None;
+    animation.duration = varInt::read(buffer);
+    return buffer.failed() ? std::nullopt : std::optional{animation};
+}
+
+void SwingAnimationPacket::write(io::ByteBuffer& buffer) const {
+    varInt::write(buffer, entityId);
+    varInt::write(buffer, hand);
+    animation.write(buffer);
+}
+
+std::optional<SwingAnimationPacket> SwingAnimationPacket::read(io::ByteBuffer& buffer) {
+    SwingAnimationPacket packet;
+    packet.entityId = varInt::read(buffer);
+    packet.hand = varInt::read(buffer);
+    const std::optional<SwingAnimation> animation = SwingAnimation::read(buffer);
+    if (!animation) {
+        return std::nullopt;
+    }
+    packet.animation = *animation;
+    return buffer.failed() ? std::nullopt : std::optional{packet};
+}
+
 void SetEntityLinkPacket::write(io::ByteBuffer& buffer) const {
     buffer.writeInt(sourceId);
     buffer.writeInt(destinationId);
@@ -131,6 +163,10 @@ std::optional<SetEntityLinkPacket> SetEntityLinkPacket::read(io::ByteBuffer& buf
 }
 
 void LevelParticlesPacket::write(io::ByteBuffer& buffer) const {
+    varInt::write(buffer, particleTypeId);
+    if (options) {
+        options->write(buffer);
+    }
     writeBoolean(buffer, overrideLimiter);
     writeBoolean(buffer, alwaysShow);
     buffer.writeDouble(x);
@@ -139,16 +175,22 @@ void LevelParticlesPacket::write(io::ByteBuffer& buffer) const {
     buffer.writeFloat(offsetX);
     buffer.writeFloat(offsetY);
     buffer.writeFloat(offsetZ);
-    buffer.writeFloat(maxSpeed);
-    buffer.writeInt(count);
-    varInt::write(buffer, particleTypeId);
-    if (options) {
-        options->write(buffer);
-    }
+    buffer.writeFloat(maxSpeedX);
+    buffer.writeFloat(maxSpeedY);
+    buffer.writeFloat(maxSpeedZ);
+    varInt::write(buffer, count);
+    varInt::write(buffer, static_cast<std::int32_t>(randomization));
 }
 
 std::optional<LevelParticlesPacket> LevelParticlesPacket::read(io::ByteBuffer& buffer, ParticleOptionShape shape) {
     LevelParticlesPacket packet;
+    packet.particleTypeId = varInt::read(buffer);
+    if (shape != ParticleOptionShape::None) {
+        packet.options = ParticleOptions::read(buffer, shape);
+        if (!packet.options) {
+            return std::nullopt;
+        }
+    }
     packet.overrideLimiter = readBoolean(buffer);
     packet.alwaysShow = readBoolean(buffer);
     packet.x = buffer.readDouble();
@@ -157,15 +199,14 @@ std::optional<LevelParticlesPacket> LevelParticlesPacket::read(io::ByteBuffer& b
     packet.offsetX = buffer.readFloat();
     packet.offsetY = buffer.readFloat();
     packet.offsetZ = buffer.readFloat();
-    packet.maxSpeed = buffer.readFloat();
-    packet.count = buffer.readInt();
-    packet.particleTypeId = varInt::read(buffer);
-    if (shape != ParticleOptionShape::None) {
-        packet.options = ParticleOptions::read(buffer, shape);
-        if (!packet.options) {
-            return std::nullopt;
-        }
-    }
+    packet.maxSpeedX = buffer.readFloat();
+    packet.maxSpeedY = buffer.readFloat();
+    packet.maxSpeedZ = buffer.readFloat();
+    packet.count = varInt::read(buffer);
+    // parity: ByIdMap with OutOfBoundsStrategy.ZERO.
+    const std::int32_t randomization = varInt::read(buffer);
+    packet.randomization =
+        randomization >= 0 && randomization <= 2 ? static_cast<Randomization>(randomization) : Randomization::Default;
     return buffer.failed() ? std::nullopt : std::optional{std::move(packet)};
 }
 
@@ -353,14 +394,15 @@ std::optional<RemoveMobEffectPacket> RemoveMobEffectPacket::read(io::ByteBuffer&
     return buffer.failed() ? std::nullopt : std::optional{packet};
 }
 
+// parity: PositionPath.Type.LINEAR, the only shape this build sends.
+constexpr std::int32_t kLinearPath = 0;
+
 void EntityPositionSyncPacket::write(io::ByteBuffer& buffer) const {
     varInt::write(buffer, entityId);
+    varInt::write(buffer, kLinearPath);
     buffer.writeDouble(x);
     buffer.writeDouble(y);
     buffer.writeDouble(z);
-    buffer.writeDouble(velocityX);
-    buffer.writeDouble(velocityY);
-    buffer.writeDouble(velocityZ);
     buffer.writeFloat(yaw);
     buffer.writeFloat(pitch);
     writeBoolean(buffer, onGround);
@@ -369,12 +411,20 @@ void EntityPositionSyncPacket::write(io::ByteBuffer& buffer) const {
 std::optional<EntityPositionSyncPacket> EntityPositionSyncPacket::read(io::ByteBuffer& buffer) {
     EntityPositionSyncPacket packet;
     packet.entityId = varInt::read(buffer);
-    packet.x = buffer.readDouble();
-    packet.y = buffer.readDouble();
-    packet.z = buffer.readDouble();
-    packet.velocityX = buffer.readDouble();
-    packet.velocityY = buffer.readDouble();
-    packet.velocityZ = buffer.readDouble();
+    if (varInt::read(buffer) == kLinearPath) {
+        packet.x = buffer.readDouble();
+        packet.y = buffer.readDouble();
+        packet.z = buffer.readDouble();
+    } else {
+        // parity: PositionPath.Stepped, whose last step is where the entity ends up.
+        const std::int32_t steps = readCollectionSize(buffer, 25);
+        for (std::int32_t i = 0; i < steps && !buffer.failed(); ++i) {
+            packet.x = buffer.readDouble();
+            packet.y = buffer.readDouble();
+            packet.z = buffer.readDouble();
+            static_cast<void>(varInt::read(buffer));
+        }
+    }
     packet.yaw = buffer.readFloat();
     packet.pitch = buffer.readFloat();
     packet.onGround = readBoolean(buffer);

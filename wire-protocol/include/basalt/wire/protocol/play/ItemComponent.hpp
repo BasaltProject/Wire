@@ -28,17 +28,13 @@ inline constexpr std::int32_t kEnchantments = 13;
 inline constexpr std::int32_t kRepairCost = 19;
 inline constexpr std::int32_t kCreativeSlotLock = 20;
 inline constexpr std::int32_t kEnchantmentGlintOverride = 21;
-inline constexpr std::int32_t kStoredEnchantments = 42;
-inline constexpr std::int32_t kDyedColor = 44;
+inline constexpr std::int32_t kStoredEnchantments = 45;
+inline constexpr std::int32_t kDyedColor = 47;
 } // namespace dataComponent
 
-/// One entry of an item stack's component patch. parity: DataComponentPatch, whose wire form is the
-/// added components and then the removed ones, each by its registry id.
-///
-/// The raw case is what keeps this honest. A component with no case here is carried as the bytes it
-/// arrived as instead of being dropped, so a stack that goes out to a client and comes back is the
-/// same stack; only writing a *new* value of one needs a case, and those are the ones a command can
-/// set.
+/// One entry of an item stack's component patch. parity: `DataComponentPatch`, whose wire form is the
+/// added components then the removed ones, each by registry id. A component with no case here is
+/// kept as its raw bytes, so a stack round-trips unchanged; only writing a new value needs a case.
 class ItemComponent {
 public:
     /// Enchantment registry id to level, for `enchantments` and `stored_enchantments`.

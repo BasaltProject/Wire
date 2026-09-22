@@ -35,7 +35,7 @@ struct SpawnInfo {
     std::int64_t hashedSeed = 0;
     Gamemode gamemode = Gamemode::Survival;
     /// -1 when there was none, which is what a fresh join sends.
-    std::int32_t previousGamemode = 255;
+    std::int32_t previousGamemode = -1;
     bool isDebug = false;
     bool isFlat = false;
     std::optional<GlobalPos> death;

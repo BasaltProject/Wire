@@ -12,12 +12,9 @@
 
 namespace basalt::wire::protocol::play {
 
-/// One stack on the wire: how many, of what, plus the data components it carries as a *patch*,
-/// vanilla's DataComponentPatch, in both directions so a stack a client echoes back comes out as the
-/// stack that went in.
-///
-/// An unknown component rides along as bytes only where the form says how long it is; in the
-/// undelimited form it is refused, since skipping it blindly would desynchronise the stream.
+/// One stack on the wire: item, count and its components as a `DataComponentPatch`, so a stack a
+/// client echoes back comes out as the one that went in. An unknown component is kept as bytes only
+/// in the delimited form; elsewhere it is refused, since skipping it blindly would desynchronise.
 struct WireItemStack {
     std::int32_t itemId = 0;
     std::int32_t count = 0;
@@ -40,12 +37,8 @@ struct WireItemStack {
 
     [[nodiscard]] static std::optional<WireItemStack> read(io::ByteBuffer& buffer);
 
-    /// The same stack in the delimited form `set_creative_slot` uses.
-    ///
-    /// Every component is length-prefixed here, so unlike the ordinary form nothing has to be
-    /// understood to be kept: a creative client echoes a slot whenever the inventory screen opens,
-    /// and dropping what it could not name once stripped an enchanted item its owner had merely
-    /// looked at.
+    /// The same stack in the length-prefixed form `set_creative_slot` uses, so unknown components are
+    /// kept: a creative client echoes its slots whenever the inventory opens.
     [[nodiscard]] static std::optional<WireItemStack> readDelimited(io::ByteBuffer& buffer);
 
     friend bool operator==(const WireItemStack&, const WireItemStack&) = default;
@@ -88,7 +81,7 @@ struct ContainerSetSlotPacket {
 
 /// Which hotbar slot the player is holding, server to client.
 struct SetHeldSlotPacket {
-    static constexpr std::int32_t kId = 0x69;
+    static constexpr std::int32_t kId = 0x6b;
 
     std::int32_t slot = 0;
 
@@ -100,7 +93,7 @@ struct SetHeldSlotPacket {
 
 /// The same, client to server: the player turned the mouse wheel or pressed a number key.
 struct ServerboundSetCarriedItemPacket {
-    static constexpr std::int32_t kId = 0x35;
+    static constexpr std::int32_t kId = 0x36;
     /// Hotbar slots only; anything else is a client sending nonsense.
     static constexpr std::int16_t kHotbarSize = 9;
 
@@ -147,13 +140,13 @@ struct ServerboundContainerClickPacket {
     friend bool operator==(const ServerboundContainerClickPacket&, const ServerboundContainerClickPacket&) = default;
 };
 
-/// Serverbound, id 0x38: creative-mode inventory editing.
+/// Serverbound, id 0x39: creative-mode inventory editing.
 ///
 /// This is the only way a creative client's dragged item reaches the server, whether it came from
 /// the creative menu into a slot or from a slot into the void, which arrives as slot -1. Creative
 /// item movement never goes through a window-click packet.
 struct ServerboundSetCreativeModeSlotPacket {
-    static constexpr std::int32_t kId = 0x38;
+    static constexpr std::int32_t kId = 0x39;
 
     std::int16_t slot = 0;
     std::optional<WireItemStack> item;
@@ -174,6 +167,7 @@ inline constexpr std::int32_t kCrafter3x3 = 7;
 inline constexpr std::int32_t kAnvil = 8;
 inline constexpr std::int32_t kBeacon = 9;
 inline constexpr std::int32_t kBlastFurnace = 10;
+inline constexpr std::int32_t kBrewingStand = 11;
 inline constexpr std::int32_t kCrafting = 12;
 inline constexpr std::int32_t kEnchantment = 13;
 inline constexpr std::int32_t kFurnace = 14;
@@ -186,9 +180,9 @@ inline constexpr std::int32_t kSmoker = 22;
 inline constexpr std::int32_t kStonecutter = 24;
 } // namespace menuType
 
-/// Clientbound, id 0x3b: opens a container's screen on the client.
+/// Clientbound, id 0x3c: opens a container's screen on the client.
 struct OpenScreenPacket {
-    static constexpr std::int32_t kId = 0x3b;
+    static constexpr std::int32_t kId = 0x3c;
 
     std::int32_t containerId = 0;
     std::int32_t menuType = menuType::kGeneric9x3;
@@ -286,12 +280,12 @@ struct MerchantOffer {
     friend bool operator==(const MerchantOffer&, const MerchantOffer&) = default;
 };
 
-/// Clientbound, id 0x33: the trades a merchant is offering.
+/// Clientbound, id 0x35: the trades a merchant is offering.
 ///
 /// Sent right after the merchant window opens, and again whenever a trade is taken: the client draws
 /// the list it was last sent and nothing else.
 struct MerchantOffersPacket {
-    static constexpr std::int32_t kId = 0x33;
+    static constexpr std::int32_t kId = 0x35;
 
     std::int32_t containerId = 0;
     std::vector<MerchantOffer> offers;
@@ -306,9 +300,9 @@ struct MerchantOffersPacket {
     friend bool operator==(const MerchantOffersPacket&, const MerchantOffersPacket&) = default;
 };
 
-/// Serverbound, id 0x33: which of the offers the player picked.
+/// Serverbound, id 0x34: which of the offers the player picked.
 struct SelectTradePacket {
-    static constexpr std::int32_t kId = 0x33;
+    static constexpr std::int32_t kId = 0x34;
 
     std::int32_t index = 0;
 
@@ -318,10 +312,10 @@ struct SelectTradePacket {
     friend bool operator==(const SelectTradePacket&, const SelectTradePacket&) = default;
 };
 
-/// Serverbound, id 0x30: what the player typed into an anvil's name box. It arrives on every
+/// Serverbound, id 0x31: what the player typed into an anvil's name box. It arrives on every
 /// keystroke, and the result is worked out again each time.
 struct ServerboundRenameItemPacket {
-    static constexpr std::int32_t kId = 0x30;
+    static constexpr std::int32_t kId = 0x31;
 
     /// parity: `AnvilMenu.MAX_NAME_LENGTH`, past which the jar ignores the name outright.
     static constexpr std::size_t kMaxLength = 50;
@@ -357,11 +351,11 @@ struct ServerboundEditBookPacket {
     friend bool operator==(const ServerboundEditBookPacket&, const ServerboundEditBookPacket&) = default;
 };
 
-/// Serverbound, id 0x34: the two effects picked in a beacon's window, each of them a mob effect's
+/// Serverbound, id 0x35: the two effects picked in a beacon's window, each of them a mob effect's
 /// registry id. parity: `ServerboundSetBeaconPacket`, whose two fields are both optional because
 /// "none" is a choice the window can make.
 struct ServerboundSetBeaconPacket {
-    static constexpr std::int32_t kId = 0x34;
+    static constexpr std::int32_t kId = 0x35;
 
     std::optional<std::int32_t> primary;
     std::optional<std::int32_t> secondary;
