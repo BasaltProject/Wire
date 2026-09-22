@@ -69,9 +69,14 @@ inline constexpr std::int32_t kHeightmap = 51;
 inline constexpr std::int32_t kLootTable = 52;
 inline constexpr std::int32_t kLootPredicate = 53;
 inline constexpr std::int32_t kLootModifier = 54;
-inline constexpr std::int32_t kDialog = 55;
-inline constexpr std::int32_t kUuid = 56;
-inline constexpr std::int32_t kCount = 57;
+inline constexpr std::int32_t kContextFloatProvider = 55;
+inline constexpr std::int32_t kContextIntProvider = 56;
+inline constexpr std::int32_t kSlotSource = 57;
+inline constexpr std::int32_t kDialog = 58;
+inline constexpr std::int32_t kFeature = 59;
+inline constexpr std::int32_t kSwingAnimation = 60;
+inline constexpr std::int32_t kUuid = 61;
+inline constexpr std::int32_t kCount = 62;
 } // namespace argumentType
 
 /// One argument parser in the command tree, as the client needs to instantiate it: its registry id

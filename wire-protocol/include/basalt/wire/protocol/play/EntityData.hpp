@@ -53,7 +53,7 @@ struct SpawnEntityPacket {
     friend bool operator==(const SpawnEntityPacket&, const SpawnEntityPacket&) = default;
 };
 
-/// The registry-specific holder serializers, in 26.2's registration order, and the id-mapped enums
+/// The registry-specific holder serializers, in 26.3's registration order, and the id-mapped enums
 /// after them that travel the same way, as one VarInt.
 enum class RegistryHolder : std::int32_t {
     CatVariant = 21,
@@ -73,6 +73,7 @@ enum class RegistryHolder : std::int32_t {
     ArmadilloState = 36,
     CopperGolemState = 37,
     WeatheringCopperState = 38,
+    DyeColor = 42,
 };
 
 /// Clientbound, id 0x65: entity metadata. A stream of entries, each an index byte, a serializer id
