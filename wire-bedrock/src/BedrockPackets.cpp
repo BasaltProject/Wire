@@ -2631,6 +2631,37 @@ void writeItemFrameData(io::ByteBuffer& buffer, const std::int32_t x, const std:
     nbt::end(buffer);
 }
 
+void writeBannerTag(io::ByteBuffer& buffer, const std::int32_t x, const std::int32_t y, const std::int32_t z,
+                    const std::int32_t base, const std::span<const BedrockBannerLayer> layers, const bool ominous,
+                    const std::string_view customName) {
+    // What the client calls a banner's own data, which it looks up by this name and no other.
+    constexpr std::string_view kId = "Banner";
+    // The one banner that edition draws itself rather than from layers.
+    constexpr std::int32_t kOminous = 1;
+
+    nbt::beginCompound(buffer);
+    nbt::writeString(buffer, "id", kId);
+    nbt::writeInt(buffer, "x", x);
+    nbt::writeInt(buffer, "y", y);
+    nbt::writeInt(buffer, "z", z);
+    nbt::writeByte(buffer, "isMovable", 1);
+    nbt::writeInt(buffer, "Base", base);
+    if (ominous) {
+        nbt::writeInt(buffer, "Type", kOminous);
+    } else if (!layers.empty()) {
+        nbt::beginCompoundList(buffer, "Patterns", static_cast<std::int32_t>(layers.size()));
+        for (const BedrockBannerLayer& layer : layers) {
+            nbt::writeInt(buffer, "Color", layer.colour);
+            nbt::writeString(buffer, "Pattern", layer.pattern);
+            nbt::end(buffer);
+        }
+    }
+    if (!customName.empty()) {
+        nbt::writeString(buffer, "CustomName", customName);
+    }
+    nbt::end(buffer);
+}
+
 void writeBedTag(io::ByteBuffer& buffer, const std::int32_t x, const std::int32_t y, const std::int32_t z,
                  const std::uint8_t colour) {
     // What the client calls a bed's own data, which it looks up by this name and no other.
