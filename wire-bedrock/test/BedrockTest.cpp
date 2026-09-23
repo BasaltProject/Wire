@@ -776,10 +776,10 @@ TEST_CASE("the generated block tables say what each client already has") {
         CHECK(bedrockBlockId(5474, 1001) == 1523);
     }
 
-    SUBCASE("a state a version never had is a hole, not another block") {
-        // Wool stairs are newer than 26.40. Air is honest where a guess would be a lie, and the
-        // generator counts them out loud when it writes the table.
-        CHECK(bedrockBlockId(2436, 2169) == bedrockAirId(2169));
+    SUBCASE("a block a version never had is drawn as a look-alike") {
+        // Wool stairs are newer than 26.40, which draws them as smooth quartz stairs facing the same way.
+        CHECK(bedrockBlockId(2436, 2169) == bedrockBlockId(19304, 2169));
+        CHECK(bedrockBlockId(2436, 2169) != bedrockAirId(2169));
         CHECK(bedrockAirId(2169) == 13629);
         CHECK(bedrockBlockId(-1, kNativeBedrockProtocol) == bedrockAirId(kNativeBedrockProtocol));
         CHECK(bedrockBlockId(static_cast<std::int32_t>(kJavaBlockStates), kNativeBedrockProtocol) ==
@@ -931,6 +931,36 @@ TEST_CASE("the creative menu reads back exactly as long as it was written") {
 
     CHECK_FALSE(body.failed());
     CHECK(body.readableBytes() == 0);
+}
+
+TEST_CASE("an older client is shown a look-alike for an item it has no name for") {
+    const ItemName* wool = bedrockItem("minecraft:white_wool_stairs");
+    const ItemName* quartz = bedrockItem("minecraft:smooth_quartz_stairs");
+    REQUIRE(wool != nullptr);
+    REQUIRE(quartz != nullptr);
+    CHECK(bedrockItemStandIn(wool->palettePlace, kNativeBedrockProtocol) == nullptr);
+    const ItemStandIn* standIn = bedrockItemStandIn(wool->palettePlace, 2169);
+    REQUIRE(standIn != nullptr);
+    CHECK(standIn->standInPlace == quartz->palettePlace);
+
+    // Poplar arrived in 26.40, so only the oldest client in the window needs it drawn as pale oak.
+    const ItemName* poplar = bedrockItem("minecraft:poplar_planks");
+    REQUIRE(poplar != nullptr);
+    CHECK(bedrockItemStandIn(poplar->palettePlace, 2168) == nullptr);
+    CHECK(bedrockItemStandIn(poplar->palettePlace, 1001) != nullptr);
+
+    // Every stand-in is itself a name the oldest client has.
+    for (const ItemStandIn& entry : bedrockItemStandIns()) {
+        CHECK(bedrockItemStandIn(entry.standInPlace, 1001) == nullptr);
+    }
+
+    io::ByteBuffer body;
+    writeCreativeContent(body, 1001);
+    REQUIRE(readVarUInt(body) == 1);
+    static_cast<void>(readIntLE(body));
+    CHECK(readString(body) == "itemGroup.name.basalt");
+    static_cast<void>(readVarInt(body)); // The icon, which is nothing.
+    CHECK(readVarUInt(body) == bedrockItemPalette().size() - bedrockItemStandIns().size());
 }
 
 TEST_CASE("a recipe list reads back the way a client walks it") {
