@@ -32,6 +32,7 @@ constexpr std::uint8_t kEndOfMetadata = 0xFF;
 
 std::optional<RegistryHolder> registryHolderFromSerializer(std::int32_t id) noexcept {
     switch (id) {
+    case 12:
     case 21:
     case 22:
     case 23:
