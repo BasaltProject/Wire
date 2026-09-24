@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <memory>
 #include <optional>
+#include <string>
 #include <variant>
 #include <vector>
 
@@ -152,13 +153,22 @@ struct StonecutterOption {
     friend bool operator==(const StonecutterOption&, const StonecutterOption&) = default;
 };
 
+/// One `RecipePropertySet`: the items a slot takes, such as a furnace's input or a brewing reagent.
+struct ItemPropertySet {
+    std::string key;
+    std::vector<std::int32_t> itemIds;
+
+    friend bool operator==(const ItemPropertySet&, const ItemPropertySet&) = default;
+};
+
 /// Clientbound, id 0x88: the recipes a client needs to have itself.
 ///
 /// The stonecutter is why it exists: the client draws its buttons from this list and sends back an
-/// index into it. The item property sets are the recipe book's highlighting and go out empty.
+/// index into it. The property sets decide what the client lets into a furnace or brewing stand slot.
 struct UpdateRecipesPacket {
     static constexpr std::int32_t kId = 0x88;
 
+    std::vector<ItemPropertySet> propertySets;
     std::vector<StonecutterOption> stonecutter;
 
     void write(io::ByteBuffer& buffer) const;

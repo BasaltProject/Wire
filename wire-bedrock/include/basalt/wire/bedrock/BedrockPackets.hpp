@@ -84,6 +84,13 @@ inline constexpr int kCameraStartRotationProtocol = 2193;
 /// start playing from.
 inline constexpr int kSoundPlaybackProtocol = 2193;
 
+/// Where a score line lost the packet-wide action byte and names its kind itself, as a number and a
+/// word, and a removal stopped carrying an objective and a score.
+inline constexpr int kScoreKindProtocol = 2168;
+
+/// Where a jukebox plays its record under a server sound handle and says so with `RecordStarted`.
+inline constexpr int kRecordStartedProtocol = 2193;
+
 /// What a client asks for before anything else, and the only packet either side sends in the
 /// clear and uncompressed.
 struct RequestNetworkSettings {
@@ -583,8 +590,19 @@ void writeUpdateAdventureSettings(io::ByteBuffer& buffer, bool immutableWorld);
 ///
 /// The position travels as eighths of a block, which is the one place in this protocol where a
 /// coordinate is not a coordinate.
+///
+/// `soundHandle` is a number of the server's choosing that a later `writeStopSoundHandle` stops it by.
 void writePlaySound(io::ByteBuffer& buffer, std::string_view sound, double x, double y, double z, float volume,
-                    float pitch, int protocol);
+                    float pitch, int protocol, std::optional<std::int64_t> soundHandle = std::nullopt);
+
+/// The record a jukebox at this block started, played under `soundHandle` by the sound sent just
+/// before it. 26.50 and up; older clients hear the record by name and stop it by name.
+void writeRecordStarted(io::ByteBuffer& buffer, std::int32_t x, std::int32_t y, std::int32_t z,
+                        std::int64_t soundHandle);
+
+/// Stops a sound played under a handle: `ClientboundUpdateSoundData` with only its stop set, in
+/// the shape 26.40 and up read.
+void writeStopSoundHandle(io::ByteBuffer& buffer, std::int64_t soundHandle);
 
 /// One block that changed, for a client that already has the column it is in.
 ///
@@ -633,10 +651,12 @@ void writeSetDisplayObjective(io::ByteBuffer& buffer, std::string_view slot, std
 void writeRemoveObjective(io::ByteBuffer& buffer, std::string_view objective);
 
 /// The lines themselves, as fake players: that is how a sidebar of plain text is drawn over there.
-void writeSetScore(io::ByteBuffer& buffer, std::string_view objective, std::span<const BedrockScoreLine> lines);
+void writeSetScore(io::ByteBuffer& buffer, std::string_view objective, std::span<const BedrockScoreLine> lines,
+                   int protocol);
 
-/// The same lines taken away again, by the ids they were given.
-void writeRemoveScores(io::ByteBuffer& buffer, std::span<const std::int64_t> lineIds);
+/// The same lines of one objective taken away again, by the ids they were given.
+void writeRemoveScores(io::ByteBuffer& buffer, std::string_view objective, std::span<const std::int64_t> lineIds,
+                       int protocol);
 
 /// A boss bar, which over here belongs to an entity rather than to a uuid of its own.
 enum class BedrockBossAction : std::int32_t {

@@ -306,8 +306,26 @@ bool ContentRewriter::rewriteRecipes(MutablePacket& packet) const {
         }
         kept.push_back({std::move(inputs), result, option.resultCount});
     }
+    std::vector<play::ItemPropertySet> sets;
+    sets.reserve(recipes->propertySets.size());
+    for (const play::ItemPropertySet& set : recipes->propertySets) {
+        play::ItemPropertySet mappedSet{.key = set.key, .itemIds = {}};
+        for (const std::int32_t item : set.itemIds) {
+            if (const std::int32_t mapped = tables_->item.map(item); mapped != IdMap::kNone) {
+                mappedSet.itemIds.push_back(mapped);
+            }
+        }
+        sets.push_back(std::move(mappedSet));
+    }
     encode(packet, [&](io::ByteBuffer& out) {
-        protocol::varInt::write(out, 0);
+        protocol::varInt::write(out, static_cast<std::int32_t>(sets.size()));
+        for (const play::ItemPropertySet& set : sets) {
+            protocol::writeString(out, set.key);
+            protocol::varInt::write(out, static_cast<std::int32_t>(set.itemIds.size()));
+            for (const std::int32_t id : set.itemIds) {
+                protocol::varInt::write(out, id);
+            }
+        }
         protocol::varInt::write(out, static_cast<std::int32_t>(kept.size()));
         for (const play::StonecutterOption& option : kept) {
             protocol::varInt::write(out, static_cast<std::int32_t>(option.inputItemIds.size()) + 1);

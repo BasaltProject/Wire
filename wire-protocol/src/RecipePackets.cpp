@@ -237,8 +237,14 @@ std::optional<RecipeBookRemovePacket> RecipeBookRemovePacket::read(io::ByteBuffe
 }
 
 void UpdateRecipesPacket::write(io::ByteBuffer& buffer) const {
-    // No item property sets: this server sends none.
-    varInt::write(buffer, 0);
+    varInt::write(buffer, static_cast<std::int32_t>(propertySets.size()));
+    for (const ItemPropertySet& set : propertySets) {
+        writeString(buffer, set.key);
+        varInt::write(buffer, static_cast<std::int32_t>(set.itemIds.size()));
+        for (const std::int32_t id : set.itemIds) {
+            varInt::write(buffer, id);
+        }
+    }
     varInt::write(buffer, static_cast<std::int32_t>(stonecutter.size()));
     for (const StonecutterOption& option : stonecutter) {
         // parity: ByteBufCodecs.holderSet writes the size plus one, since zero would mean a tag
@@ -261,17 +267,17 @@ void UpdateRecipesPacket::write(io::ByteBuffer& buffer) const {
 }
 
 std::optional<UpdateRecipesPacket> UpdateRecipesPacket::read(io::ByteBuffer& buffer) {
-    // The property sets go past unread: this server sends none and reads none back.
+    UpdateRecipesPacket packet;
     const std::int32_t sets = readCollectionSize(buffer, 2);
     for (std::int32_t i = 0; i < sets && !buffer.failed(); ++i) {
-        static_cast<void>(readString(buffer));
+        ItemPropertySet set{.key = readString(buffer), .itemIds = {}};
         const std::int32_t items = readCollectionSize(buffer);
         for (std::int32_t k = 0; k < items && !buffer.failed(); ++k) {
-            static_cast<void>(varInt::read(buffer));
+            set.itemIds.push_back(varInt::read(buffer));
         }
+        packet.propertySets.push_back(std::move(set));
     }
 
-    UpdateRecipesPacket packet;
     const std::int32_t count = readCollectionSize(buffer, 6);
     packet.stonecutter.reserve(static_cast<std::size_t>(count));
     for (std::int32_t i = 0; i < count && !buffer.failed(); ++i) {
