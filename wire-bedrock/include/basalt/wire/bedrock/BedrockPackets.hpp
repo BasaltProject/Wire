@@ -1056,6 +1056,8 @@ struct BedrockItemStack {
     std::int32_t data = 0;
     /// Which block it places, for an item that places one. Zero for everything else.
     std::int32_t blockRuntimeId = 0;
+    /// The map a filled map shows, which it carries as `map_uuid` in its own tag.
+    std::optional<std::int64_t> mapId;
 };
 
 /// One thing a recipe asks for: a named item, or a tag that stands for any of a set. A cell of a

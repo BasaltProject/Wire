@@ -1142,6 +1142,40 @@ void writeNetworkChunkPublisherUpdate(io::ByteBuffer& buffer, std::int32_t x, st
 
 namespace {
 
+/// A little-endian NBT key, which is a short length and the name.
+void writeNbtKey(io::ByteBuffer& buffer, std::uint8_t type, std::string_view name) {
+    buffer.writeByte(type);
+    writeShortLE(buffer, static_cast<std::uint16_t>(name.size()));
+    buffer.writeBytes(std::span{reinterpret_cast<const std::uint8_t*>(name.data()), name.size()});
+}
+
+/// What is written on a stack and where it may be used, as the stream of its own the length in
+/// front counts. Only a map carries a tag: the map it shows, in the three keys a client reads.
+void writeItemUserData(io::ByteBuffer& buffer, const BedrockItemStack& item, bool blocking) {
+    io::ByteBuffer data;
+    if (item.mapId.has_value()) {
+        writeShortLE(data, 0xFFFF); // A tag follows,
+        data.writeByte(1);          // in the only version there is.
+        writeNbtKey(data, 10, "");
+        writeNbtKey(data, 4, "map_uuid");
+        writeLongLE(data, *item.mapId);
+        writeNbtKey(data, 3, "map_name_index");
+        writeIntLE(data, static_cast<std::int32_t>(*item.mapId));
+        writeNbtKey(data, 1, "map_display_players");
+        data.writeByte(1);
+        data.writeByte(0);
+    } else {
+        writeShortLE(data, 0);
+    }
+    writeIntLE(data, 0); // Nothing it may be placed on,
+    writeIntLE(data, 0); // and nothing it may break.
+    if (blocking) {
+        writeLongLE(data, 0);
+    }
+    writeVarUInt(buffer, static_cast<std::uint32_t>(data.readableBytes()));
+    buffer.writeBytes(data.readable());
+}
+
 /// The stack as a client of this protocol can draw it: an item it has no name for yet becomes its
 /// look-alike.
 [[nodiscard]] BedrockItemStack shownTo(BedrockItemStack item, const int protocol) {
@@ -1178,13 +1212,7 @@ void writeItemInstance(io::ByteBuffer& buffer, const BedrockItemStack& named, co
     const std::size_t at = static_cast<std::size_t>(item.runtimeId) - 1;
     const bool blocking = at < palette.size() && palette[at] == "minecraft:shield";
 
-    writeVarUInt(buffer, blocking ? 18 : 10);
-    writeShortLE(buffer, 0); // No tag,
-    writeIntLE(buffer, 0);   // nothing it may be placed on,
-    writeIntLE(buffer, 0);   // and nothing it may break.
-    if (blocking) {
-        writeLongLE(buffer, 0);
-    }
+    writeItemUserData(buffer, item, blocking);
 }
 
 /// How many bits a palette of this size needs, rounded up to one of the widths Bedrock packs with.
@@ -1703,12 +1731,8 @@ void writeItemStack(io::ByteBuffer& buffer, const BedrockItemStack& named, const
     } else {
         writeVarInt(buffer, item.blockRuntimeId);
     }
-    // What is written on it, and where it may be used. All three are empty, and the whole run is
-    // little-endian rather than varints because it is a stream of its own inside the packet.
-    writeVarUInt(buffer, 10);
-    writeShortLE(buffer, 0); // No nbt,
-    writeIntLE(buffer, 0);   // nothing it may be placed on,
-    writeIntLE(buffer, 0);   // nothing it may break.
+    // Little-endian rather than varints, because it is a stream of its own inside the packet.
+    writeItemUserData(buffer, item, false);
 }
 
 } // namespace

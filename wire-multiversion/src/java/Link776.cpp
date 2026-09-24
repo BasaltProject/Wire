@@ -8,6 +8,7 @@
 #include <basalt/wire/protocol/play/CommandPackets.hpp>
 #include <basalt/wire/protocol/play/EntityPackets.hpp>
 #include <basalt/wire/protocol/play/InventoryPackets.hpp>
+#include <basalt/wire/protocol/play/MapPackets.hpp>
 #include <basalt/wire/protocol/play/ParticleOptions.hpp>
 #include <basalt/wire/protocol/play/PlayPackets.hpp>
 #include <basalt/wire/protocol/play/PlayerStatePackets.hpp>
@@ -37,6 +38,10 @@ constexpr std::uint8_t kSwingOffHand776 = 3;
 
 /// parity: ServerboundPlayerActionPacket.Action.CHANGE_DESTROY_DIRECTION, new at 1.
 constexpr std::int32_t kChangeDestroyDirection = 1;
+
+/// The map decoration types 26.3 added start here; 26.2 draws them as its red cross.
+constexpr std::int32_t kFirstNewDecoration = 35;
+constexpr std::int32_t kRedX776 = 26;
 
 /// The brewing stand's total brew time and total fuel, the slots 26.3 added after the two it had.
 constexpr std::int16_t kFirstNewBrewingSlot = 2;
@@ -257,6 +262,19 @@ bool Link776::clientbound(ProtocolState state, MutablePacket& packet) {
         if (brewingStands_.contains(containerId) && input.readShort() >= kFirstNewBrewingSlot) {
             return false;
         }
+        break;
+    }
+    case play::MapItemDataPacket::kId: {
+        auto map = decode(packet, [](io::ByteBuffer& in) { return play::MapItemDataPacket::read(in); });
+        if (!map.has_value() || !map->decorations.has_value()) {
+            return true;
+        }
+        for (play::MapDecorationEntry& decoration : *map->decorations) {
+            if (decoration.type >= kFirstNewDecoration) {
+                decoration.type = kRedX776;
+            }
+        }
+        encode(packet, [&](io::ByteBuffer& out) { map->write(out); });
         break;
     }
     case play::CommandsPacket::kId: {

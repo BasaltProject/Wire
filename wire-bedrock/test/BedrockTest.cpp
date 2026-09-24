@@ -6,6 +6,7 @@
 #include <basalt/wire/bedrock/BedrockGate.hpp>
 #include <basalt/wire/bedrock/BedrockItems.hpp>
 #include <basalt/wire/bedrock/BedrockKeys.hpp>
+#include <basalt/wire/bedrock/BedrockMaps.hpp>
 #include <basalt/wire/bedrock/BedrockPackets.hpp>
 #include <basalt/wire/bedrock/BedrockTypes.hpp>
 #include <basalt/wire/bedrock/RakFrame.hpp>
@@ -1261,4 +1262,25 @@ TEST_CASE("a client's complaint about a packet names the packet and the field") 
     basalt::wire::io::ByteBuffer cut;
     cut.writeBytes(std::span{written.readable().data(), 2});
     CHECK(!bedrock::readPacketViolationWarning(cut).has_value());
+}
+
+TEST_CASE("a map update round trips in both of its shapes") {
+    BedrockMapData map{.mapId = 12, .dimension = 1, .locked = true, .scale = 3, .created = {12}};
+    map.decorations =
+        std::vector<BedrockMapDecoration>{{.image = 7, .rotation = 8, .x = -5, .y = 100, .label = "Home"}};
+    map.texture = BedrockMapTexture{.width = 2, .height = 1, .x = 4, .y = 9, .colors = {0xFF102030U, 0U}};
+    for (const int protocol : {1001, 2168, 2193}) {
+        io::ByteBuffer buffer;
+        writeMapItemData(buffer, map, protocol);
+        const std::optional<BedrockMapData> read = readMapItemData(buffer, protocol);
+        REQUIRE(read.has_value());
+        CHECK(*read == map);
+    }
+    // parity: `ClientboundMapItemDataSerializer_v2168`, nothing but the id and the presence flags.
+    io::ByteBuffer bare;
+    writeMapItemData(bare, BedrockMapData{.mapId = 1}, 2193);
+    CHECK(bare.toVector() == std::vector<std::uint8_t>{2, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0});
+    io::ByteBuffer request;
+    writeVarLong(request, 300);
+    CHECK(readMapInfoRequest(request) == 300);
 }

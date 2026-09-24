@@ -14,6 +14,7 @@ basalt_module(wire-protocol
         src/LoginPackets.cpp
         src/LoginPluginPackets.cpp
         src/LowPrecisionVec3.cpp
+        src/MapPackets.cpp
         src/NibbleArray.cpp
         src/PalettedContainer.cpp
         src/ParticleOptions.cpp
