@@ -1,9 +1,12 @@
 #include <basalt/wire/io/Platform.hpp>
 
+#include <algorithm>
 #include <atomic>
+#include <chrono>
 #include <csignal>
 #include <cstdint>
 #include <cstdio>
+#include <string>
 #include <thread>
 
 #if defined(_WIN32)
@@ -125,7 +128,20 @@ std::optional<unsigned int> cpuCoreCount() {
 namespace terminal {
 namespace {
 
-#if !defined(_WIN32)
+#if defined(_WIN32)
+// The console modes as they were before this process touched them, kept so they can be put back.
+DWORD gSavedInput = 0;
+DWORD gSavedOutput = 0;
+bool gOutputSaved = false;
+bool gRaw = false;
+
+/// A console event the reader will turn into bytes: a key going down that carries a character.
+/// Key releases, bare modifiers, focus, mouse and resize events never reach `getchar`.
+[[nodiscard]] bool yieldsInput(const INPUT_RECORD& record) {
+    return record.EventType == KEY_EVENT && record.Event.KeyEvent.bKeyDown != 0 &&
+           record.Event.KeyEvent.uChar.UnicodeChar != 0;
+}
+#else
 // The settings as they were before this process touched them, kept so they can be put back.
 termios gSaved{};
 bool gRaw = false;
@@ -135,9 +151,32 @@ bool gRaw = false;
 
 bool enableRawMode() {
 #if defined(_WIN32)
-    // The Windows console has its own mode flags rather than termios; the line editor falls back to
-    // plain reading there until that is written.
-    return false;
+    const HANDLE input = GetStdHandle(STD_INPUT_HANDLE);
+    if (input == nullptr || input == INVALID_HANDLE_VALUE) {
+        return false;
+    }
+    if (gRaw) {
+        return true;
+    }
+    // A pipe or a file has no console mode, and is read line by line like everywhere else.
+    if (GetConsoleMode(input, &gSavedInput) == 0) {
+        return false;
+    }
+    // Line buffering and echo go, as with termios; Ctrl+C stays a signal, and virtual terminal
+    // input turns the arrow keys into the same escape sequences a Unix terminal sends.
+    const DWORD raw = (gSavedInput & ~static_cast<DWORD>(ENABLE_LINE_INPUT | ENABLE_ECHO_INPUT)) |
+                      ENABLE_PROCESSED_INPUT | ENABLE_VIRTUAL_TERMINAL_INPUT;
+    if (SetConsoleMode(input, raw) == 0) {
+        return false;
+    }
+    // The line editor redraws with escape sequences too, which the console only honours when told.
+    const HANDLE output = GetStdHandle(STD_OUTPUT_HANDLE);
+    if (output != nullptr && output != INVALID_HANDLE_VALUE && GetConsoleMode(output, &gSavedOutput) != 0) {
+        gOutputSaved = true;
+        SetConsoleMode(output, gSavedOutput | ENABLE_VIRTUAL_TERMINAL_PROCESSING);
+    }
+    gRaw = true;
+    return true;
 #else
     if (::isatty(STDIN_FILENO) != 1) {
         return false;
@@ -162,7 +201,16 @@ bool enableRawMode() {
 }
 
 void restoreMode() {
-#if !defined(_WIN32)
+#if defined(_WIN32)
+    if (gRaw) {
+        SetConsoleMode(GetStdHandle(STD_INPUT_HANDLE), gSavedInput);
+        if (gOutputSaved) {
+            SetConsoleMode(GetStdHandle(STD_OUTPUT_HANDLE), gSavedOutput);
+            gOutputSaved = false;
+        }
+        gRaw = false;
+    }
+#else
     if (gRaw) {
         ::tcsetattr(STDIN_FILENO, TCSANOW, &gSaved);
         gRaw = false;
@@ -170,7 +218,38 @@ void restoreMode() {
 #endif
 }
 
-int readByte() { return std::getchar(); }
+int readByte() {
+#if defined(_WIN32)
+    // In raw mode the console is read as characters, not through the C runtime: its text mode holds
+    // a lone carriage return back until it sees what follows, which is the next key pressed.
+    static std::string pending;
+    if (!gRaw) {
+        return std::getchar();
+    }
+    while (pending.empty()) {
+        wchar_t units[2]{};
+        DWORD read = 0;
+        if (ReadConsoleW(GetStdHandle(STD_INPUT_HANDLE), units, 1, &read, nullptr) == 0 || read == 0) {
+            return -1;
+        }
+        // A character past the basic plane comes as two units, and only the pair converts.
+        if (units[0] >= 0xD800 && units[0] <= 0xDBFF &&
+            (ReadConsoleW(GetStdHandle(STD_INPUT_HANDLE), &units[1], 1, &read, nullptr) == 0 || read == 0)) {
+            return -1;
+        }
+        const int length = units[1] != 0 ? 2 : 1;
+        char bytes[8]{};
+        const int written =
+            WideCharToMultiByte(CP_UTF8, 0, units, length, bytes, static_cast<int>(sizeof(bytes)), nullptr, nullptr);
+        pending.assign(bytes, static_cast<std::size_t>(std::max(written, 0)));
+    }
+    const auto byte = static_cast<unsigned char>(pending.front());
+    pending.erase(0, 1);
+    return byte;
+#else
+    return std::getchar();
+#endif
+}
 
 bool waitForInput(const std::chrono::milliseconds timeout) {
 #if defined(_WIN32)
@@ -178,7 +257,30 @@ bool waitForInput(const std::chrono::milliseconds timeout) {
     if (input == nullptr || input == INVALID_HANDLE_VALUE) {
         return true;
     }
-    return WaitForSingleObject(input, static_cast<DWORD>(timeout.count())) == WAIT_OBJECT_0;
+    DWORD mode = 0;
+    if (GetConsoleMode(input, &mode) == 0) {
+        return WaitForSingleObject(input, static_cast<DWORD>(timeout.count())) == WAIT_OBJECT_0;
+    }
+    // The console handle is signalled for every event, a key release or a mouse move included, and
+    // `getchar` blocks through those; they are taken off the queue here so a signalled handle means
+    // a byte is really waiting.
+    const auto deadline = std::chrono::steady_clock::now() + timeout;
+    for (;;) {
+        const auto left =
+            std::chrono::duration_cast<std::chrono::milliseconds>(deadline - std::chrono::steady_clock::now());
+        if (WaitForSingleObject(input, static_cast<DWORD>(std::max<std::int64_t>(left.count(), 0))) != WAIT_OBJECT_0) {
+            return false;
+        }
+        INPUT_RECORD record{};
+        DWORD count = 0;
+        if (PeekConsoleInputW(input, &record, 1, &count) == 0 || count == 0) {
+            return true;
+        }
+        if (yieldsInput(record)) {
+            return true;
+        }
+        ReadConsoleInputW(input, &record, 1, &count);
+    }
 #else
     pollfd watched{};
     watched.fd = STDIN_FILENO;
