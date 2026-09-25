@@ -146,6 +146,14 @@ PlayerInfoUpdatePacket PlayerInfoUpdatePacket::gameMode(const common::Uuid& uuid
     return PlayerInfoUpdatePacket{kUpdateGameMode, {std::move(entry)}};
 }
 
+PlayerInfoUpdatePacket PlayerInfoUpdatePacket::chatSession(const common::Uuid& uuid,
+                                                           std::optional<RemoteChatSessionData> session) {
+    PlayerInfoEntry entry;
+    entry.uuid = uuid;
+    entry.chatSession = std::move(session);
+    return PlayerInfoUpdatePacket{kInitializeChat, {std::move(entry)}};
+}
+
 void PlayerInfoUpdatePacket::write(io::ByteBuffer& buffer) const {
     buffer.writeByte(actions);
     varInt::write(buffer, static_cast<std::int32_t>(entries.size()));
@@ -163,6 +171,12 @@ void PlayerInfoUpdatePacket::write(io::ByteBuffer& buffer) const {
                 if (property.signature) {
                     writeString(buffer, *property.signature);
                 }
+            }
+        }
+        if ((actions & kInitializeChat) != 0) {
+            writeBoolean(buffer, entry.chatSession.has_value());
+            if (entry.chatSession) {
+                entry.chatSession->write(buffer);
             }
         }
         if ((actions & kUpdateGameMode) != 0) {
@@ -183,9 +197,9 @@ std::optional<PlayerInfoUpdatePacket> PlayerInfoUpdatePacket::read(io::ByteBuffe
     if (buffer.failed()) {
         return std::nullopt;
     }
-    // The four actions this build does not write carry fields of unknown width, so a packet with one
+    // The three actions this build does not write carry fields of unknown width, so a packet with one
     // of them set cannot be walked past: refusing it is the only correct answer.
-    constexpr std::uint8_t supported = kAddPlayer | kUpdateGameMode | kUpdateListed | kUpdateLatency;
+    constexpr std::uint8_t supported = kAddPlayer | kInitializeChat | kUpdateGameMode | kUpdateListed | kUpdateLatency;
     if ((packet.actions & static_cast<std::uint8_t>(~supported)) != 0) {
         buffer.markFailed();
         return std::nullopt;
@@ -210,6 +224,9 @@ std::optional<PlayerInfoUpdatePacket> PlayerInfoUpdatePacket::read(io::ByteBuffe
                 }
                 entry.properties.push_back(std::move(property));
             }
+        }
+        if ((packet.actions & kInitializeChat) != 0 && readBoolean(buffer)) {
+            entry.chatSession = RemoteChatSessionData::read(buffer);
         }
         if ((packet.actions & kUpdateGameMode) != 0) {
             const auto gamemode = fromOrdinal<Gamemode>(varInt::read(buffer), 4);
@@ -293,33 +310,6 @@ std::optional<SystemChatPacket> SystemChatPacket::read(io::ByteBuffer& buffer) {
     SystemChatPacket packet;
     packet.content = readComponent(buffer);
     packet.isActionBar = readBoolean(buffer);
-    return buffer.failed() ? std::nullopt : std::optional{std::move(packet)};
-}
-
-void ChatMessagePacket::write(io::ByteBuffer& buffer) const {
-    writeString(buffer, message);
-    buffer.writeLong(timestamp);
-    buffer.writeLong(salt);
-    writeBoolean(buffer, signature.has_value());
-    if (signature) {
-        buffer.writeBytes(*signature);
-    }
-    varInt::write(buffer, offset);
-    buffer.writeBytes(acknowledged);
-    buffer.writeByte(static_cast<std::uint8_t>(checksum));
-}
-
-std::optional<ChatMessagePacket> ChatMessagePacket::read(io::ByteBuffer& buffer) {
-    ChatMessagePacket packet;
-    packet.message = readString(buffer, 256);
-    packet.timestamp = buffer.readLong();
-    packet.salt = buffer.readLong();
-    if (readBoolean(buffer)) {
-        packet.signature = buffer.readBytes(kSignatureLength);
-    }
-    packet.offset = varInt::read(buffer);
-    packet.acknowledged = buffer.readBytes(kAcknowledgedLength);
-    packet.checksum = static_cast<std::int8_t>(buffer.readByte());
     return buffer.failed() ? std::nullopt : std::optional{std::move(packet)};
 }
 

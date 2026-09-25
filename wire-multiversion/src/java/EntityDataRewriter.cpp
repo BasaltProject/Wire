@@ -30,6 +30,7 @@ constexpr std::int32_t kPackedTypeLimit = 7;
 // This build's own numbering, which is what the generated table is indexed by.
 constexpr std::int32_t kByte = 0;
 constexpr std::int32_t kVarInt = 1;
+constexpr std::int32_t kLong = 2;
 constexpr std::int32_t kFloat = 3;
 constexpr std::int32_t kString = 4;
 constexpr std::int32_t kComponent = 5;
@@ -41,6 +42,7 @@ constexpr std::int32_t kOptionalBlockPosition = 11;
 constexpr std::int32_t kParticle = 16;
 constexpr std::int32_t kParticles = 17;
 constexpr std::int32_t kVillagerData = 18;
+constexpr std::int32_t kOptionalUnsignedInt = 19;
 constexpr std::int32_t kPose = 20;
 
 constexpr std::int32_t kStanding = 0;
@@ -115,6 +117,10 @@ constexpr std::int32_t kNitwit = 5;
                 return kParticle;
             } else if constexpr (std::is_same_v<T, SetEntityDataPacket::ParticlesValue>) {
                 return kParticles;
+            } else if constexpr (std::is_same_v<T, SetEntityDataPacket::OptionalUnsignedIntValue>) {
+                return kOptionalUnsignedInt;
+            } else if constexpr (std::is_same_v<T, SetEntityDataPacket::LongValue>) {
+                return kLong;
             } else {
                 return static_cast<std::int32_t>(held.registry);
             }
@@ -303,6 +309,15 @@ void EntityDataRewriter::writeEntry(io::ByteBuffer& output, const SetEntityDataP
                         each.options->write(payload);
                     }
                 }
+            } else if constexpr (std::is_same_v<T, SetEntityDataPacket::OptionalUnsignedIntValue>) {
+                protocol::varInt::write(payload, held.value.has_value() ? *held.value + 1 : 0);
+            } else if constexpr (std::is_same_v<T, SetEntityDataPacket::LongValue>) {
+                // A bee's anger end time; older clients counted anger as an int instead.
+                if (farEnd_ != protocolVersions::kNative) {
+                    written = false;
+                    return;
+                }
+                protocol::varLong::write(payload, held.value);
             } else if constexpr (std::is_same_v<T, SetEntityDataPacket::ItemValue>) {
                 // A stack is written the way its own version writes one, which is three shapes over
                 // the years and the same work wherever a stack travels.

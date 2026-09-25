@@ -881,12 +881,6 @@ TEST_CASE("a typed command round trips") {
     io::ByteBuffer buffer;
     command.write(buffer);
     CHECK(*ChatCommandPacket::read(buffer) == command);
-
-    // The signed form reads only its command; the signature block behind it is left alone.
-    io::ByteBuffer signedBuffer;
-    writeString(signedBuffer, "say hello");
-    signedBuffer.writeLong(0);
-    CHECK(SignedChatCommandPacket::read(signedBuffer)->command == "say hello");
 }
 
 TEST_CASE("item stacks round trip in both of their wire forms") {
@@ -1235,6 +1229,17 @@ TEST_CASE("entity metadata round trips every serializer this build writes") {
         return id == 20 ? ParticleOptionShape::Color : ParticleOptionShape::None;
     };
     CHECK(Data::read(swirlBuffer, colours) == swirl);
+
+    // parity: a firework stuck to whoever used it names them one above their id, and nobody as zero.
+    Data rocket;
+    rocket.entityId = 9;
+    rocket.entries.push_back({.index = 9, .value = Data::OptionalUnsignedIntValue{41}});
+    rocket.entries.push_back({.index = 9, .value = Data::OptionalUnsignedIntValue{}});
+    rocket.entries.push_back({.index = 18, .value = Data::LongValue{-1}});
+    rocket.entries.push_back({.index = 18, .value = Data::LongValue{24000123456LL}});
+    io::ByteBuffer rocketBuffer;
+    rocket.write(rocketBuffer);
+    CHECK(Data::read(rocketBuffer) == rocket);
 }
 
 TEST_CASE("the entity metadata helpers write the indices vanilla expects") {
@@ -1575,6 +1580,12 @@ TEST_CASE("the tab list packets round trip and refuse what they cannot parse") {
     gameMode.write(gameModeBuffer);
     CHECK(*PlayerInfoUpdatePacket::read(gameModeBuffer) == gameMode);
 
+    const auto session = PlayerInfoUpdatePacket::chatSession(
+        entry.uuid, RemoteChatSessionData{.sessionId = common::Uuid{3, 4}, .expiresAt = 5, .publicKey = {6}});
+    io::ByteBuffer sessionBuffer;
+    session.write(sessionBuffer);
+    CHECK(*PlayerInfoUpdatePacket::read(sessionBuffer) == session);
+
     // An action whose fields have unknown width cannot be walked past, so the packet is refused.
     io::ByteBuffer unsupported;
     unsupported.writeByte(PlayerInfoUpdatePacket::kUpdateDisplayName);
@@ -1634,19 +1645,59 @@ TEST_CASE("the chat packets round trip") {
     system.write(systemBuffer);
     CHECK(*SystemChatPacket::read(systemBuffer) == system);
 
+    const auto roundTrips = [](const auto& packet) {
+        io::ByteBuffer buffer;
+        packet.write(buffer);
+        const auto read = std::remove_cvref_t<decltype(packet)>::read(buffer);
+        REQUIRE(read.has_value());
+        CHECK(*read == packet);
+        CHECK(buffer.readableBytes() == 0);
+    };
+    MessageSignature signature{};
+    signature.fill(0x7F);
+
     ChatMessagePacket chat;
     chat.message = "hello";
     chat.timestamp = 1234;
     chat.salt = 5678;
-    chat.acknowledged = {0, 0, 0};
-    io::ByteBuffer chatBuffer;
-    chat.write(chatBuffer);
-    CHECK(*ChatMessagePacket::read(chatBuffer) == chat);
+    chat.lastSeen.offset = 2;
+    chat.lastSeen.setAcknowledged(0);
+    chat.lastSeen.setAcknowledged(19);
+    chat.lastSeen.checksum = -3;
+    roundTrips(chat);
+    chat.signature = signature;
+    roundTrips(chat);
+    CHECK(chat.lastSeen.bitLength() == 20);
 
-    chat.signature = std::vector<std::uint8_t>(ChatMessagePacket::kSignatureLength, 0x7F);
-    io::ByteBuffer signedBuffer;
-    chat.write(signedBuffer);
-    CHECK(*ChatMessagePacket::read(signedBuffer) == chat);
+    roundTrips(ChatAckPacket{7});
+    roundTrips(SignedChatCommandPacket{.command = "msg Steve hi",
+                                       .timestamp = 99,
+                                       .salt = -1,
+                                       .argumentSignatures = {{"message", signature}},
+                                       .lastSeen = {}});
+    roundTrips(ChatSessionUpdatePacket{
+        {.sessionId = common::Uuid{1, 2}, .expiresAt = 1700000000000, .publicKey = {1, 2, 3}, .keySignature = {4, 5}}});
+
+    PlayerChatPacket player;
+    player.globalIndex = 3;
+    player.sender = common::Uuid{5, 6};
+    player.index = 1;
+    player.signature = signature;
+    player.content = "hi";
+    player.lastSeen = {PackedSignature{.id = 4, .full = std::nullopt},
+                       PackedSignature{.id = PackedSignature::kFullSignature, .full = signature}};
+    player.unsignedContent = text::Component::text("hi!");
+    player.filterMask = FilterMask{.type = FilterMask::Type::PartiallyFiltered, .mask = {0b101}};
+    player.chatType = ChatTypeBound{
+        .chatType = 0, .name = text::Component::text("Steve"), .targetName = text::Component::text("Alex")};
+    roundTrips(player);
+    roundTrips(DisguisedChatPacket{.message = text::Component::text("hey"),
+                                   .chatType = {.chatType = 4, .name = text::Component::text("Server")}});
+
+    // parity: the holder id is written one up, since zero means an inline chat type.
+    io::ByteBuffer bound;
+    ChatTypeBound{.chatType = 4, .name = text::Component::text("x")}.write(bound);
+    CHECK(bound.readByte() == 5);
 }
 
 TEST_CASE("the map item data packet round trips with and without its optional parts") {

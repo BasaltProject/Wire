@@ -6,6 +6,7 @@ basalt_module(wire-auth
         src/LegacyForwarding.cpp
         src/ProxyForwarding.cpp
         src/SessionKeyPair.cpp
+        src/SignatureValidator.cpp
         src/VelocityForwarding.cpp
     DEPENDS basalt::wire-common basalt::wire-io basalt::wire-protocol
     PRIVATE_DEPENDS basalt::mbedtls

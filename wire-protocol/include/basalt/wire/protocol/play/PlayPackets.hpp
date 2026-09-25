@@ -4,6 +4,7 @@
 #include <basalt/wire/io/ByteBuffer.hpp>
 #include <basalt/wire/protocol/login/LoginPackets.hpp>
 #include <basalt/wire/protocol/play/BlockPos.hpp>
+#include <basalt/wire/protocol/play/ChatPackets.hpp>
 #include <basalt/wire/protocol/play/SpawnInfo.hpp>
 #include <basalt/wire/text/Component.hpp>
 
@@ -111,6 +112,8 @@ struct PlayerInfoEntry {
     /// whole difference between everyone looking like Steve and everyone looking like themselves.
     /// Empty in offline mode, since nothing signs them there.
     std::vector<login::GameProfileProperty> properties;
+    /// Their chat session, which lets every client check what they sign. None clears it.
+    std::optional<RemoteChatSessionData> chatSession;
 
     friend bool operator==(const PlayerInfoEntry&, const PlayerInfoEntry&) = default;
 };
@@ -139,7 +142,8 @@ struct PlayerInfoUpdatePacket {
     /// What vanilla's createPlayerInitializing sends for a player who just joined, minus the actions
     /// this build does not write. The game mode belongs in here: a player who joins in creative is a
     /// spectator-or-not to everyone else from this packet alone.
-    static constexpr std::uint8_t kInitializing = kAddPlayer | kUpdateGameMode | kUpdateListed | kUpdateLatency;
+    static constexpr std::uint8_t kInitializing =
+        kAddPlayer | kInitializeChat | kUpdateGameMode | kUpdateListed | kUpdateLatency;
 
     std::uint8_t actions = kInitializing;
     std::vector<PlayerInfoEntry> entries;
@@ -148,6 +152,10 @@ struct PlayerInfoUpdatePacket {
 
     /// The single-action update vanilla broadcasts when a player's game mode changes.
     [[nodiscard]] static PlayerInfoUpdatePacket gameMode(const common::Uuid& uuid, Gamemode gamemode);
+
+    /// parity: `ServerGamePacketListenerImpl.resetPlayerChatState`, broadcast when a session is set.
+    [[nodiscard]] static PlayerInfoUpdatePacket chatSession(const common::Uuid& uuid,
+                                                            std::optional<RemoteChatSessionData> session);
 
     void write(io::ByteBuffer& buffer) const;
 
@@ -214,11 +222,7 @@ struct PlayKeepAlivePacket {
     friend bool operator==(const PlayKeepAlivePacket&, const PlayKeepAlivePacket&) = default;
 };
 
-/// Clientbound, id 0x7c: an unsigned chat message.
-///
-/// Used both for real system messages and, for now, to relay player chat: signed player chat, with
-/// its session registration and message signing, is a documented gap, so relayed messages render
-/// with system styling rather than a player name and head.
+/// Clientbound, id 0x7c: a system message, in chat or over the hotbar.
 struct SystemChatPacket {
     static constexpr std::int32_t kId = 0x7c;
 
@@ -229,29 +233,6 @@ struct SystemChatPacket {
     [[nodiscard]] static std::optional<SystemChatPacket> read(io::ByteBuffer& buffer);
 
     friend bool operator==(const SystemChatPacket&, const SystemChatPacket&) = default;
-};
-
-/// Serverbound, id 0x09: a chat message.
-///
-/// The signing fields are read to keep the wire format correct but are not validated: see the system
-/// chat packet for the signed-chat gap.
-struct ChatMessagePacket {
-    static constexpr std::int32_t kId = 0x09;
-    static constexpr std::size_t kSignatureLength = 256;
-    static constexpr std::size_t kAcknowledgedLength = 3;
-
-    std::string message;
-    std::int64_t timestamp = 0;
-    std::int64_t salt = 0;
-    std::optional<std::vector<std::uint8_t>> signature;
-    std::int32_t offset = 0;
-    std::vector<std::uint8_t> acknowledged;
-    std::int8_t checksum = 0;
-
-    void write(io::ByteBuffer& buffer) const;
-    [[nodiscard]] static std::optional<ChatMessagePacket> read(io::ByteBuffer& buffer);
-
-    friend bool operator==(const ChatMessagePacket&, const ChatMessagePacket&) = default;
 };
 
 /// Clientbound, id 0x20: kicks the player with a reason.

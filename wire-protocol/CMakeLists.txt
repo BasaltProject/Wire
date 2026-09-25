@@ -3,6 +3,7 @@ basalt_module(wire-protocol
         src/PacketFraming.cpp
         src/BlockEntityPackets.cpp
         src/BorderPackets.cpp
+        src/ChatPackets.cpp
         src/CommandPackets.cpp
         src/ConfigurationPackets.cpp
         src/EntityData.cpp

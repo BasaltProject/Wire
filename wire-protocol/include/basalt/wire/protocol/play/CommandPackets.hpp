@@ -79,13 +79,9 @@ inline constexpr std::int32_t kUuid = 61;
 inline constexpr std::int32_t kCount = 62;
 } // namespace argumentType
 
-/// One argument parser in the command tree, as the client needs to instantiate it: its registry id
-/// plus whatever configuration that particular parser carries.
-///
-/// Most of the fifty-seven carry nothing, which is vanilla's SingletonArgumentInfo. The bounded
-/// number parsers hold their limits as absent-or-present rather than as sentinel extremes, because
-/// that is exactly what the wire's flag byte says and a sentinel is a value somebody eventually
-/// writes by accident.
+/// One argument parser in the command tree: its registry id plus its own configuration. Most carry
+/// nothing (vanilla's `SingletonArgumentInfo`); bounded number parsers hold optional limits, matching
+/// the wire's flag byte rather than sentinel extremes.
 class ArgumentParser {
 public:
     /// A parser with no configuration at all.
@@ -217,7 +213,6 @@ struct CommandsPacket {
 /// Serverbound, id 0x07: a command the player typed, without its leading slash.
 struct ChatCommandPacket {
     static constexpr std::int32_t kId = 0x07;
-    static constexpr std::int32_t kMaxLength = 256;
 
     std::string command;
 
@@ -225,22 +220,6 @@ struct ChatCommandPacket {
     [[nodiscard]] static std::optional<ChatCommandPacket> read(io::ByteBuffer& buffer);
 
     friend bool operator==(const ChatCommandPacket&, const ChatCommandPacket&) = default;
-};
-
-/// Serverbound, id 0x08: a command carrying signed message arguments, which is what `/msg` and
-/// `/say` become once the client has a chat session.
-///
-/// Only the command is decoded. The signature block that follows it (timestamp, salt, per-argument
-/// signatures, last-seen acknowledgements) is left unread: nothing verifies signatures yet and the
-/// frame is discarded whole afterwards, so reading past the command would be ceremony.
-struct SignedChatCommandPacket {
-    static constexpr std::int32_t kId = 0x08;
-
-    std::string command;
-
-    [[nodiscard]] static std::optional<SignedChatCommandPacket> read(io::ByteBuffer& buffer);
-
-    friend bool operator==(const SignedChatCommandPacket&, const SignedChatCommandPacket&) = default;
 };
 
 } // namespace basalt::wire::protocol::play

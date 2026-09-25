@@ -133,6 +133,11 @@ struct SetEntityDataPacket {
         friend bool operator==(const IntValue&, const IntValue&) = default;
     };
 
+    struct LongValue {
+        std::int64_t value = 0;
+        friend bool operator==(const LongValue&, const LongValue&) = default;
+    };
+
     struct FloatValue {
         float value = 0.0F;
         friend bool operator==(const FloatValue&, const FloatValue&) = default;
@@ -205,9 +210,15 @@ struct SetEntityDataPacket {
         friend bool operator==(const ParticlesValue&, const ParticlesValue&) = default;
     };
 
+    /// parity: `EntityDataSerializers.OPTIONAL_UNSIGNED_INT`, a varint one above the value, zero for none.
+    struct OptionalUnsignedIntValue {
+        std::optional<std::int32_t> value;
+        friend bool operator==(const OptionalUnsignedIntValue&, const OptionalUnsignedIntValue&) = default;
+    };
+
     using Value = std::variant<ByteValue, IntValue, FloatValue, TextValue, OptionalTextValue, ItemValue, BoolValue,
                                RotationsValue, VillagerDataValue, OptionalBlockPosValue, PoseValue, RegistryIdValue,
-                               ParticleValue, ParticlesValue>;
+                               ParticleValue, ParticlesValue, OptionalUnsignedIntValue, LongValue>;
 
     /// Which option shape a particle type carries; nothing for a type with none.
     using ParticleShapeOf = std::function<std::optional<ParticleOptionShape>(std::int32_t particleId)>;
