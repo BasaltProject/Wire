@@ -1,5 +1,6 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <basalt/wire/bedrock/BedrockBatch.hpp>
+#include <basalt/wire/bedrock/BedrockBiomes.hpp>
 #include <basalt/wire/bedrock/BedrockBlocks.hpp>
 #include <basalt/wire/bedrock/BedrockCipher.hpp>
 #include <basalt/wire/bedrock/BedrockConnection.hpp>
@@ -874,30 +875,77 @@ TEST_CASE("a creative group sits in a tab, and its number is a word or a byte by
     CHECK(readString(newer) == "itemGroup.name.basalt");
 }
 
-TEST_CASE("the biome list names the one every chunk points at") {
-    // A column's biome palette is a single entry saying zero, so a list saying there are no biomes
-    // at all contradicts every chunk this server sends. An empty list is a claim, not a stub.
+TEST_CASE("the biome list reads back whole, every name and tag pointing into its strings") {
+    // 844's shape: a name index, minus one for an id, five floats, the water colour, rain, optional
+    // tags and optional generation data. Written in 800's shape this is a packet a client hangs up on.
     io::ByteBuffer body;
     writeBiomeDefinitionList(body);
 
-    REQUIRE(readVarUInt(body) == 1);
-    CHECK(readShortLE(body) == 0); // Its name is the first string below,
-    // and minus one where an id would go. 827 made this a plain number and 844 cut the climate
-    // down to five fields: written in 800's shape, with an optional id and eight floats, this is a
-    // packet a client hangs up on.
-    CHECK(readShortLE(body) == 0xffff);
-    for (int field = 0; field < 5; ++field) {
-        static_cast<void>(readFloatLE(body));
+    const std::uint32_t count = readVarUInt(body);
+    REQUIRE(count == bedrockBiomeDefinitions().size());
+    std::vector<std::uint16_t> names;
+    std::uint16_t highest = 0;
+    for (std::uint32_t biome = 0; biome < count; ++biome) {
+        names.push_back(readShortLE(body));
+        highest = std::max(highest, names.back());
+        CHECK(readShortLE(body) == 0xffff);
+        for (int field = 0; field < 5; ++field) {
+            static_cast<void>(readFloatLE(body));
+        }
+        static_cast<void>(readIntLE(body));
+        static_cast<void>(body.readByte());
+        if (body.readByte() != 0) {
+            const std::uint32_t tags = readVarUInt(body);
+            for (std::uint32_t tag = 0; tag < tags; ++tag) {
+                highest = std::max(highest, readShortLE(body));
+            }
+        }
+        CHECK(body.readByte() == 0);
     }
-    static_cast<void>(readIntLE(body)); // The map water colour,
-    static_cast<void>(body.readByte()); // whether it rains,
-    CHECK(body.readByte() == 0);        // no tags,
-    CHECK(body.readByte() == 0);        // and nothing about how it is generated.
-
-    REQUIRE(readVarUInt(body) == 1);
-    CHECK(readString(body) == "plains");
+    const std::uint32_t strings = readVarUInt(body);
+    CHECK(highest < strings);
+    std::vector<std::string> table;
+    for (std::uint32_t at = 0; at < strings; ++at) {
+        table.push_back(readString(body));
+    }
     CHECK_FALSE(body.failed());
     CHECK(body.readableBytes() == 0);
+    CHECK(std::ranges::find(table, "minecraft:plains") != table.end());
+    CHECK(table[names.front()] == bedrockBiomeDefinitions().front().name);
+}
+
+TEST_CASE("a biome section is one entry when it agrees and spreads its quarts over the blocks otherwise") {
+    CHECK(bedrockBiomeId("minecraft:plains") == 1);
+    CHECK(bedrockBiomeId("desert") == 2);
+    CHECK_FALSE(bedrockBiomeId("minecraft:nowhere").has_value());
+
+    BiomeQuarts quarts{};
+    quarts.fill(1);
+    io::ByteBuffer single;
+    writeBiomeSection(single, quarts);
+    CHECK(single.readByte() == 0x01);
+    CHECK(readVarInt(single) == 1);
+    CHECK(single.readableBytes() == 0);
+
+    // The quart at x 3, y 0, z 0 is desert: in Bedrock's x-major order that is blocks 3072 on.
+    quarts[3] = 2;
+    io::ByteBuffer mixed;
+    writeBiomeSection(mixed, quarts);
+    CHECK(mixed.readByte() == ((1 << 1) | 1));
+    std::vector<std::uint32_t> words;
+    for (int word = 0; word < 128; ++word) {
+        words.push_back(static_cast<std::uint32_t>(readIntLE(mixed)));
+    }
+    CHECK(readVarInt(mixed) == 2);
+    CHECK(readVarInt(mixed) == 1);
+    CHECK(readVarInt(mixed) == 2);
+    CHECK(mixed.readableBytes() == 0);
+    const auto at = [&words](std::size_t block) { return (words[block / 32] >> (block % 32)) & 1U; };
+    CHECK(at((12U << 8U) | (0U << 4U) | 0U) == 1);
+    CHECK(at((15U << 8U) | (3U << 4U) | 3U) == 1);
+    CHECK(at((11U << 8U) | (0U << 4U) | 0U) == 0);
+    CHECK(at((12U << 8U) | (4U << 4U) | 0U) == 0);
+    CHECK(at((12U << 8U) | (0U << 4U) | 4U) == 0);
 }
 
 TEST_CASE("the creative menu reads back exactly as long as it was written") {
@@ -1049,8 +1097,14 @@ TEST_CASE("a recipe list reads back the way a client walks it") {
     readUnlocking();
     CHECK(readVarUInt(body) == 2);
 
-    // The nine kinds this server sends none of, and the flag that replaces what the client had.
-    for (int kind = 0; kind < 9; ++kind) {
+    // The cartography table's four, by identity and number,
+    REQUIRE(readVarUInt(body) == kCartographyRecipeCount);
+    for (std::int32_t index = 0; index < kCartographyRecipeCount; ++index) {
+        static_cast<void>(body.readSpan(16));
+        CHECK(readVarUInt(body) == static_cast<std::uint32_t>(kFirstCartographyRecipeNetId + index));
+    }
+    // the eight kinds this server sends none of, and the flag that replaces what the client had.
+    for (int kind = 0; kind < 8; ++kind) {
         CHECK(readVarUInt(body) == 0);
     }
     CHECK(body.readByte() == 1);

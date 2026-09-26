@@ -446,6 +446,7 @@ enum class BedrockContainerType : std::int8_t {
     BlastFurnace = 27,
     Smoker = 28,
     Stonecutter = 29,
+    Cartography = 30,
     Crafter = 36,
 };
 
@@ -549,18 +550,16 @@ inline constexpr std::size_t kSubChunkBlocks = 4096;
 using JavaSubChunk = std::span<const std::int32_t>;
 
 /// Writes one subchunk in the shape a Bedrock client reads: its own palette, and the blocks as
-/// indices into it packed however few bits they need.
-///
-/// The index of a block inside a subchunk is `(x << 8) | (z << 4) | y` over there, which is the
-/// opposite nesting to Java's, so this is also where the two orders meet.
+/// indices into it packed however few bits they need. Bedrock indexes a block as
+/// `(x << 8) | (z << 4) | y`, the opposite nesting to Java's.
 void writeSubChunk(io::ByteBuffer& buffer, JavaSubChunk blocks, std::int8_t subChunkIndex, int protocol);
 
 /// The four things a client is told between the world's description and being let in; without them
-/// it drops the connection without saying why. Almost empty on purpose, since this server overrides
-/// neither the biomes nor the creative menu. The entity identifiers are the exception: a client
-/// told none refuses the ones it is shown.
+/// it drops the connection without saying why. A client told no entity identifiers refuses the ones
+/// it is shown.
 void writeAvailableEntityIdentifiers(io::ByteBuffer& buffer);
 
+/// Every vanilla biome with its climate and tags, which is what a chunk's biome ids are resolved by.
 void writeBiomeDefinitionList(io::ByteBuffer& buffer);
 
 /// The creative menu, with at most this many items in it. Fewer than all of them is a way of
@@ -587,11 +586,8 @@ void writeUpdateAbilities(io::ByteBuffer& buffer, std::int64_t entityId, bool is
 void writeUpdateAdventureSettings(io::ByteBuffer& buffer, bool immutableWorld);
 
 /// A sound, at a place. The name is Bedrock's own, which `bedrockSoundName` translates from Java's.
-///
-/// The position travels as eighths of a block, which is the one place in this protocol where a
-/// coordinate is not a coordinate.
-///
-/// `soundHandle` is a number of the server's choosing that a later `writeStopSoundHandle` stops it by.
+/// The position travels as eighths of a block. `soundHandle` is a number of the server's choosing
+/// that a later `writeStopSoundHandle` stops it by.
 void writePlaySound(io::ByteBuffer& buffer, std::string_view sound, double x, double y, double z, float volume,
                     float pitch, int protocol, std::optional<std::int64_t> soundHandle = std::nullopt);
 
@@ -604,19 +600,19 @@ void writeRecordStarted(io::ByteBuffer& buffer, std::int32_t x, std::int32_t y, 
 /// the shape 26.40 and up read.
 void writeStopSoundHandle(io::ByteBuffer& buffer, std::int64_t soundHandle);
 
-/// One block that changed, for a client that already has the column it is in.
-///
-/// The flags say what the client does about it: telling the neighbours is what makes a fence
-/// rejoin and water flow on, and the network bit is what says the change came from here rather
+/// One block that changed, for a client that already has the column it is in. The neighbours flag
+/// makes a fence rejoin and water flow on; the network bit says the change came from here rather
 /// than from the player's own hand.
 void writeUpdateBlock(io::ByteBuffer& buffer, std::int32_t x, std::int32_t y, std::int32_t z, std::int32_t javaState,
                       int protocol);
 
 /// A chunk column with blocks in it. `subChunks` is what `writeSubChunk` already wrote, one after
 /// another, and `count` how many of them: the client reads them from the bottom of the world up.
+/// `biomes` is `biomeSections` sections from `writeBiomeSection`; left empty, the column is ocean.
 void writeLevelChunk(io::ByteBuffer& buffer, std::int32_t chunkX, std::int32_t chunkZ, std::uint32_t count,
                      std::span<const std::uint8_t> subChunks, std::uint32_t biomeSections, std::int32_t dimension,
-                     int protocol, std::span<const std::uint8_t> blockEntities = {});
+                     int protocol, std::span<const std::uint8_t> blockEntities = {},
+                     std::span<const std::uint8_t> biomes = {});
 
 /// An empty chunk column: every subchunk absent, biomes flat, no block entities. It is what a
 /// client needs to stop waiting for a chunk it was told to expect.
@@ -677,10 +673,8 @@ void writeBossEvent(io::ByteBuffer& buffer, std::int64_t bossEntityId, BedrockBo
 void writeTransfer(io::ByteBuffer& buffer, std::string_view address, std::uint16_t port, int protocol);
 
 /// A sign's four lines, front and back, in the shape that edition keeps them: one string with the
-/// lines run together rather than four fields. Without this every sign a client is shown is blank.
-///
-/// The tag on its own, which is what a chunk carries: a column ends with its block entities written
-/// one after another, and the client reads them until the payload runs out.
+/// lines run together rather than four fields. The tag on its own, as a chunk carries it: a column
+/// ends with its block entities back to back, read until the payload runs out.
 void writeSignTag(io::ByteBuffer& buffer, std::int32_t x, std::int32_t y, std::int32_t z, std::string_view front,
                   std::string_view back, bool waxed);
 
@@ -1124,11 +1118,8 @@ struct BedrockEnchant {
     std::int32_t level = 1;
 };
 
-/// One of the three rows an enchanting table offers.
-///
-/// The three lists are the client's own split: the first is what a book would get, the second what
-/// the item gets, the third what it would get from a curse. This server fills only the second,
-/// which is where the client draws the row from.
+/// One of the three rows an enchanting table offers. Of the client's three lists (book, item,
+/// curse) only the second is filled, which is where the client draws the row from.
 struct BedrockEnchantOption {
     std::int32_t cost = 0;
     /// Which of the player's own slots the row applies to. Nought is the enchanting table's own.
@@ -1149,6 +1140,12 @@ void writePlayerEnchantOptions(io::ByteBuffer& buffer, std::span<const BedrockEn
 
 /// Every recipe a client is told about at login. Without this a Bedrock client crafts nothing at
 /// all: the grid's result comes from the list the server sent, not from the client's own data.
+/// The numbers the four cartography table recipes are sent under: extending, cloning, upgrading and
+/// locking a map. That edition's table crafts nothing without them, whatever is put in it.
+inline constexpr std::int32_t kFirstCartographyRecipeNetId = 1 << 20;
+inline constexpr std::int32_t kCartographyRecipeCount = 4;
+
+/// Every recipe in `recipes`, plus the cartography table's four, which are the same on every server.
 void writeCraftingData(io::ByteBuffer& buffer, std::span<const BedrockRecipe> recipes, int protocol);
 
 /// Which part of a window a run of slots belongs to. The numbers have not moved in this window.
@@ -1199,6 +1196,10 @@ enum class BedrockContainerSlot : std::uint8_t {
     /// The one slot a stonecutter's screen has of its own, and where what it cuts appears.
     StonecutterInput = 53,
     StonecutterResult = 54,
+    /// A cartography table's map, what goes with it, and what the two make.
+    CartographyInput = 55,
+    CartographyAdditional = 56,
+    CartographyResult = 57,
     /// What is being dragged. Bedrock keeps it in a window of its own rather than outside them.
     Cursor = 59,
     CreatedOutput = 60,
@@ -1284,10 +1285,8 @@ void writeAddPainting(io::ByteBuffer& buffer, std::int64_t entityId, std::uint64
                       float z, std::int32_t direction, std::string_view motive);
 
 /// The properties one kind of entity has, which the client has to be told about before any entity
-/// of that kind carries a value for one. parity: 26.2 moved several looks out of metadata and into
-/// these, and the client draws nothing for a property it was never declared.
-///
-/// One kind per call, with its choices named in the order their numbers run.
+/// of that kind carries a value for one; the client draws nothing for an undeclared property. One kind
+/// per call, with its choices in the order their numbers run.
 void writeSyncEntityProperty(io::ByteBuffer& buffer, std::string_view entityType, std::string_view property,
                              std::span<const std::string_view> choices);
 

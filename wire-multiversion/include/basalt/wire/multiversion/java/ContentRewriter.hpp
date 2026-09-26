@@ -38,6 +38,7 @@ private:
     [[nodiscard]] bool rewriteCommands(MutablePacket& packet) const;
     [[nodiscard]] bool rewriteSpawn(MutablePacket& packet);
     [[nodiscard]] bool rewriteRecipes(MutablePacket& packet) const;
+    void rewriteAdvancements(MutablePacket& packet) const;
     void rewriteEntityData(MutablePacket& packet) const;
 
     [[nodiscard]] std::int32_t blockState(std::int32_t id) const;
@@ -56,6 +57,7 @@ private:
 
     const ComposedTables* tables_;
     const SubstitutionLabels* labels_;
+    std::int32_t farEnd_;
     EntityDataRewriter entityData_;
     ChunkRewriter chunks_;
     /// What each entity in sight really is, which says where its data sits over there.

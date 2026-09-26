@@ -1,3 +1,4 @@
+#include <basalt/wire/bedrock/BedrockBiomes.hpp>
 #include <basalt/wire/bedrock/BedrockBlocks.hpp>
 #include <basalt/wire/bedrock/BedrockEntityIdentifiers.hpp>
 #include <basalt/wire/bedrock/BedrockItems.hpp>
@@ -1281,34 +1282,6 @@ void writeSubChunk(io::ByteBuffer& buffer, const JavaSubChunk blocks, const std:
 
 void writeAvailableEntityIdentifiers(io::ByteBuffer& buffer) { buffer.writeBytes(entityIdentifiers()); }
 
-void writeBiomeDefinitionList(io::ByteBuffer& buffer) {
-    // One definition, and it is the one every chunk this server sends points at: the biome palette
-    // in `level_chunk` is a single entry saying zero, so zero has to name something. An empty list
-    // is not the same as sending nothing: a client told there are no biomes at all cannot resolve
-    // the one its own chunks name. The real table, with a definition per biome and its climate and
-    // surfaces, is still missing.
-    //
-    // The shape is 844's, not 800's: the four fields about spores and ash went away there, and a
-    // definition written with them is one a client hangs up on rather than one it ignores.
-    writeVarUInt(buffer, 1);
-    writeShortLE(buffer, 0); // Its name is the first string below,
-    // and minus one where an id would go, which is what a vanilla biome carries: its place in this
-    // list is its id. 827 made this a plain number rather than something optional.
-    writeShortLE(buffer, static_cast<std::uint16_t>(-1));
-    writeFloatLE(buffer, 0.8F);
-    writeFloatLE(buffer, 0.4F);
-    writeFloatLE(buffer, 0.0F);     // No snow on the leaves,
-    writeFloatLE(buffer, 0.125F);   // the depth
-    writeFloatLE(buffer, 0.05F);    // and the scale a map draws it with.
-    writeIntLE(buffer, 0x0044aff5); // The colour of its water.
-    writeBool(buffer, true);        // It rains here,
-    writeBool(buffer, false);       // carries no tags,
-    writeBool(buffer, false);       // and says nothing about how it is generated.
-
-    writeVarUInt(buffer, 1);
-    writeString(buffer, "plains");
-}
-
 void writeCreativeContent(io::ByteBuffer& buffer, const int protocol, const std::size_t items) {
     // One group with everything in it. Vanilla sorts its creative menu into four tabs and a great
     // many groups, and that order is content rather than protocol: what the protocol needs is that
@@ -1657,9 +1630,22 @@ void writeCraftingData(io::ByteBuffer& buffer, const std::span<const BedrockReci
             writeRecipe(buffer, recipe, at++);
         }
     }
-    // Multi, user shapeless, chemistry shapeless, chemistry shaped, smithing transform, smithing
-    // trim, potion mixes, container mixes and material reducers: none of them yet.
-    constexpr int kEmptyKinds = 9;
+    // The cartography table's recipes, which that edition names by these fixed identities.
+    constexpr std::array<std::pair<std::uint64_t, std::uint64_t>, kCartographyRecipeCount> kCartography{{
+        {0x8b36268c1829483cULL, 0xa0f1993b7156a8f2ULL},
+        {0x442d85ed82724543ULL, 0xa6f1418f90ded05dULL},
+        {0x98c84b38108546bdULL, 0xb1cedd38c159e6ccULL},
+        {0x602234e4cac14353ULL, 0x8bb7b1ebff70024bULL},
+    }};
+    writeVarUInt(buffer, static_cast<std::uint32_t>(kCartography.size()));
+    for (std::size_t index = 0; index < kCartography.size(); ++index) {
+        writeUuid(buffer, kCartography[index].first, kCartography[index].second);
+        writeVarUInt(buffer,
+                     static_cast<std::uint32_t>(kFirstCartographyRecipeNetId + static_cast<std::int32_t>(index)));
+    }
+    // User shapeless, chemistry shapeless, chemistry shaped, smithing transform, smithing trim,
+    // potion mixes, container mixes and material reducers: none of them yet.
+    constexpr int kEmptyKinds = 8;
     for (int empty = 0; empty < kEmptyKinds; ++empty) {
         writeVarUInt(buffer, 0);
     }
@@ -1974,7 +1960,7 @@ void writeUpdateBlock(io::ByteBuffer& buffer, const std::int32_t x, const std::i
 void writeLevelChunk(io::ByteBuffer& buffer, const std::int32_t chunkX, const std::int32_t chunkZ,
                      const std::uint32_t count, const std::span<const std::uint8_t> subChunks,
                      const std::uint32_t biomeSections, const std::int32_t dimension, const int protocol,
-                     const std::span<const std::uint8_t> blockEntities) {
+                     const std::span<const std::uint8_t> blockEntities, const std::span<const std::uint8_t> biomes) {
     writeVarInt(buffer, chunkX);
     writeVarInt(buffer, chunkZ);
     writeVarInt(buffer, dimension);
@@ -1987,14 +1973,17 @@ void writeLevelChunk(io::ByteBuffer& buffer, const std::int32_t chunkX, const st
         writeBool(buffer, false); // No blob cache.
     }
 
-    io::ByteBuffer payload{subChunks.size() + biomeSections + blockEntities.size() + 8};
+    io::ByteBuffer payload{subChunks.size() + biomeSections + biomes.size() + blockEntities.size() + 8};
     payload.writeBytes(subChunks);
-    // One biome section written out and the rest told to carry it forward, which is what an empty
-    // one costs: the blocks are the point here, not the biomes.
-    payload.writeByte(0x01);
-    writeVarInt(payload, 0);
-    for (std::uint32_t section = 1; section < biomeSections; ++section) {
-        payload.writeByte(static_cast<std::uint8_t>((127U << 1U) | 1U));
+    if (!biomes.empty()) {
+        payload.writeBytes(biomes);
+    } else {
+        // Without biomes, one section of the fallback carried up the whole column.
+        payload.writeByte(0x01);
+        writeVarInt(payload, kFallbackBedrockBiome);
+        for (std::uint32_t section = 1; section < biomeSections; ++section) {
+            payload.writeByte(static_cast<std::uint8_t>((127U << 1U) | 1U));
+        }
     }
     payload.writeByte(0); // No border blocks.
     // And whatever the column holds that is more than a block: the client reads these until the
@@ -2025,7 +2014,7 @@ void writeEmptyLevelChunk(io::ByteBuffer& buffer, std::int32_t chunkX, std::int3
     // One biome section written out, and the rest told to carry the previous one forward. The first
     // is a palette of a single entry, which is what zero bits per block means.
     payload.writeByte(0x01);
-    writeVarInt(payload, 0);
+    writeVarInt(payload, kFallbackBedrockBiome);
     for (std::uint32_t section = 1; section < subChunkCount; ++section) {
         payload.writeByte(static_cast<std::uint8_t>((127U << 1U) | 1U));
     }

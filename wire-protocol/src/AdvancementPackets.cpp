@@ -24,21 +24,6 @@ void writeOptionalString(io::ByteBuffer& buffer, const std::optional<std::string
     return readString(buffer);
 }
 
-/// parity: `ItemStackTemplate.STREAM_CODEC`, the item before the count, then the patch.
-void writeTemplate(io::ByteBuffer& buffer, const WireItemStack& stack) {
-    varInt::write(buffer, stack.itemId);
-    varInt::write(buffer, stack.count);
-    varInt::write(buffer, static_cast<std::int32_t>(stack.components.size()));
-    varInt::write(buffer, static_cast<std::int32_t>(stack.removedComponents.size()));
-    for (const ItemComponent& component : stack.components) {
-        varInt::write(buffer, component.id());
-        component.writePayload(buffer);
-    }
-    for (const std::int32_t id : stack.removedComponents) {
-        varInt::write(buffer, id);
-    }
-}
-
 [[nodiscard]] WireItemStack readTemplate(io::ByteBuffer& buffer) {
     WireItemStack stack;
     stack.itemId = varInt::read(buffer);
@@ -63,7 +48,7 @@ void writeTemplate(io::ByteBuffer& buffer, const WireItemStack& stack) {
 void writeDisplay(io::ByteBuffer& buffer, const AdvancementDisplayData& display) {
     writeAnonymousNbt(buffer, text::componentNbt::serialize(display.title));
     writeAnonymousNbt(buffer, text::componentNbt::serialize(display.description));
-    writeTemplate(buffer, display.icon);
+    writeItemStackTemplate(buffer, display.icon);
     varInt::write(buffer, display.frame);
     std::int32_t flags = 0;
     flags |= display.background.has_value() ? kBackgroundFlag : 0;
@@ -91,6 +76,20 @@ void writeDisplay(io::ByteBuffer& buffer, const AdvancementDisplayData& display)
 }
 
 } // namespace
+
+void writeItemStackTemplate(io::ByteBuffer& buffer, const WireItemStack& stack) {
+    varInt::write(buffer, stack.itemId);
+    varInt::write(buffer, stack.count);
+    varInt::write(buffer, static_cast<std::int32_t>(stack.components.size()));
+    varInt::write(buffer, static_cast<std::int32_t>(stack.removedComponents.size()));
+    for (const ItemComponent& component : stack.components) {
+        varInt::write(buffer, component.id());
+        component.writePayload(buffer);
+    }
+    for (const std::int32_t id : stack.removedComponents) {
+        varInt::write(buffer, id);
+    }
+}
 
 void UpdateAdvancementsPacket::write(io::ByteBuffer& buffer) const {
     writeBoolean(buffer, reset);

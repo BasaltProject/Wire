@@ -8,7 +8,9 @@ basalt_module(wire-multiversion
         src/ProtocolGate.cpp
         src/ProtocolVersions.cpp
         src/SubstitutionLabels.cpp
+        src/java/AdvancementLayouts.cpp
         src/java/ContentRewriter.cpp
+        src/java/MapLayouts.cpp
         src/java/RegistryMembers.cpp
         src/java/RegistryMembersLookup.cpp
         src/java/JavaTranslators.cpp
