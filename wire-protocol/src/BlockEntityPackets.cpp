@@ -1,5 +1,8 @@
 #include <basalt/wire/protocol/ProtocolBuffer.hpp>
+#include <basalt/wire/protocol/VarInt.hpp>
 #include <basalt/wire/protocol/play/BlockEntityPackets.hpp>
+
+#include <algorithm>
 
 namespace basalt::wire::protocol::play {
 
@@ -107,6 +110,65 @@ std::optional<SetCommandBlockPacket> SetCommandBlockPacket::read(io::ByteBuffer&
     packet.trackOutput = (flags & kTrackOutputFlag) != 0;
     packet.conditional = (flags & kConditionalFlag) != 0;
     packet.automatic = (flags & kAutomaticFlag) != 0;
+    return buffer.failed() ? std::nullopt : std::optional{std::move(packet)};
+}
+
+void SetStructureBlockPacket::write(io::ByteBuffer& buffer) const {
+    buffer.writeLong(pos.pack());
+    varInt::write(buffer, static_cast<std::int32_t>(update));
+    varInt::write(buffer, static_cast<std::int32_t>(mode));
+    writeString(buffer, name);
+    for (const std::int32_t axis : offset) {
+        buffer.writeByte(static_cast<std::uint8_t>(axis));
+    }
+    for (const std::int32_t axis : size) {
+        buffer.writeByte(static_cast<std::uint8_t>(axis));
+    }
+    varInt::write(buffer, mirror);
+    varInt::write(buffer, rotation);
+    writeString(buffer, data);
+    buffer.writeFloat(integrity);
+    varLong::write(buffer, seed);
+    std::int32_t flags = 0;
+    flags |= ignoreEntities ? kIgnoreEntitiesFlag : 0;
+    flags |= showAir ? kShowAirFlag : 0;
+    flags |= showBoundingBox ? kShowBoundingBoxFlag : 0;
+    flags |= strict ? kStrictFlag : 0;
+    buffer.writeByte(static_cast<std::uint8_t>(flags));
+}
+
+std::optional<SetStructureBlockPacket> SetStructureBlockPacket::read(io::ByteBuffer& buffer) {
+    SetStructureBlockPacket packet;
+    packet.pos = BlockPos::unpack(buffer.readLong());
+    const std::int32_t update = varInt::read(buffer);
+    const std::int32_t mode = varInt::read(buffer);
+    // parity: `readEnum`, which refuses an ordinal past the end.
+    if (update < 0 || update > static_cast<std::int32_t>(Update::ScanArea) || mode < 0 ||
+        mode > static_cast<std::int32_t>(Mode::Data)) {
+        return std::nullopt;
+    }
+    packet.update = static_cast<Update>(update);
+    packet.mode = static_cast<Mode>(mode);
+    packet.name = readString(buffer);
+    for (std::int32_t& axis : packet.offset) {
+        axis = std::clamp<std::int32_t>(static_cast<std::int8_t>(buffer.readByte()), -kMaxOffset, kMaxOffset);
+    }
+    for (std::int32_t& axis : packet.size) {
+        axis = std::clamp<std::int32_t>(static_cast<std::int8_t>(buffer.readByte()), 0, kMaxSize);
+    }
+    packet.mirror = varInt::read(buffer);
+    packet.rotation = varInt::read(buffer);
+    if (packet.mirror < 0 || packet.mirror > 2 || packet.rotation < 0 || packet.rotation > 3) {
+        return std::nullopt;
+    }
+    packet.data = readString(buffer, kMaxDataLength);
+    packet.integrity = std::clamp(buffer.readFloat(), 0.0F, 1.0F);
+    packet.seed = varLong::read(buffer);
+    const std::int32_t flags = buffer.readByte();
+    packet.ignoreEntities = (flags & kIgnoreEntitiesFlag) != 0;
+    packet.strict = (flags & kStrictFlag) != 0;
+    packet.showAir = (flags & kShowAirFlag) != 0;
+    packet.showBoundingBox = (flags & kShowBoundingBoxFlag) != 0;
     return buffer.failed() ? std::nullopt : std::optional{std::move(packet)};
 }
 

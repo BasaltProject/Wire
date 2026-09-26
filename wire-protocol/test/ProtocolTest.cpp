@@ -26,6 +26,7 @@
 #include <basalt/wire/protocol/play/RecipePackets.hpp>
 #include <basalt/wire/protocol/play/SimplePackets.hpp>
 #include <basalt/wire/protocol/play/UiPackets.hpp>
+#include <basalt/wire/protocol/play/VehiclePackets.hpp>
 #include <basalt/wire/protocol/play/WorldPackets.hpp>
 #include <basalt/wire/protocol/status/StatusPackets.hpp>
 
@@ -680,6 +681,26 @@ TEST_CASE("the block entity packets round trip") {
     io::ByteBuffer programmedBuffer;
     programmed.write(programmedBuffer);
     CHECK(*SetCommandBlockPacket::read(programmedBuffer) == programmed);
+
+    // A negative offset byte and the flag byte with two of its four bits set pin both encodings.
+    const SetStructureBlockPacket structure{.pos = BlockPos{-4, 70, 12},
+                                            .update = SetStructureBlockPacket::Update::SaveArea,
+                                            .mode = SetStructureBlockPacket::Mode::Save,
+                                            .name = "minecraft:house",
+                                            .offset = {-3, 1, 48},
+                                            .size = {5, 6, 7},
+                                            .mirror = 2,
+                                            .rotation = 3,
+                                            .data = "chest",
+                                            .ignoreEntities = false,
+                                            .strict = true,
+                                            .showAir = true,
+                                            .showBoundingBox = false,
+                                            .integrity = 0.5F,
+                                            .seed = -123456789012LL};
+    io::ByteBuffer structureBuffer;
+    structure.write(structureBuffer);
+    CHECK(*SetStructureBlockPacket::read(structureBuffer) == structure);
 }
 
 TEST_CASE("item components round trip, including the ones this build has no codec for") {
@@ -1176,6 +1197,8 @@ TEST_CASE("entity metadata round trips every serializer this build writes") {
         {Data::kSleepingPosIndex, Data::OptionalBlockPosValue{BlockPos{1, 2, 3}}},
         {Data::kPoseIndex, Data::PoseValue{Pose::Sleeping}},
         {23, Data::RegistryIdValue{5, RegistryHolder::WolfVariant}},
+        {15, Data::RegistryIdValue{0, RegistryHolder::HumanoidArm}},
+        {24, Data::RegistryIdValue{14, RegistryHolder::DyeColor}},
     };
 
     io::ByteBuffer buffer;
@@ -1718,4 +1741,31 @@ TEST_CASE("the map item data packet round trips with and without its optional pa
     io::ByteBuffer fullBuffer;
     full.write(fullBuffer);
     CHECK(*MapItemDataPacket::read(fullBuffer) == full);
+}
+
+TEST_CASE("the vehicle packets round-trip") {
+    using namespace basalt::wire::protocol::play;
+
+    const ServerboundMoveVehiclePacket moved{
+        .movingTo = {.x = 1.5, .y = 64.0, .z = -3.25, .yRot = 90.0F, .xRot = -10.0F}, .onGround = true};
+    io::ByteBuffer movedBuffer;
+    moved.write(movedBuffer);
+    // parity: three doubles, two floats and a boolean.
+    CHECK(movedBuffer.readableBytes() == 33);
+    CHECK(*ServerboundMoveVehiclePacket::read(movedBuffer) == moved);
+
+    const ServerboundPaddleBoatPacket paddles{.left = true, .right = false};
+    io::ByteBuffer paddlesBuffer;
+    paddles.write(paddlesBuffer);
+    CHECK(*ServerboundPaddleBoatPacket::read(paddlesBuffer) == paddles);
+
+    const ClientboundMoveVehiclePacket back{.movingTo = {.x = 2.0, .y = 70.0, .z = 4.0, .yRot = 0.0F, .xRot = 0.0F}};
+    io::ByteBuffer backBuffer;
+    back.write(backBuffer);
+    CHECK(*ClientboundMoveVehiclePacket::read(backBuffer) == back);
+
+    const MountScreenOpenPacket screen{.containerId = 3, .inventoryColumns = 5, .entityId = 42};
+    io::ByteBuffer screenBuffer;
+    screen.write(screenBuffer);
+    CHECK(*MountScreenOpenPacket::read(screenBuffer) == screen);
 }

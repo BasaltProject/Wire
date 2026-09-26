@@ -52,6 +52,8 @@ std::optional<RegistryHolder> registryHolderFromSerializer(std::int32_t id) noex
     case 36:
     case 37:
     case 38:
+    case 42:
+    case 43:
         return static_cast<RegistryHolder>(id);
     default:
         return std::nullopt;
