@@ -2,8 +2,11 @@
 
 #include <basalt/wire/io/ByteBuffer.hpp>
 
+#include <array>
 #include <cstdint>
 #include <optional>
+#include <string>
+#include <vector>
 
 namespace basalt::wire::protocol::play {
 
@@ -68,6 +71,46 @@ struct MountScreenOpenPacket {
     [[nodiscard]] static std::optional<MountScreenOpenPacket> read(io::ByteBuffer& buffer);
 
     friend bool operator==(const MountScreenOpenPacket&, const MountScreenOpenPacket&) = default;
+};
+
+/// parity: `NewMinecartBehavior.MinecartStep`, one point a cart passes through, weighted by how far.
+struct MinecartStep {
+    std::array<double, 3> position{};
+    std::array<double, 3> movement{};
+    float yRot = 0.0F;
+    float xRot = 0.0F;
+    float weight = 0.0F;
+
+    friend bool operator==(const MinecartStep&, const MinecartStep&) = default;
+};
+
+/// parity: `ClientboundMoveMinecartPacket`, a cart's turn as the steps it took, under the
+/// `minecart_improvements` feature. The rotations travel as packed bytes.
+struct ClientboundMoveMinecartPacket {
+    static constexpr std::int32_t kId = 0x38;
+
+    std::int32_t entityId = 0;
+    std::vector<MinecartStep> steps;
+
+    void write(io::ByteBuffer& buffer) const;
+    [[nodiscard]] static std::optional<ClientboundMoveMinecartPacket> read(io::ByteBuffer& buffer);
+
+    friend bool operator==(const ClientboundMoveMinecartPacket&, const ClientboundMoveMinecartPacket&) = default;
+};
+
+/// parity: `ServerboundSetCommandMinecartPacket`, what somebody typed into a command block cart.
+struct ServerboundSetCommandMinecartPacket {
+    static constexpr std::int32_t kId = 0x38;
+
+    std::int32_t entityId = 0;
+    std::string command;
+    bool trackOutput = false;
+
+    void write(io::ByteBuffer& buffer) const;
+    [[nodiscard]] static std::optional<ServerboundSetCommandMinecartPacket> read(io::ByteBuffer& buffer);
+
+    friend bool operator==(const ServerboundSetCommandMinecartPacket&,
+                           const ServerboundSetCommandMinecartPacket&) = default;
 };
 
 } // namespace basalt::wire::protocol::play

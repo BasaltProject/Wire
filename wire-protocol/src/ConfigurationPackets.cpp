@@ -175,4 +175,20 @@ std::optional<PostEffectsPacket> PostEffectsPacket::read(io::ByteBuffer& buffer)
     return buffer.failed() ? std::nullopt : std::optional{std::move(packet)};
 }
 
+void UpdateEnabledFeaturesPacket::write(io::ByteBuffer& buffer) const {
+    varInt::write(buffer, static_cast<std::int32_t>(features.size()));
+    for (const std::string& feature : features) {
+        writeString(buffer, feature);
+    }
+}
+
+std::optional<UpdateEnabledFeaturesPacket> UpdateEnabledFeaturesPacket::read(io::ByteBuffer& buffer) {
+    UpdateEnabledFeaturesPacket packet;
+    const std::int32_t count = readCollectionSize(buffer);
+    for (std::int32_t i = 0; i < count && !buffer.failed(); ++i) {
+        packet.features.push_back(readString(buffer));
+    }
+    return buffer.failed() ? std::nullopt : std::optional{std::move(packet)};
+}
+
 } // namespace basalt::wire::protocol::configuration

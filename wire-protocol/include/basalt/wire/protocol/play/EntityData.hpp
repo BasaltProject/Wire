@@ -10,6 +10,7 @@
 #include <cstdint>
 #include <functional>
 #include <optional>
+#include <string>
 #include <variant>
 #include <vector>
 
@@ -81,10 +82,8 @@ enum class RegistryHolder : std::int32_t {
 /// Clientbound, id 0x65: entity metadata. A stream of entries, each an index byte, a serializer id
 /// and the value, terminated by 0xFF.
 ///
-/// Indices are positions in the entity's own defineId order, counted down the real class hierarchy,
-/// which is why the shared ones are named rather than written as literals at call sites: 26.2 put a
-/// new Avatar class between LivingEntity and Player, so the player indices are not where an older
-/// version would put them.
+/// Indices follow the entity's `defineId` order down the real class hierarchy (26.2 put `Avatar`
+/// between LivingEntity and Player), so the shared ones are named rather than written as literals.
 struct SetEntityDataPacket {
     static constexpr std::int32_t kId = 0x65;
 
@@ -147,6 +146,12 @@ struct SetEntityDataPacket {
     struct TextValue {
         text::Component value;
         friend bool operator==(const TextValue&, const TextValue&) = default;
+    };
+
+    /// parity: `EntityDataSerializers.STRING`, which only a command block cart's command uses.
+    struct StringValue {
+        std::string value;
+        friend bool operator==(const StringValue&, const StringValue&) = default;
     };
 
     /// The name over an entity's head. Absent is the name being taken off again, which is not the
@@ -219,7 +224,7 @@ struct SetEntityDataPacket {
 
     using Value = std::variant<ByteValue, IntValue, FloatValue, TextValue, OptionalTextValue, ItemValue, BoolValue,
                                RotationsValue, VillagerDataValue, OptionalBlockPosValue, PoseValue, RegistryIdValue,
-                               ParticleValue, ParticlesValue, OptionalUnsignedIntValue, LongValue>;
+                               ParticleValue, ParticlesValue, OptionalUnsignedIntValue, LongValue, StringValue>;
 
     /// Which option shape a particle type carries; nothing for a type with none.
     using ParticleShapeOf = std::function<std::optional<ParticleOptionShape>(std::int32_t particleId)>;
@@ -249,9 +254,7 @@ struct SetEntityDataPacket {
     /// The air left and the shared flags, which is what the HUD draws and what everyone else sees:
     /// burning, crouching, sprinting.
     ///
-    /// The flags are one byte for all of them, so a caller that knows about only one erases the
-    /// rest. That is exactly what used to happen to crouching: it was written by the drowning tick,
-    /// which knew about fire and nothing else.
+    /// The flags share one byte, so a caller that sets only one erases the rest.
     [[nodiscard]] static SetEntityDataPacket submersion(std::int32_t entityId, std::int32_t airSupply,
                                                         std::uint8_t flags);
 

@@ -121,6 +121,8 @@ constexpr std::int32_t kNitwit = 5;
                 return kOptionalUnsignedInt;
             } else if constexpr (std::is_same_v<T, SetEntityDataPacket::LongValue>) {
                 return kLong;
+            } else if constexpr (std::is_same_v<T, SetEntityDataPacket::StringValue>) {
+                return kString;
             } else {
                 return static_cast<std::int32_t>(held.registry);
             }
@@ -318,6 +320,8 @@ void EntityDataRewriter::writeEntry(io::ByteBuffer& output, const SetEntityDataP
                     return;
                 }
                 protocol::varLong::write(payload, held.value);
+            } else if constexpr (std::is_same_v<T, SetEntityDataPacket::StringValue>) {
+                protocol::writeString(payload, held.value);
             } else if constexpr (std::is_same_v<T, SetEntityDataPacket::ItemValue>) {
                 // A stack is written the way its own version writes one, which is three shapes over
                 // the years and the same work wherever a stack travels.

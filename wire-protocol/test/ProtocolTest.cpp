@@ -7,6 +7,7 @@
 #include <basalt/wire/protocol/handshake/HandshakePacket.hpp>
 #include <basalt/wire/protocol/login/LoginPackets.hpp>
 #include <basalt/wire/protocol/login/LoginPluginPackets.hpp>
+#include <basalt/wire/protocol/play/AdvancementPackets.hpp>
 #include <basalt/wire/protocol/play/BlockEntityPackets.hpp>
 #include <basalt/wire/protocol/play/BlockPos.hpp>
 #include <basalt/wire/protocol/play/BorderPackets.hpp>
@@ -1768,4 +1769,72 @@ TEST_CASE("the vehicle packets round-trip") {
     io::ByteBuffer screenBuffer;
     screen.write(screenBuffer);
     CHECK(*MountScreenOpenPacket::read(screenBuffer) == screen);
+
+    // Rotations are packed bytes, so the test uses angles a byte holds exactly.
+    const ClientboundMoveMinecartPacket steps{.entityId = 7,
+                                              .steps = {MinecartStep{.position = {1.0, 2.5, 3.0},
+                                                                     .movement = {0.1, 0.0, -0.2},
+                                                                     .yRot = 90.0F,
+                                                                     .xRot = -45.0F,
+                                                                     .weight = 0.75F}}};
+    io::ByteBuffer stepsBuffer;
+    steps.write(stepsBuffer);
+    // parity: a varint id and count, then six doubles, two bytes and a float per step.
+    CHECK(stepsBuffer.readableBytes() == 2 + 48 + 2 + 4);
+    CHECK(*ClientboundMoveMinecartPacket::read(stepsBuffer) == steps);
+
+    const ServerboundSetCommandMinecartPacket command{.entityId = 9, .command = "say hi", .trackOutput = true};
+    io::ByteBuffer commandBuffer;
+    command.write(commandBuffer);
+    CHECK(*ServerboundSetCommandMinecartPacket::read(commandBuffer) == command);
+}
+
+TEST_CASE("the enabled features round-trip") {
+    using basalt::wire::protocol::configuration::UpdateEnabledFeaturesPacket;
+    const UpdateEnabledFeaturesPacket features{.features = {"minecraft:vanilla", "minecraft:minecart_improvements"}};
+    io::ByteBuffer buffer;
+    features.write(buffer);
+    CHECK(*UpdateEnabledFeaturesPacket::read(buffer) == features);
+}
+
+TEST_CASE("the advancement packets round-trip, positions after the telemetry flag") {
+    using namespace basalt::wire::protocol::play;
+    UpdateAdvancementsPacket update;
+    update.reset = true;
+    update.added.push_back(AdvancementEntry{
+        .id = "minecraft:story/root",
+        .parent = std::nullopt,
+        .display =
+            AdvancementDisplayData{
+                .title = text::Component::translatable("advancements.story.root.title"),
+                .description = text::Component::text("d"),
+                .icon = WireItemStack{.itemId = 5, .count = 1, .components = {}, .removedComponents = {}},
+                .frame = 2,
+                .background = "minecraft:gui/advancements/backgrounds/stone",
+                .showToast = false,
+                .hidden = true},
+        .requirements = {{"a", "b"}, {"c"}},
+        .sendsTelemetryEvent = true,
+        .x = 1.0F,
+        .y = 2.5F});
+    update.added.push_back(AdvancementEntry{.id = "minecraft:story/child", .parent = "minecraft:story/root"});
+    update.removed = {"minecraft:gone"};
+    update.progress.push_back(
+        AdvancementProgressData{.id = "minecraft:story/root", .criteria = {{"a", 1234}, {"b", std::nullopt}}});
+    update.showAdvancements = false;
+    io::ByteBuffer buffer;
+    update.write(buffer);
+    CHECK(UpdateAdvancementsPacket::read(buffer) == update);
+
+    io::ByteBuffer tab;
+    SelectAdvancementsTabPacket{.tab = "minecraft:story/root"}.write(tab);
+    CHECK(SelectAdvancementsTabPacket::read(tab)->tab == "minecraft:story/root");
+
+    io::ByteBuffer seen;
+    varInt::write(seen, 0);
+    writeString(seen, "minecraft:adventure/root");
+    const auto opened = SeenAdvancementsPacket::read(seen);
+    REQUIRE(opened.has_value());
+    CHECK(opened->action == SeenAdvancementsPacket::Action::OpenedTab);
+    CHECK(opened->tab == "minecraft:adventure/root");
 }
