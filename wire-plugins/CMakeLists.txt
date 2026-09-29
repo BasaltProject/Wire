@@ -1,5 +1,6 @@
 basalt_module(wire-plugins
     SOURCES
+        src/CommandArguments.cpp
         src/CommandSpec.cpp
         src/EventPriority.cpp
         src/PacketNaming.cpp
