@@ -56,6 +56,10 @@ void install() {
     gShutdownRequested.clear(std::memory_order_relaxed);
     std::signal(SIGINT, onTerminationSignal);
     std::signal(SIGTERM, onTerminationSignal);
+#ifdef SIGPIPE
+    // A log reader that goes away must not kill the process; the failed write is enough.
+    std::signal(SIGPIPE, SIG_IGN);
+#endif
 }
 
 bool isRequested() noexcept { return gShutdownRequested.test(std::memory_order_relaxed); }
