@@ -156,6 +156,45 @@ std::int32_t heightmapType(std::string_view name) {
     return -1;
 }
 
+constexpr std::uint8_t kBlockMaxIndirectBits = 8;
+constexpr std::uint8_t kBiomeMaxIndirectBits = 3;
+
+void stripContainerLength(io::ByteBuffer& in, io::ByteBuffer& out, std::uint8_t maxIndirectBits) {
+    const std::uint8_t bits = in.readByte();
+    out.writeByte(bits);
+    if (bits == 0) {
+        protocol::varInt::write(out, protocol::varInt::read(in));
+        static_cast<void>(protocol::varInt::read(in));
+        return;
+    }
+    if (bits <= maxIndirectBits) {
+        const std::int32_t entries = protocol::readCollectionSize(in, 1);
+        protocol::varInt::write(out, entries);
+        for (std::int32_t i = 0; i < entries && !in.failed(); ++i) {
+            protocol::varInt::write(out, protocol::varInt::read(in));
+        }
+    }
+    const std::int32_t words = protocol::readCollectionSize(in, 8);
+    out.writeBytes(in.readSpan(static_cast<std::size_t>(words) * 8));
+}
+
+std::vector<std::uint8_t> stripSectionLengths(std::span<const std::uint8_t> sections) {
+    io::ByteBuffer in = io::ByteBuffer::wrap(std::vector<std::uint8_t>{sections.begin(), sections.end()});
+    io::ByteBuffer out;
+    // parity: a server may pad the buffer past its last section; what cannot form a section is dropped.
+    while (in.readableBytes() > 0 && !in.failed()) {
+        io::ByteBuffer section;
+        section.writeShort(in.readShort());
+        stripContainerLength(in, section, kBlockMaxIndirectBits);
+        stripContainerLength(in, section, kBiomeMaxIndirectBits);
+        if (in.failed()) {
+            break;
+        }
+        out.writeBytes(section.readable());
+    }
+    return out.toVector();
+}
+
 void rewriteLevelChunk(MutablePacket& packet) {
     io::ByteBuffer in = io::ByteBuffer::wrap(packet.body);
     io::ByteBuffer out;
@@ -182,7 +221,7 @@ void rewriteLevelChunk(MutablePacket& packet) {
             out.writeLong(word);
         }
     }
-    protocol::writeByteArray(out, protocol::readByteArray(in));
+    protocol::writeByteArray(out, stripSectionLengths(protocol::readByteArray(in)));
     const std::int32_t blockEntities = protocol::readCollectionSize(in, 5);
     protocol::varInt::write(out, blockEntities);
     for (std::int32_t i = 0; i < blockEntities && !in.failed(); ++i) {

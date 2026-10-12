@@ -17,30 +17,36 @@ std::vector<std::uint8_t> ChunkRewriter::rewrite(std::span<const std::uint8_t> s
     io::ByteBuffer input = io::ByteBuffer::wrap(std::vector<std::uint8_t>{sections.begin(), sections.end()});
     io::ByteBuffer output;
 
+    // parity: a server may pad the buffer past its last section; what cannot form a section is dropped.
     while (input.readableBytes() > 0 && !input.failed()) {
+        io::ByteBuffer section;
         const std::int16_t blockCount = input.readShort();
-        output.writeShort(blockCount);
+        section.writeShort(blockCount);
         const std::int16_t fluids =
             options_.readsFluidCount ? input.readShort() : (options_.fluidCount ? blockCount : 0);
         if (options_.fluidCount) {
-            output.writeShort(fluids);
+            section.writeShort(fluids);
         }
 
         const std::vector<std::int32_t> blocks =
             paletted::read(input, kBlocksPerSection, paletted::kBlockMaxIndirectBits);
         if (input.failed() || blocks.size() != kBlocksPerSection) {
-            return {};
+            break;
         }
 
         for (std::size_t i = 0; i < kBlocksPerSection; ++i) {
             const std::int32_t mapped = blockStates_->map(blocks[i]);
             scratch_[i] = mapped == IdLookup::kNone ? options_.fallbackState : mapped;
         }
-        writeContainer(output, scratch_, paletted::kBlockMinIndirectBits, paletted::kBlockMaxIndirectBits,
+        writeContainer(section, scratch_, paletted::kBlockMinIndirectBits, paletted::kBlockMaxIndirectBits,
                        options_.olderDirectBits);
-        copyContainer(input, output, kBiomesPerSection, paletted::kBiomeMaxIndirectBits);
+        copyContainer(input, section, kBiomesPerSection, paletted::kBiomeMaxIndirectBits);
+        if (input.failed()) {
+            break;
+        }
+        output.writeBytes(section.readable());
     }
-    return input.failed() ? std::vector<std::uint8_t>{} : output.toVector();
+    return output.toVector();
 }
 
 std::vector<std::uint8_t> ChunkRewriter::rewriteBiomes(std::span<const std::uint8_t> biomes) {
