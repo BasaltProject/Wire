@@ -1,4 +1,5 @@
 #include <basalt/wire/multiversion/java/Link757Up.hpp>
+#include <basalt/wire/multiversion/java/NamedNbt.hpp>
 #include <basalt/wire/nbt/NbtTag.hpp>
 #include <basalt/wire/protocol/ProtocolBuffer.hpp>
 #include <basalt/wire/protocol/VarInt.hpp>
@@ -61,32 +62,34 @@ bool Link757Up::clientbound(ProtocolState state, MutablePacket& packet) {
         break;
     case kLogin:
         rewrite(packet, [](io::ByteBuffer& in, io::ByteBuffer& out) {
-            out.writeBytes(in.readSpan(7));
+            io::ByteBuffer head;
+            head.writeBytes(in.readSpan(7));
             const std::int32_t worlds = pv::readCollectionSize(in, 1);
-            pv::varInt::write(out, worlds);
+            pv::varInt::write(head, worlds);
             for (std::int32_t index = 0; index < worlds && !in.failed(); ++index) {
-                pv::writeString(out, pv::readString(in));
+                pv::writeString(head, pv::readString(in));
             }
-            nbt::NbtTag codec = pv::readAnonymousNbt(in);
-            nbt::NbtTag dimension = pv::readAnonymousNbt(in);
+            auto codec = readNamedNbt(in);
+            auto dimension = readNamedNbt(in);
             if (in.failed()) {
                 return;
             }
-            prefixCodec(codec);
-            prefixInfiniburn(dimension);
-            pv::writeAnonymousNbt(out, codec);
-            pv::writeAnonymousNbt(out, dimension);
+            prefixCodec(codec->tag);
+            prefixInfiniburn(dimension->tag);
+            out.writeBytes(head.readable());
+            writeNamedNbt(out, codec->tag);
+            writeNamedNbt(out, dimension->tag);
             out.writeBytes(in.readable());
         });
         break;
     case kRespawn:
         rewrite(packet, [](io::ByteBuffer& in, io::ByteBuffer& out) {
-            nbt::NbtTag dimension = pv::readAnonymousNbt(in);
+            auto dimension = readNamedNbt(in);
             if (in.failed()) {
                 return;
             }
-            prefixInfiniburn(dimension);
-            pv::writeAnonymousNbt(out, dimension);
+            prefixInfiniburn(dimension->tag);
+            writeNamedNbt(out, dimension->tag);
             out.writeBytes(in.readable());
         });
         break;
