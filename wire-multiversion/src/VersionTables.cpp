@@ -113,11 +113,11 @@ VersionTables invertedTables(const VersionTables& down, std::int32_t newer) {
     VersionTables up;
     up.older = newer;
     up.packets = down.packets.inverted();
-    up.blockStates = down.blockStates.inverted();
-    up.block = down.block.inverted();
-    up.item = down.item.inverted();
+    up.blockStates = down.blockStates.inverted(down.upBlockStates);
+    up.block = down.block.inverted(down.upBlock);
+    up.item = down.item.inverted(down.upItem);
     up.particleType = down.particleType.inverted();
-    up.entityType = down.entityType.inverted();
+    up.entityType = down.entityType.inverted(down.upEntityType);
     up.attribute = down.attribute.inverted();
     up.dataComponentType = down.dataComponentType.inverted();
     up.menu = down.menu.inverted();

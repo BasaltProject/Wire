@@ -40,6 +40,9 @@ public:
 
     [[nodiscard]] IdMap inverted() const;
 
+    /// The inverse, with the older ids no run reaches sent where `preferred` says.
+    [[nodiscard]] IdMap inverted(const IdMap& preferred) const;
+
 private:
     void parse() const;
 

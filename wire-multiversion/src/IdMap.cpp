@@ -97,9 +97,14 @@ std::int32_t IdMap::unmap(std::int32_t id) const {
     return kNone;
 }
 
-IdMap IdMap::inverted() const {
+IdMap IdMap::inverted() const { return inverted(IdMap{""}); }
+
+IdMap IdMap::inverted(const IdMap& preferred) const {
     if (!parsed_) {
         parse();
+    }
+    if (!preferred.parsed_) {
+        preferred.parse();
     }
 
     struct Run {
@@ -122,6 +127,12 @@ IdMap IdMap::inverted() const {
         encoded += std::to_string(run.start) + ':' + std::to_string(run.length) + ':' + std::to_string(run.delta);
     }
     encoded += '|';
+    for (std::size_t i = 0; i < preferred.substituteFrom_.size(); ++i) {
+        if (i > 0) {
+            encoded += ';';
+        }
+        encoded += std::to_string(preferred.substituteFrom_[i]) + '>' + std::to_string(preferred.substituteTo_[i]);
+    }
     return IdMap{std::move(encoded)};
 }
 

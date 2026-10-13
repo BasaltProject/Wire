@@ -77,10 +77,15 @@ struct VersionTables {
     std::int32_t older = 0;
     PacketIdTables packets;
     IdMap blockStates{""};
+    /// Older states only a substitute reaches, as `older>newer`: what a climbing link shows for them.
+    IdMap upBlockStates{""};
     IdMap block{"0:2147483647:0|"};
+    IdMap upBlock{""};
     IdMap item{"0:2147483647:0|"};
+    IdMap upItem{""};
     IdMap particleType{"0:2147483647:0|"};
     IdMap entityType{"0:2147483647:0|"};
+    IdMap upEntityType{""};
     IdMap attribute{"0:2147483647:0|"};
     IdMap dataComponentType{"0:2147483647:0|"};
     IdMap menu{"0:2147483647:0|"};
