@@ -22,10 +22,10 @@ constexpr std::int32_t kCommands = 18;
 constexpr std::int32_t kNamedSound = 25;
 constexpr std::int32_t kLogin = 38;
 constexpr std::int32_t kPlayerInfo = 54;
-constexpr std::int32_t kRespawn = 64;
+constexpr std::int32_t kRespawn = 61;
 constexpr std::int32_t kEntitySound = 92;
 constexpr std::int32_t kSound = 93;
-constexpr std::int32_t kUpdateMobEffect = 102;
+constexpr std::int32_t kUpdateMobEffect = 101;
 
 constexpr std::int32_t kAddEntity759 = 0;
 constexpr std::int32_t kSystemChat759 = 95;
