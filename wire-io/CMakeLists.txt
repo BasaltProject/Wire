@@ -1,5 +1,6 @@
 basalt_module(wire-io
     SOURCES
+        src/BudgetMemoryResource.cpp
         src/Compression.cpp
         src/ConfigFiles.cpp
         src/DnsResolver.cpp
@@ -30,6 +31,7 @@ basalt_test(wire-io-test
         test/ConfigFilesTest.cpp
         test/DnsResolverTest.cpp
         test/ResourceBudgetTest.cpp
+        test/BudgetMemoryResourceTest.cpp
         test/SchedulingTest.cpp
         test/WorkerPoolTest.cpp
     DEPENDS basalt::wire-io
