@@ -35,6 +35,7 @@ struct SocketError {
 
 /// A resolved endpoint. Resolving is synchronous and belongs on a worker, never an I/O owner.
 /// Literal parsing does not perform DNS; both IPv4 and IPv6 (including scope IDs) are supported.
+/// Use resolveDns instead of resolve when a request requires deadline/cancellation.
 class TcpAddress {
 public:
     [[nodiscard]] static std::expected<TcpAddress, SocketError> literal(std::string_view host, std::uint16_t port);

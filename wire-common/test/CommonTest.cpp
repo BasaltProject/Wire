@@ -210,6 +210,10 @@ worlds = [
 }
 
 TEST_CASE("TOML says no rather than guessing") {
+    CHECK(toml::parse("online-mode = true\nonline-mode = false").error() == toml::TomlError::DuplicateKey);
+    CHECK(toml::parse("network = false\n[network]\nport = 1").error() == toml::TomlError::ConflictingTable);
+    CHECK(toml::parse("[network]\nport = 1\n[network]\nport = 2").error() == toml::TomlError::DuplicateKey);
+    CHECK(toml::parse("[]").error() == toml::TomlError::MalformedTableHeader);
     CHECK(toml::parse("[[guides]]\nname = 'x'").error() == toml::TomlError::ArrayOfTablesUnsupported);
     CHECK(toml::parse("[unterminated").error() == toml::TomlError::MalformedTableHeader);
     CHECK(toml::parse("no separator here").error() == toml::TomlError::MissingSeparator);

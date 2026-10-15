@@ -2,12 +2,14 @@
 #include <basalt/wire/auth/test/TlsFixtures.hpp>
 #include <basalt/wire/io/EventLoop.hpp>
 #include <basalt/wire/io/TcpSocket.hpp>
+#include <basalt/wire/io/UdpSocket.hpp>
 
 #include <doctest.h>
 
 #include <array>
 #include <basalt_mbedtls_threads.h>
 #include <chrono>
+#include <future>
 #include <mbedtls/ctr_drbg.h>
 #include <mbedtls/entropy.h>
 #include <mbedtls/net_sockets.h>
@@ -269,6 +271,54 @@ TEST_CASE("bounded HTTPS verifies URL identity over a pre-resolved loopback endp
     REQUIRE(response);
     CHECK(response->status == 200);
     CHECK(response->text() == "{}");
+}
+
+TEST_CASE("HTTPS resolves a hostname and completes TLS under one deadline") {
+    TlsServer server{"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\n{}"};
+    const auth::BoundedHttpsOptions options{.deadline = std::chrono::steady_clock::now() + 2s,
+                                            .trustPem = auth::test::kLocalhostCertPem};
+    const auto response = auth::httpsGetBounded(server.url(), 64, options);
+    REQUIRE(response);
+    CHECK(response->status == 200);
+    CHECK(response->text() == "{}");
+}
+
+TEST_CASE("HTTPS DNS timeout consumes the shared deadline before connecting") {
+    auto silent = io::UdpSocket::bind(0);
+    REQUIRE(silent);
+    const auto port = silent->localPort();
+    REQUIRE(port);
+    const std::string servers = "127.0.0.1:" + std::to_string(*port);
+    const auto start = std::chrono::steady_clock::now();
+    const auto response =
+        auth::httpsGetBounded("https://slow.test/", 64, {.deadline = start + 50ms, .dnsServers = servers});
+    REQUIRE_FALSE(response);
+    CHECK(response.error().kind == auth::HttpsError::Kind::TimedOut);
+    CHECK(std::chrono::steady_clock::now() - start < 1s);
+}
+
+TEST_CASE("HTTPS cancellation interrupts DNS before TLS initialization") {
+    auto silent = io::UdpSocket::bind(0);
+    REQUIRE(silent);
+    const auto port = silent->localPort();
+    REQUIRE(port);
+    const std::string servers = "127.0.0.1:" + std::to_string(*port);
+    std::stop_source canceled;
+    auto work = std::async(std::launch::async, [&] {
+        return auth::httpsGetBounded(
+            "https://canceled.test/", 64,
+            {.deadline = std::chrono::steady_clock::now() + 10s, .stop = canceled.get_token(), .dnsServers = servers});
+    });
+    std::array<std::uint8_t, 512> packet{};
+    io::UdpEndpoint peer;
+    const auto query = silent->receiveFrom(packet, peer, 2000);
+    REQUIRE(query);
+    REQUIRE(query->has_value());
+    canceled.request_stop();
+    CHECK(work.wait_for(1s) == std::future_status::ready);
+    const auto response = work.get();
+    REQUIRE_FALSE(response);
+    CHECK(response.error().kind == auth::HttpsError::Kind::Canceled);
 }
 
 TEST_CASE("bounded HTTPS does not bypass certificate host validation") {

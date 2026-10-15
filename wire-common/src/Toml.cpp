@@ -211,16 +211,20 @@ std::expected<TomlValue, TomlError> parseValue(std::string_view text) {
     return parseNumber(text);
 }
 
-TomlTable& navigateToTable(TomlTable& root, std::string_view dottedPath) {
+std::expected<TomlTable*, TomlError> navigateToTable(TomlTable& root, std::string_view dottedPath) {
     TomlTable* table = &root;
     std::size_t cursor = 0;
     while (cursor <= dottedPath.size()) {
         const std::size_t dot = dottedPath.find('.', cursor);
         const std::size_t end = dot == std::string_view::npos ? dottedPath.size() : dot;
         const std::string_view key = unquoteKey(trim(dottedPath.substr(cursor, end - cursor)));
+        if (key.empty())
+            return std::unexpected(TomlError::MalformedTableHeader);
 
         TomlValue* existing = table->find(key);
-        if (existing == nullptr || existing->get<TomlTable>() == nullptr) {
+        if (existing != nullptr && existing->get<TomlTable>() == nullptr)
+            return std::unexpected(TomlError::ConflictingTable);
+        if (existing == nullptr) {
             table->set(key, TomlValue::ofTable(TomlTable{}));
             existing = table->find(key);
         }
@@ -231,7 +235,7 @@ TomlTable& navigateToTable(TomlTable& root, std::string_view dottedPath) {
         }
         cursor = dot + 1;
     }
-    return *table;
+    return table;
 }
 
 std::vector<std::string_view> splitLines(std::string_view text) {
@@ -264,6 +268,10 @@ std::string_view tomlErrorMessage(TomlError error) noexcept {
         return "unknown escape in a string";
     case TomlError::NotAValue:
         return "not a valid value";
+    case TomlError::DuplicateKey:
+        return "duplicate key";
+    case TomlError::ConflictingTable:
+        return "table conflicts with an existing value";
     }
     return "malformed TOML";
 }
@@ -426,7 +434,10 @@ std::expected<TomlTable, TomlError> parse(std::string_view text) {
             if (!line.ends_with(']')) {
                 return std::unexpected{TomlError::MalformedTableHeader};
             }
-            current = &navigateToTable(root, trim(line.substr(1, line.size() - 2)));
+            auto table = navigateToTable(root, trim(line.substr(1, line.size() - 2)));
+            if (!table)
+                return std::unexpected(table.error());
+            current = *table;
             continue;
         }
 
@@ -454,6 +465,8 @@ std::expected<TomlTable, TomlError> parse(std::string_view text) {
         if (!value) {
             return std::unexpected{value.error()};
         }
+        if (current->find(key) != nullptr)
+            return std::unexpected(TomlError::DuplicateKey);
         current->set(key, std::move(*value));
     }
     return root;

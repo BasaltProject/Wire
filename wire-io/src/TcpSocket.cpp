@@ -66,6 +66,22 @@ bool errorWouldBlock(int error) noexcept {
 #endif
 }
 
+bool retryableAcceptError(int error) noexcept {
+#if defined(_WIN32)
+    return error == WSAECONNRESET || error == WSAECONNABORTED;
+#else
+    if (error == ECONNABORTED || error == ECONNRESET || error == EPROTO)
+        return true;
+#if defined(__linux__)
+    // Linux exposes queued-child network errors through accept; retry them like EAGAIN.
+    return error == ENETDOWN || error == ENOPROTOOPT || error == EHOSTDOWN || error == ENONET ||
+           error == EHOSTUNREACH || error == EOPNOTSUPP || error == ENETUNREACH;
+#else
+    return false;
+#endif
+#endif
+}
+
 std::expected<void, SocketError> nonBlocking(std::int64_t handle, bool enabled) {
 #if defined(_WIN32)
     u_long mode = enabled ? 1 : 0;
@@ -501,8 +517,10 @@ std::expected<TcpConnection, SocketError> TcpListener::accept() {
         if (errorIsInterrupt(error)) {
             continue;
         }
-        return std::unexpected{SocketError{
-            errorWouldBlock(error) ? SocketError::Kind::WouldBlock : SocketError::Kind::AcceptFailed, error}};
+        return std::unexpected{SocketError{errorWouldBlock(error) || retryableAcceptError(error)
+                                               ? SocketError::Kind::WouldBlock
+                                               : SocketError::Kind::AcceptFailed,
+                                           error}};
     }
 }
 

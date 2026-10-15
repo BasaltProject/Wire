@@ -1,0 +1,23 @@
+# c-ares 1.34.8, MIT. No tools, tests, downloads or shared runtime dependency.
+set(CARES_STATIC ON CACHE BOOL "Build vendored c-ares statically" FORCE)
+set(CARES_SHARED OFF CACHE BOOL "Disable shared c-ares" FORCE)
+set(CARES_INSTALL OFF CACHE BOOL "Disable c-ares install targets" FORCE)
+set(CARES_BUILD_TESTS OFF CACHE BOOL "Disable upstream c-ares tests" FORCE)
+set(CARES_BUILD_CONTAINER_TESTS OFF CACHE BOOL "Disable upstream c-ares container tests" FORCE)
+set(CARES_BUILD_TOOLS OFF CACHE BOOL "Disable upstream c-ares tools" FORCE)
+set(CARES_STATIC_PIC ON CACHE BOOL "Use position independent c-ares" FORCE)
+set(CARES_THREADS ON CACHE BOOL "Enable c-ares internal synchronization" FORCE)
+add_subdirectory(upstream)
+add_library(basalt::cares ALIAS c-ares)
+target_link_libraries(c-ares PRIVATE basalt::sanitizers basalt::parity)
+
+# Exclude the upstream adapter that includes an APSL private Apple header.
+get_target_property(BASALT_CARES_SOURCES c-ares SOURCES)
+list(FILTER BASALT_CARES_SOURCES EXCLUDE REGEX "ares_sysconfig_mac\\.c$")
+set_property(TARGET c-ares PROPERTY SOURCES "${BASALT_CARES_SOURCES}")
+if(APPLE)
+    target_sources(c-ares PRIVATE basalt/sysconfig_macos.c)
+    find_library(BASALT_CARES_SYSTEM_CONFIGURATION SystemConfiguration REQUIRED)
+    find_library(BASALT_CARES_CORE_FOUNDATION CoreFoundation REQUIRED)
+    target_link_libraries(c-ares PRIVATE ${BASALT_CARES_SYSTEM_CONFIGURATION} ${BASALT_CARES_CORE_FOUNDATION})
+endif()

@@ -1,10 +1,13 @@
 basalt_module(wire-io
     SOURCES
         src/Compression.cpp
+        src/ConfigFiles.cpp
+        src/DnsResolver.cpp
         src/EventLoop.cpp
         src/FileIO.cpp
         src/LogFile.cpp
         src/Platform.cpp
+        src/ResourceBudget.cpp
         src/TcpSocket.cpp
         src/TaskQueue.cpp
         src/TimerQueue.cpp
@@ -13,7 +16,7 @@ basalt_module(wire-io
         src/ZipReader.cpp
         src/Zstd.cpp
     DEPENDS basalt::wire-common
-    PRIVATE_DEPENDS basalt::zlib basalt::zstd
+    PRIVATE_DEPENDS basalt::zlib basalt::zstd basalt::cares
 )
 
 option(BASALT_IO_FORCE_POLL "Use portable poll readiness instead of the native backend" OFF)
@@ -24,6 +27,9 @@ endif()
 basalt_test(wire-io-test
     SOURCES
         test/IoTest.cpp
+        test/ConfigFilesTest.cpp
+        test/DnsResolverTest.cpp
+        test/ResourceBudgetTest.cpp
         test/SchedulingTest.cpp
         test/WorkerPoolTest.cpp
     DEPENDS basalt::wire-io

@@ -2,6 +2,7 @@
 # the cross-compilation sysroots carry none of it.
 
 add_subdirectory(doctest)
+add_subdirectory(cares)
 add_subdirectory(lua)
 add_subdirectory(mbedtls)
 add_subdirectory(simdjson)
