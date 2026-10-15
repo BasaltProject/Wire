@@ -16,9 +16,6 @@ std::string_view trim(std::string_view text) noexcept {
     return text;
 }
 
-/// Walks a line, tracking quotes, and hands each character to the visitor along with whether it is
-/// inside a string. Every scan in this parser has to ignore what is quoted, and doing it once here
-/// is what keeps `#`, `=`, `,` and brackets from being found inside a value.
 template <typename Visitor>
 void scanOutsideQuotes(std::string_view text, Visitor&& visit) {
     bool inQuotes = false;
@@ -66,7 +63,6 @@ std::optional<std::size_t> findSeparator(std::string_view line) noexcept {
     return at == std::string_view::npos ? std::nullopt : std::optional{at};
 }
 
-/// How many brackets are still open, ignoring any inside strings.
 int bracketDepth(std::string_view text) noexcept {
     int depth = 0;
     scanOutsideQuotes(text, [&depth](char c, std::size_t) {
@@ -94,7 +90,6 @@ std::expected<std::string, TomlError> parseQuotedString(std::string_view text) {
     }
     const std::string_view body = text.substr(1, text.size() - 2);
     if (quote == '\'') {
-        // A literal string takes no escapes at all, which is the whole point of it.
         return std::string{body};
     }
 
@@ -163,8 +158,6 @@ std::expected<TomlValue, TomlError> parseArray(std::string_view text) {
     std::vector<TomlValue> values;
     for (const std::string_view raw : splitArrayElements(inner)) {
         const std::string_view element = trim(raw);
-        // A blank element is dropped rather than refused: that is TOML's trailing comma, which is
-        // how a multi-line list is written so that adding an entry touches only one line.
         if (element.empty()) {
             continue;
         }
@@ -339,8 +332,6 @@ std::optional<double> TomlTable::real(std::string_view key) const noexcept {
     if (const auto* number = value->get<double>()) {
         return *number;
     }
-    // An integer where a float was expected is what a hand-edited file gives when someone writes
-    // `1` for a rate, and refusing it would be pedantry.
     if (const auto* integer = value->get<std::int64_t>()) {
         return static_cast<double>(*integer);
     }
@@ -425,9 +416,7 @@ std::expected<TomlTable, TomlError> parse(std::string_view text) {
         }
 
         if (line.starts_with('[')) {
-            // An array of tables is real TOML this parser does not do. Said out loud, because taken
-            // as an ordinary header it becomes a table named "[guides]" and the file quietly means
-            // something nobody wrote.
+            // Arrays of tables are refused: read as a plain header they would silently become a table.
             if (line.starts_with("[[")) {
                 return std::unexpected{TomlError::ArrayOfTablesUnsupported};
             }
@@ -448,8 +437,6 @@ std::expected<TomlTable, TomlError> parse(std::string_view text) {
         const std::string_view key = unquoteKey(trim(line.substr(0, *separator)));
         std::string valueText{trim(line.substr(*separator + 1))};
 
-        // An array may span several lines, and in a hand-edited file it usually does. Keep taking
-        // lines until the brackets close.
         if (valueText.starts_with('[')) {
             while (bracketDepth(valueText) > 0) {
                 if (i >= lines.size()) {

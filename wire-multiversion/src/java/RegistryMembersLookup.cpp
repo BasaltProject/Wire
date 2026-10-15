@@ -8,8 +8,6 @@
 namespace basalt::wire::multiversion::java {
 namespace {
 
-/// One version's pairs, split once and kept. A login reads a dozen registries and every element of
-/// each, so splitting the list per element would be the whole table per connection.
 const std::set<std::string, std::less<>>& membersOf(const std::int32_t protocol) {
     static std::mutex lock;
     static std::map<std::int32_t, std::set<std::string, std::less<>>> cache;
@@ -44,7 +42,6 @@ bool versionHasMember(const std::int32_t protocol, const std::string_view regist
     const std::string prefix = std::string{registry} + "=";
     const auto first = members.lower_bound(prefix);
     if (first == members.end() || !first->starts_with(prefix)) {
-        // Nothing is kept about that registry there, so nothing can be said about its members.
         return true;
     }
     return members.contains(prefix + std::string{member});

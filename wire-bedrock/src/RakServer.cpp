@@ -181,8 +181,7 @@ void RakServer::onOpenConnectionRequest1(io::ByteBuffer& body, std::size_t datag
         return;
     }
 
-    // The request is padded to the MTU the client wants to try, so its size is the answer. What the
-    // wire carried on top of it (IP and UDP headers) has to be added back.
+    // The request is padded to the MTU the client wants to try, so its size is the answer.
     const auto wanted =
         static_cast<std::uint16_t>(std::clamp<std::size_t>(datagramSize + kIpv4Overhead, kMinimumMtu, kMaximumMtu));
 
@@ -190,7 +189,7 @@ void RakServer::onOpenConnectionRequest1(io::ByteBuffer& body, std::size_t datag
     out.writeByte(static_cast<std::uint8_t>(RakId::OpenConnectionReply1));
     out.writeBytes(kMagic);
     out.writeLong(static_cast<std::int64_t>(config_.guid));
-    out.writeByte(0); // No cookie: this server does not ask a client to prove its address twice.
+    out.writeByte(0);
     out.writeShort(static_cast<std::int16_t>(wanted));
     sendRaw(out.readable(), from);
 }
@@ -233,7 +232,7 @@ void RakServer::onOpenConnectionRequest2(io::ByteBuffer& body, const io::UdpEndp
     out.writeLong(static_cast<std::int64_t>(config_.guid));
     writeAddress(out, from);
     out.writeShort(static_cast<std::int16_t>(agreed));
-    out.writeByte(0); // No encryption at the RakNet layer; Bedrock does its own above it.
+    out.writeByte(0);
     sendRaw(out.readable(), from);
 }
 

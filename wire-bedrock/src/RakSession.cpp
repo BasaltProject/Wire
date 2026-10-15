@@ -7,17 +7,12 @@
 namespace basalt::wire::bedrock {
 namespace {
 
-/// Enough parts for a message of a few megabytes at the smallest MTU, and a ceiling so a peer
-/// cannot ask for an allocation by claiming a split of four billion.
 constexpr std::uint32_t kMaxSplitParts = 8192;
 
-/// How far ahead of what we have seen a datagram may claim to be before we stop counting the gap
-/// and just follow it. A peer that jumps further than this has restarted its numbering.
 constexpr std::uint32_t kMaxGap = 4096;
 
 constexpr std::size_t kReliableWindow = 2048;
 
-/// 127.0.0.1, in the network order the endpoint keeps.
 constexpr std::uint32_t kLoopback = 0x0100007fU;
 
 } // namespace
@@ -204,8 +199,6 @@ void RakSession::handleMessage(std::vector<std::uint8_t>&& message, std::uint64_
 void RakSession::onConnectionRequest(io::ByteBuffer& body, std::uint64_t nowMs) {
     const auto guid = static_cast<std::uint64_t>(body.readLong());
     const std::int64_t requestTime = body.readLong();
-    // The client repeats the guid it opened the connection with. A different one on the same
-    // address is a different client, and answering it would hand it someone else's session.
     if (body.failed() || guid != clientGuid_) {
         return;
     }
@@ -214,8 +207,6 @@ void RakSession::onConnectionRequest(io::ByteBuffer& body, std::uint64_t nowMs) 
     scratch_.writeByte(static_cast<std::uint8_t>(RakId::ConnectionRequestAccepted));
     writeAddress(scratch_, peer_);
     scratch_.writeShort(0);
-    // RakNet expects the ten addresses the server answers on. Only the first says anything, and a
-    // Bedrock client reads none of them.
     writeAddress(scratch_, io::UdpEndpoint{kLoopback, 0});
     for (int index = 1; index < 10; ++index) {
         writeAddress(scratch_, io::UdpEndpoint{});
@@ -274,7 +265,6 @@ void RakSession::queueFrames(std::span<const std::uint8_t> message, Reliability 
         return;
     }
 
-    // A split part pays ten more bytes of header, so the body that fits shrinks by exactly that.
     const std::size_t partSize = maxPayload() - (prototype.encodedSize() - message.size()) - 10;
     const std::uint32_t partCount = static_cast<std::uint32_t>((message.size() + partSize - 1) / partSize);
     const std::uint16_t partId = nextSplitId_++;
@@ -307,7 +297,6 @@ void RakSession::sendRanges(std::uint8_t flags, std::vector<std::uint32_t>& sequ
     collapseRanges(sequences, ranges);
     sequences.clear();
 
-    // A range costs seven bytes at worst, and the header three.
     const std::size_t perDatagram = std::max<std::size_t>(1, (maxPayload() - 3) / 7);
     for (std::size_t start = 0; start < ranges.size(); start += perDatagram) {
         const std::size_t count = std::min(perDatagram, ranges.size() - start);

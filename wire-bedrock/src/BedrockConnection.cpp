@@ -8,10 +8,8 @@
 namespace basalt::wire::bedrock {
 namespace {
 
-/// The packet id lives in the low ten bits; the rest names a split screen player nobody here has.
 constexpr std::uint32_t kPacketIdMask = 0x3ffU;
 
-/// Sixteen bytes of salt, which is what both ends hash with the shared secret.
 constexpr std::size_t kSaltSize = 16;
 
 std::vector<std::uint8_t> randomSalt() {
@@ -110,9 +108,7 @@ void BedrockConnection::onRequestNetworkSettings(io::ByteBuffer& body) {
 
     const BedrockVerdict verdict = gate_.verdict(protocolVersion_);
     if (!verdict.allowed()) {
-        // The status is what draws the screen: a client told it is out of date offers to update
-        // itself, and one told the server is out of date says so instead. A disconnect on its own
-        // would be a message over a blank screen.
+        // A disconnect on its own would be a message over a blank screen.
         scratch_.clear();
         writePlayStatus(scratch_, verdict.kind == BedrockVerdict::Kind::TooOld ? PlayStatus::ClientTooOld
                                                                                : PlayStatus::ServerTooOld);
@@ -206,8 +202,6 @@ void BedrockConnection::onResourcePackResponse(io::ByteBuffer& body) {
         disconnect("the resource packs were refused");
         return;
     case ResourcePackResponse::SendPacks:
-        // Nothing to send: this server has no packs, so the client is told the stack is empty and
-        // it asks again with everything it needs.
         scratch_.clear();
         writeResourcePackStack(scratch_, gameVersion_);
         sendPacket(BedrockPacket::ResourcePackStack, scratch_.readable());

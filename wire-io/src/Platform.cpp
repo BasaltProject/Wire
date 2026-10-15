@@ -70,7 +70,6 @@ std::uint64_t residentSetBytes() {
     }
     return 0;
 #else
-    // /proc/self/statm reports the resident set in pages, as its second field.
     std::FILE* statm = std::fopen("/proc/self/statm", "r");
     if (statm == nullptr) {
         return 0;
@@ -129,20 +128,16 @@ namespace terminal {
 namespace {
 
 #if defined(_WIN32)
-// The console modes as they were before this process touched them, kept so they can be put back.
 DWORD gSavedInput = 0;
 DWORD gSavedOutput = 0;
 bool gOutputSaved = false;
 bool gRaw = false;
 
-/// A console event the reader will turn into bytes: a key going down that carries a character.
-/// Key releases, bare modifiers, focus, mouse and resize events never reach `getchar`.
 [[nodiscard]] bool yieldsInput(const INPUT_RECORD& record) {
     return record.EventType == KEY_EVENT && record.Event.KeyEvent.bKeyDown != 0 &&
            record.Event.KeyEvent.uChar.UnicodeChar != 0;
 }
 #else
-// The settings as they were before this process touched them, kept so they can be put back.
 termios gSaved{};
 bool gRaw = false;
 #endif
@@ -158,18 +153,14 @@ bool enableRawMode() {
     if (gRaw) {
         return true;
     }
-    // A pipe or a file has no console mode, and is read line by line like everywhere else.
     if (GetConsoleMode(input, &gSavedInput) == 0) {
         return false;
     }
-    // Line buffering and echo go, as with termios; Ctrl+C stays a signal, and virtual terminal
-    // input turns the arrow keys into the same escape sequences a Unix terminal sends.
     const DWORD raw = (gSavedInput & ~static_cast<DWORD>(ENABLE_LINE_INPUT | ENABLE_ECHO_INPUT)) |
                       ENABLE_PROCESSED_INPUT | ENABLE_VIRTUAL_TERMINAL_INPUT;
     if (SetConsoleMode(input, raw) == 0) {
         return false;
     }
-    // The line editor redraws with escape sequences too, which the console only honours when told.
     const HANDLE output = GetStdHandle(STD_OUTPUT_HANDLE);
     if (output != nullptr && output != INVALID_HANDLE_VALUE && GetConsoleMode(output, &gSavedOutput) != 0) {
         gOutputSaved = true;
@@ -189,8 +180,6 @@ bool enableRawMode() {
     }
 
     termios raw = gSaved;
-    // Only line buffering and echo go: signals and output processing stay exactly as they were, so
-    // the terminal still behaves like a terminal in every other respect.
     raw.c_lflag &= static_cast<tcflag_t>(~(ICANON | ECHO));
     if (::tcsetattr(STDIN_FILENO, TCSANOW, &raw) != 0) {
         return false;
@@ -220,8 +209,6 @@ void restoreMode() {
 
 int readByte() {
 #if defined(_WIN32)
-    // In raw mode the console is read as characters, not through the C runtime: its text mode holds
-    // a lone carriage return back until it sees what follows, which is the next key pressed.
     static std::string pending;
     if (!gRaw) {
         return std::getchar();
@@ -232,7 +219,6 @@ int readByte() {
         if (ReadConsoleW(GetStdHandle(STD_INPUT_HANDLE), units, 1, &read, nullptr) == 0 || read == 0) {
             return -1;
         }
-        // A character past the basic plane comes as two units, and only the pair converts.
         if (units[0] >= 0xD800 && units[0] <= 0xDBFF &&
             (ReadConsoleW(GetStdHandle(STD_INPUT_HANDLE), &units[1], 1, &read, nullptr) == 0 || read == 0)) {
             return -1;
@@ -247,7 +233,8 @@ int readByte() {
     pending.erase(0, 1);
     return byte;
 #else
-    return std::getchar();
+    unsigned char byte = 0;
+    return ::read(STDIN_FILENO, &byte, 1) == 1 ? byte : -1;
 #endif
 }
 
@@ -261,9 +248,6 @@ bool waitForInput(const std::chrono::milliseconds timeout) {
     if (GetConsoleMode(input, &mode) == 0) {
         return WaitForSingleObject(input, static_cast<DWORD>(timeout.count())) == WAIT_OBJECT_0;
     }
-    // The console handle is signalled for every event, a key release or a mouse move included, and
-    // `getchar` blocks through those; they are taken off the queue here so a signalled handle means
-    // a byte is really waiting.
     const auto deadline = std::chrono::steady_clock::now() + timeout;
     for (;;) {
         const auto left =
@@ -286,8 +270,6 @@ bool waitForInput(const std::chrono::milliseconds timeout) {
     watched.fd = STDIN_FILENO;
     watched.events = POLLIN;
     const int ready = ::poll(&watched, 1, static_cast<int>(timeout.count()));
-    // An error is reported as ready so the read runs and returns whatever it returns: pretending
-    // there is nothing would spin here forever.
     return ready != 0;
 #endif
 }

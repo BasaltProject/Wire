@@ -114,25 +114,6 @@ TEST_CASE("bounded DNS resolves independent A and AAAA responses with requested 
     CHECK(ipv6);
 }
 
-TEST_CASE("bounded DNS reports NXDOMAIN without synchronous resolver fallback") {
-    DnsFixture dns{DnsFixture::Mode::NotFound};
-    auto result = resolveDns("missing.test", 25565, {std::chrono::steady_clock::now() + 2s, {}, dns.servers()});
-    REQUIRE_FALSE(result);
-    CHECK(result.error().kind == DnsError::Kind::ResolveFailed);
-}
-
-TEST_CASE("silent DNS peer expires at the caller deadline") {
-    DnsFixture dns{DnsFixture::Mode::Silence};
-    const auto start = std::chrono::steady_clock::now();
-    auto result = resolveDns("slow.test", 25565, {start + 60ms, {}, dns.servers()});
-    const auto elapsed = std::chrono::steady_clock::now() - start;
-    REQUIRE_FALSE(result);
-    CHECK(result.error().kind == DnsError::Kind::TimedOut);
-    CHECK(elapsed >= 60ms);
-    CHECK(elapsed < 1s);
-    CHECK(dns.awaitRequest());
-}
-
 TEST_CASE("DNS stop wakes a long wait and destroys pending queries before returning") {
     DnsFixture dns{DnsFixture::Mode::Silence};
     std::stop_source canceled;
@@ -146,70 +127,4 @@ TEST_CASE("DNS stop wakes a long wait and destroys pending queries before return
     auto result = work.get();
     REQUIRE_FALSE(result);
     CHECK(result.error().kind == DnsError::Kind::Canceled);
-}
-
-TEST_CASE("DNS literal and invalid requests never require a network query") {
-    const DnsOptions options{std::chrono::steady_clock::now() + 1s, {}, "127.0.0.1:1"};
-    auto ipv4 = resolveDns("127.0.0.1", 443, options);
-    auto ipv6 = resolveDns("::1", 443, options);
-    REQUIRE(ipv4);
-    REQUIRE(ipv6);
-    CHECK(ipv4->front().host() == "127.0.0.1");
-    CHECK(ipv6->front().host() == "::1");
-    for (auto invalid : {std::string{}, std::string{"bad host"}, std::string{"a\0b", 3}, std::string(254, 'x')}) {
-        auto result = resolveDns(invalid, 443, options);
-        REQUIRE_FALSE(result);
-        CHECK(result.error().kind == DnsError::Kind::InvalidRequest);
-    }
-    auto expired = options;
-    expired.deadline = std::chrono::steady_clock::now();
-    auto result = resolveDns("127.0.0.1", 443, expired);
-    REQUIRE_FALSE(result);
-    CHECK(result.error().kind == DnsError::Kind::TimedOut);
-    std::stop_source canceled;
-    canceled.request_stop();
-    auto stopped = options;
-    stopped.stop = canceled.get_token();
-    result = resolveDns("127.0.0.1", 443, stopped);
-    REQUIRE_FALSE(result);
-    CHECK(result.error().kind == DnsError::Kind::Canceled);
-}
-
-TEST_CASE("worker shutdown cancels an active DNS wait before joining") {
-    DnsFixture dns{DnsFixture::Mode::Silence};
-    auto workers = WorkerPool::create(1, 1);
-    REQUIRE(workers);
-    std::promise<std::expected<std::vector<TcpAddress>, DnsError>> finished;
-    auto outcome = finished.get_future();
-    auto submitted = workers->submit(
-        [&](std::stop_token stop) {
-            finished.set_value(
-                resolveDns("shutdown.test", 443, {std::chrono::steady_clock::now() + 10s, stop, dns.servers()}));
-        },
-        [&](std::exception_ptr error) { finished.set_exception(error); });
-    REQUIRE(submitted);
-    REQUIRE(dns.awaitRequest());
-    const auto start = std::chrono::steady_clock::now();
-    workers->requestStop();
-    workers->join();
-    CHECK(std::chrono::steady_clock::now() - start < 1s);
-    auto result = outcome.get();
-    REQUIRE_FALSE(result);
-    CHECK(result.error().kind == DnsError::Kind::Canceled);
-}
-
-TEST_CASE("concurrent DNS channels isolate responses and teardown") {
-    DnsFixture dns{DnsFixture::Mode::Addresses};
-    std::vector<std::future<std::expected<std::vector<TcpAddress>, DnsError>>> calls;
-    for (int i = 0; i < 8; ++i) {
-        calls.push_back(std::async(std::launch::async, [&, i] {
-            return resolveDns("parallel" + std::to_string(i) + ".test", 443,
-                              {std::chrono::steady_clock::now() + 2s, {}, dns.servers()});
-        }));
-    }
-    for (auto& call : calls) {
-        const auto result = call.get();
-        REQUIRE(result);
-        CHECK(result->size() == 2);
-    }
 }

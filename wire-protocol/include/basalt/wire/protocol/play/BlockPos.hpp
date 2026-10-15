@@ -4,8 +4,6 @@
 
 namespace basalt::wire::protocol::play {
 
-/// One of the six block faces. The order matches vanilla's own Direction enum: in this version both
-/// its varint id and its single-byte "3D data value" happen to equal the ordinal.
 enum class Direction : std::uint8_t {
     Down,
     Up,
@@ -15,7 +13,7 @@ enum class Direction : std::uint8_t {
     East,
 };
 
-/// parity: Direction.getUnitVec3i, the unit step towards the neighbour on this face.
+/// parity: Direction.getUnitVec3i.
 [[nodiscard]] constexpr std::int32_t normalX(Direction direction) noexcept {
     return direction == Direction::West ? -1 : (direction == Direction::East ? 1 : 0);
 }
@@ -28,7 +26,7 @@ enum class Direction : std::uint8_t {
     return direction == Direction::North ? -1 : (direction == Direction::South ? 1 : 0);
 }
 
-/// parity: Pose, whose ordinal is what the wire carries.
+/// parity: Pose.
 enum class Pose : std::uint8_t {
     Standing,
     FallFlying,
@@ -50,8 +48,7 @@ enum class Pose : std::uint8_t {
     Inhaling,
 };
 
-/// A block position, packed the way vanilla's BlockPos.asLong does it: 26 bits of x, 26 of z, 12 of
-/// y.
+/// A block position, packed the way vanilla's BlockPos.asLong does it: 26 bits of x, 26 of z, 12 of y.
 struct BlockPos {
     std::int32_t x = 0;
     std::int32_t y = 0;
@@ -73,7 +70,7 @@ struct BlockPos {
         return BlockPos{sign(bits, 0, 38), sign(bits, 52, 52), sign(bits, 26, 38)};
     }
 
-    /// parity: BlockPos.relative, the neighbour across this face.
+    /// parity: BlockPos.relative.
     [[nodiscard]] constexpr BlockPos offset(Direction direction) const noexcept {
         return BlockPos{x + normalX(direction), y + normalY(direction), z + normalZ(direction)};
     }

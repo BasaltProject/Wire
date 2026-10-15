@@ -11,19 +11,15 @@
 
 namespace basalt::wire::multiversion::java {
 
-/// Says what an entity data entry is, and where it sits, in the numbers the far end uses. Both have
-/// moved between versions, and a wrong kind is not a field the client ignores but a packet it
-/// misreads. What a version has no kind for is left out.
+/// Both have moved between versions, and a wrong kind is not a field the client ignores but a packet it misreads.
 class EntityDataRewriter {
 public:
     using StackMapper = std::function<std::optional<protocol::play::WireItemStack>(
         const std::optional<protocol::play::WireItemStack>&)>;
 
-    /// `links` is the older side of every link, newest first: an index is moved once per step, in
-    /// order.
+    /// `links` is the older side of every link, newest first: an index is moved once per step, in order.
     EntityDataRewriter(std::int32_t farEnd, std::vector<std::int32_t> links, StackMapper stack);
 
-    /// Absent when nothing has to change. `nativeType` is -1 for an entity nothing said the type of.
     [[nodiscard]] std::optional<std::vector<std::uint8_t>> rewrite(const protocol::play::SetEntityDataPacket& data,
                                                                    std::int32_t nativeType) const;
 
@@ -40,7 +36,6 @@ private:
     std::vector<std::int32_t> links_;
     StackMapper stack_;
     std::span<const std::int32_t> types_;
-    /// 1.8 writes a kind and an index in one byte; everything after it writes them apart.
     bool packed_;
 };
 

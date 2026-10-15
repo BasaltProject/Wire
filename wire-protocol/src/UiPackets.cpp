@@ -129,7 +129,6 @@ void NumberFormat::write(io::ByteBuffer& buffer) const {
     } else if (const auto* fixed = as<Fixed>()) {
         writeComponent(buffer, fixed->value);
     }
-    // Blank writes nothing at all, which is the whole point of it.
 }
 
 std::optional<NumberFormat> NumberFormat::read(io::ByteBuffer& buffer) {
@@ -278,7 +277,6 @@ void BossEventPacket::write(io::ByteBuffer& buffer) const {
     } else if (const auto* properties = std::get_if<UpdateProperties>(&operation)) {
         buffer.writeByte(packBossFlags(properties->darkenScreen, properties->playMusic, properties->createWorldFog));
     }
-    // A remove is the id and the type, and nothing else.
 }
 
 std::optional<BossEventPacket> BossEventPacket::read(io::ByteBuffer& buffer) {

@@ -27,11 +27,8 @@ constexpr std::array<std::uint32_t, 62> kBaseColors{
     1474182,  3837580, 5647422,  1356933,  6579300,  14200723, 8365974,
 };
 
-/// `MapColor.Brightness.modifier`, by the low two bits of a packed colour.
 constexpr std::array<std::uint32_t, 4> kModifiers{180, 220, 255, 135};
 
-/// The oldest decoration ids each era lacks. 1.20.5 added the trial chambers, 1.20.2 the village and
-/// temple icons, and 1.13 everything past the ocean monument.
 constexpr std::int32_t kFirstNew = 35;
 constexpr std::int32_t kRedX = 26;
 constexpr std::int32_t kTrialChambers = 34;
@@ -40,8 +37,6 @@ constexpr std::int32_t kFirstVillage = 27;
 constexpr std::int32_t kRedMarker = 2;
 constexpr std::int32_t kLastBefore113 = 9;
 
-/// How many base colours a version's palette has: 1.12 added the terracotta ones, 1.16 the Nether
-/// woods and 1.17 deepslate, raw iron and glow lichen.
 [[nodiscard]] std::size_t paletteOf(std::int32_t farEnd) {
     if (farEnd < versions::kV1_12) {
         return 36;
@@ -88,7 +83,6 @@ constexpr std::int32_t kLastBefore113 = 9;
     return table;
 }
 
-/// What a decoration is drawn as over there, or nothing when that version has no way to draw it.
 [[nodiscard]] std::optional<std::int32_t> typeFor(std::int32_t type, std::int32_t farEnd) {
     if (farEnd >= versions::kNative) {
         return type;
@@ -166,7 +160,6 @@ std::uint8_t colorFor(std::uint8_t packed, std::int32_t farEnd) {
 void write(io::ByteBuffer& output, const play::MapItemDataPacket& packet, std::int32_t farEnd) {
     protocol::varInt::write(output, packet.mapId);
     output.writeByte(static_cast<std::uint8_t>(packet.scale));
-    // 1.9 to 1.16 said whether to draw the players; this server always does.
     if (farEnd >= versions::kV1_9 && farEnd < versions::kV1_17) {
         protocol::writeBoolean(output, true);
     }

@@ -5,7 +5,6 @@
 namespace basalt::wire::bedrock {
 
 std::string_view bedrockSoundName(std::string_view javaSound) {
-    // The table is written without a namespace, because that is how the reference records it.
     if (javaSound.starts_with("minecraft:")) {
         javaSound.remove_prefix(std::string_view{"minecraft:"}.size());
     }

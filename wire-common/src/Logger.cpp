@@ -10,10 +10,6 @@ namespace {
 
 LogLevel gDefaultMinLevel = LogLevel::Info;
 
-// Local time, not UTC: an operator reads their own console against their own clock, and a log two
-// hours off their wall clock is a tax paid on every line. It is also what vanilla does. The zone is
-// resolved per call rather than cached so a server running across a daylight-saving change keeps
-// telling the truth.
 std::tm localTime(std::int64_t epochSeconds) {
     const auto raw = static_cast<std::time_t>(epochSeconds);
     std::tm out{};

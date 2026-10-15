@@ -16,7 +16,6 @@ namespace {
 namespace play = protocol::play;
 using protocol::ProtocolState;
 
-/// Everything that comes before the spawn in the login packet, which the respawn packet has none of.
 struct LoginHead {
     std::int32_t entityId = 0;
     std::uint8_t hardcore = 0;
@@ -40,7 +39,6 @@ bool Link762::clientbound(ProtocolState state, MutablePacket& packet) {
         });
         break;
     case play::UpdateLightPacket::kId: {
-        // The flag sits between the position and the masks, so this one is spliced.
         io::ByteBuffer input = io::ByteBuffer::wrap(packet.body);
         const std::int32_t x = protocol::varInt::read(input);
         const std::int32_t z = protocol::varInt::read(input);
@@ -73,7 +71,6 @@ bool Link762::clientbound(ProtocolState state, MutablePacket& packet) {
         const std::int32_t playerId = protocol::varInt::read(input);
         encode(packet, [&](io::ByteBuffer& output) {
             protocol::varInt::write(output, playerId);
-            // 1.19.4 still names a killer, and there is nobody to name.
             output.writeInt(-1);
             output.writeBytes(input.readable());
         });
@@ -95,7 +92,6 @@ bool Link762::serverbound(ProtocolState state, MutablePacket& packet) {
     if (state != ProtocolState::Play || packet.nativeId() != play::SignUpdatePacket::kId) {
         return true;
     }
-    // A client this old only edits the front of a sign, and has no field to say so.
     io::ByteBuffer input = io::ByteBuffer::wrap(packet.body);
     const std::int64_t position = input.readLong();
     encode(packet, [&](io::ByteBuffer& output) {
@@ -140,7 +136,7 @@ void Link762::dropPortalCooldown(MutablePacket& packet, bool afterLogin) {
         deathDimension = protocol::readString(input);
         deathPosition = input.readLong();
     }
-    static_cast<void>(protocol::varInt::read(input)); // The portal cooldown, which is what goes.
+    static_cast<void>(protocol::varInt::read(input));
     if (input.failed()) {
         return;
     }

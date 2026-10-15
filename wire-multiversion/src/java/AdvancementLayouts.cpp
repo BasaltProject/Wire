@@ -29,7 +29,6 @@ void writeText(io::ByteBuffer& output, const text::Component& component, std::in
     }
 }
 
-/// Below 1.21.5 a background is the texture's own path: `ns:textures/<path>.png`.
 [[nodiscard]] std::string backgroundFor(const std::string& background, std::int32_t farEnd) {
     if (farEnd >= versions::kV1_21_5) {
         return background;

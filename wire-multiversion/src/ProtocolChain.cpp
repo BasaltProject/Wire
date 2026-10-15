@@ -11,7 +11,6 @@ namespace {
 
 using Carried = std::vector<std::pair<std::int32_t, std::vector<std::uint8_t>>>;
 
-/// The same element without the attribute keys that version has never heard of.
 std::optional<nbt::NbtTag> withoutAttributes(const std::optional<nbt::NbtTag>& value,
                                              const RegistryRemovals& removals) {
     if (removals.attributes.empty() || !value) {
@@ -48,9 +47,6 @@ std::optional<nbt::NbtTag> withoutAttributes(const std::optional<nbt::NbtTag>& v
     return nbt::NbtTag::ofCompound(std::move(rewritten));
 }
 
-/// Takes out of one element every member the older side has never seen, one and two levels deep,
-/// which is where the shape lives: a client compiled before a member refuses the whole registry
-/// rather than ignoring it. Deeper is a value, and an unexpected value it reads anyway.
 [[nodiscard]] nbt::NbtTag withoutUnknownMembers(const nbt::NbtTag& value, const std::string& registryId,
                                                 std::int32_t older, bool& changed) {
     const nbt::NbtCompound* element = value.get<nbt::NbtCompound>();
@@ -86,8 +82,6 @@ std::optional<nbt::NbtTag> withoutAttributes(const std::optional<nbt::NbtTag>& v
     return nbt::NbtTag::ofCompound(std::move(kept));
 }
 
-/// The same, over a whole registry packet, after the link has reshaped whatever it knows how to
-/// reshape: what is left that the older side cannot name goes.
 void stripUnknownMembers(protocol::ProtocolState state, MutablePacket& packet, const ProtocolLink& link) {
     if (state != protocol::ProtocolState::Configuration ||
         packet.nativeId() != protocol::configuration::RegistryDataPacket::kId) {
@@ -125,9 +119,6 @@ void stripUnknownMembers(protocol::ProtocolState state, MutablePacket& packet, c
 }
 
 /// Takes out of a registry packet what this link's older side cannot read.
-///
-/// False when nothing is left worth sending, which is a registry that version does not have at all:
-/// an empty one is not the same as none, and the client is better off never hearing of it.
 bool stripRegistry(protocol::ProtocolState state, MutablePacket& packet, const ProtocolLink& link) {
     if (state != protocol::ProtocolState::Configuration ||
         packet.nativeId() != protocol::configuration::RegistryDataPacket::kId) {
@@ -167,7 +158,6 @@ bool stripRegistry(protocol::ProtocolState state, MutablePacket& packet, const P
     return true;
 }
 
-/// The extras of a link above are renumbered by every link below it, like any other packet.
 void renumberCarried(Carried& carried, protocol::ProtocolState state, const ProtocolLink& link) {
     if (carried.empty()) {
         return;
@@ -212,9 +202,6 @@ const RegistryRemovals& ProtocolLink::registryRemovals() const {
 
 void ProtocolChain::clientbound(protocol::ProtocolState state, std::int32_t id, std::span<const std::uint8_t> body,
                                 const Emit& emit) const {
-    // One packet and one list per call, not one per chain: a session is written to by whatever
-    // thread has something to say to it, and a translation that kept its state on the chain was
-    // being torn in half by the second writer.
     MutablePacket packet;
     Carried carried;
     packet.reset(id, id, std::vector<std::uint8_t>{body.begin(), body.end()});
@@ -222,8 +209,6 @@ void ProtocolChain::clientbound(protocol::ProtocolState state, std::int32_t id, 
     if (content_ != nullptr && !content_->clientbound(state, packet)) {
         return;
     }
-    // The rewriter's own extras are in this server's numbering, so they are carried before the first
-    // link rather than after it: every link renumbers them, the same as the packet itself.
     if (!packet.extras.empty()) {
         carried.insert(carried.end(), std::make_move_iterator(packet.extras.begin()),
                        std::make_move_iterator(packet.extras.end()));
@@ -239,8 +224,6 @@ void ProtocolChain::clientbound(protocol::ProtocolState state, std::int32_t id, 
         if (!dropped && !link.clientbound(state, packet)) {
             dropped = true;
         }
-        // After the link, never before it: a link that turns one shape into another needs the new
-        // shape to still be there when it runs.
         if (!dropped) {
             stripUnknownMembers(state, packet, link);
         }
@@ -254,8 +237,6 @@ void ProtocolChain::clientbound(protocol::ProtocolState state, std::int32_t id, 
             continue;
         }
 
-        // A link that named the packet itself replaces its own table's answer, and the links below
-        // go on renumbering from the name it gave.
         if (packet.takeOverride()) {
             current = packet.id;
             continue;
@@ -265,7 +246,6 @@ void ProtocolChain::clientbound(protocol::ProtocolState state, std::int32_t id, 
             dropped = true;
         } else {
             current = mapped;
-            // Kept up to date so a link below can ask what this packet is called where it sits.
             packet.id = current;
         }
     }

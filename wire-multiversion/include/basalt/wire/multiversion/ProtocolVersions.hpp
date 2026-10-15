@@ -8,11 +8,6 @@
 
 namespace basalt::wire::multiversion {
 
-/// One protocol version of Java Edition: the number a client sends in its handshake, and the
-/// releases that send it.
-///
-/// Several releases share a number whenever a release changed nothing on the wire (1.16.4 and 1.16.5
-/// are both 754), so the label is a range rather than a single name.
 struct ProtocolVersion {
     std::int32_t number = 0;
     std::string_view label;
@@ -22,11 +17,7 @@ struct ProtocolVersion {
     friend bool operator==(const ProtocolVersion&, const ProtocolVersion&) = default;
 };
 
-/// Every Java protocol from 1.8 to the native version, and what a number outside the table means.
-///
-/// Only netty protocols are here. 1.7.x and earlier spoke a different framing altogether and their
-/// numbers collide with the modern ones (1.4.2 is also 47), so the floor of the table is where the
-/// numbers start being comparable at all.
+/// Only netty protocols are here.
 namespace protocolVersions {
 
 /// The version this build speaks without translating anything.
@@ -82,28 +73,21 @@ inline constexpr std::int32_t kV1_21_11 = 774;
 inline constexpr std::int32_t kV26_1 = 775;
 inline constexpr std::int32_t kV26_2 = 776;
 
-/// A snapshot sets bit 30 of its protocol number, and what is left is a counter that has been
-/// climbing since 15w32a rather than anything comparable to a release number.
-///
 /// parity: SharedConstants.SNAPSHOT_PROTOCOL_BIT.
 inline constexpr std::int32_t kSnapshotBit = 1 << 30;
 
-/// Oldest first, which is the order a chain of translators runs in.
 [[nodiscard]] std::span<const ProtocolVersion> known() noexcept;
 
 [[nodiscard]] std::int32_t oldest() noexcept;
 
 [[nodiscard]] std::optional<ProtocolVersion> of(std::int32_t number) noexcept;
 
-/// What to call a number in a log line, whether or not the table knows it.
 [[nodiscard]] std::string describe(std::int32_t number);
 
 [[nodiscard]] constexpr bool isSnapshot(std::int32_t number) noexcept { return (number & kSnapshotBit) != 0; }
 
-/// Whether the number is a release newer than what this build speaks natively.
 [[nodiscard]] constexpr bool isFuture(std::int32_t number) noexcept { return !isSnapshot(number) && number > kNative; }
 
-/// Older than the floor of the table: 1.7.x and the pre-netty protocols.
 [[nodiscard]] bool isBelowFloor(std::int32_t number) noexcept;
 
 } // namespace protocolVersions

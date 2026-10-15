@@ -19,10 +19,6 @@ std::optional<BedrockFuturePolicy> parseBedrockFuturePolicy(const std::string_vi
 }
 
 std::set<std::int32_t> BedrockGate::buildSupport() {
-    // Only what this build has a codec for. The window of live protocols is wider than that on
-    // paper, and claiming one whose packets are shaped differently is worse than turning it away.
-    // 2169 is 2168 with a different number: not one packet id, packet shape, metadata field or
-    // entity flag moved between them, and they share a block palette. Measured, not assumed.
     return {std::begin(kBedrockProtocols), std::end(kBedrockProtocols)};
 }
 

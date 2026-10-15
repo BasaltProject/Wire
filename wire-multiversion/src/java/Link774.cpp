@@ -27,8 +27,6 @@ constexpr std::int32_t kInteractAt = 2;
 } // namespace
 
 bool Link774::clientbound(ProtocolState state, MutablePacket& packet) {
-    // Renumbering first, shape second, like every other link: what is written below is no longer the
-    // packet this server writes, so nothing may read it as one afterwards.
     if (!RenumberingLink::clientbound(state, packet)) {
         return false;
     }
@@ -49,8 +47,6 @@ bool Link774::clientbound(ProtocolState state, MutablePacket& packet) {
             const bool found = clock != time->clocks.end();
             output.writeLong(time->gameTime);
             output.writeLong(found ? clock->totalTicks : time->gameTime);
-            // A rate of zero is a clock that is not running, which is what `doDaylightCycle` off
-            // looks like to a client that only has the flag.
             protocol::writeBoolean(output, !found || clock->rate != 0.0F);
         });
     }

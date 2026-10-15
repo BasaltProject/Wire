@@ -14,16 +14,13 @@ namespace {
 namespace play = protocol::play;
 using protocol::ProtocolState;
 
-/// parity: an empty slot is the item id minus one, and nothing follows it.
 constexpr std::int32_t kEmptyItem = -1;
 
 constexpr std::int32_t kColumns = 16 * 16;
 
-/// How the tables carry an item and the damage that says which variant of it this is.
 constexpr std::int32_t kItemMask = 0xFFFF;
 constexpr int kDamageShift = 16;
 
-/// A stack as 1.12.2 reads one: the item in a short, then the count, the damage and its tag.
 [[nodiscard]] std::vector<std::uint8_t> oldStack(io::ByteBuffer& input) {
     io::ByteBuffer output;
     if (input.readByte() == 0) {
@@ -51,7 +48,6 @@ constexpr int kDamageShift = 16;
     const std::uint8_t count = input.readByte();
     const std::int32_t damage = input.readShort();
     const nbt::NbtTag tag = protocol::readAnonymousNbt(input);
-    // Put back together the way the table holds it: what is renumbered above this reads it.
     protocol::writeBoolean(output, true);
     protocol::varInt::write(output, (damage << kDamageShift) | itemId);
     output.writeByte(count);
@@ -134,8 +130,7 @@ bool Link340::serverbound(ProtocolState state, MutablePacket& packet) {
         break;
     }
     case play::ServerboundContainerClickPacket::kId: {
-        // 1.12 numbers its clicks itself and sends the stack it thinks it took. This server wants
-        // neither: it wants to know whether the click left something on the cursor.
+        // This server wants neither: it wants to know whether the click left something on the cursor.
         io::ByteBuffer input = io::ByteBuffer::wrap(packet.body);
         const std::uint8_t container = input.readByte();
         const std::int16_t slot = input.readShort();

@@ -48,9 +48,6 @@ bool errorIsInterrupt(int error) noexcept {
 #endif
 }
 
-/// An ICMP port-unreachable from a peer that went away surfaces on the next call on this socket,
-/// even though nothing about this call failed. Reporting it would make a session's death look like
-/// a socket fault, so the datagram loop treats it as an empty read.
 bool errorIsPeerGone(int error) noexcept {
 #if defined(_WIN32)
     return error == WSAECONNRESET || error == WSAENETRESET || error == WSAECONNREFUSED;
@@ -78,7 +75,6 @@ sockaddr_in toSockaddr(const UdpEndpoint& endpoint) noexcept {
     return address;
 }
 
-/// Blocks up to timeoutMs waiting for the socket to have something to read.
 [[nodiscard]] int waitReadable(std::int64_t handle, int timeoutMs) noexcept {
 #if defined(_WIN32)
     fd_set readable;

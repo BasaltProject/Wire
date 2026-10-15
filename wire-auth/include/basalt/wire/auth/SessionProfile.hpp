@@ -24,10 +24,7 @@ struct SessionProfile {
     friend bool operator==(const SessionProfile&, const SessionProfile&) = default;
 };
 
-/// Verifies a client's claimed username against Mojang's session server after the key exchange.
-///
-/// parity: MinecraftSessionService.hasJoinedServer. `MojangSessionService` is the one backed by the
-/// real session server, over the HTTPS client beside it; a test supplies a fake.
+/// parity: MinecraftSessionService.hasJoinedServer.
 class SessionService {
 public:
     SessionService() = default;

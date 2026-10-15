@@ -26,10 +26,6 @@ namespace {
            (character >= 'A' && character <= 'Z');
 }
 
-/// The number a side of a comparison is, or nothing when it is text.
-///
-/// Only finite numbers count: an infinity or a NaN compares false against everything including
-/// itself, which is not something an operator reading the file would expect, so those stay text.
 [[nodiscard]] std::optional<double> asNumber(std::string_view value) {
     if (value.empty()) {
         return std::nullopt;
@@ -40,8 +36,6 @@ namespace {
     }
     double parsed = 0.0;
     const std::from_chars_result read = std::from_chars(digits.data(), digits.data() + digits.size(), parsed);
-    // The end has to be the end: `from_chars` stops at the first character it cannot use and calls
-    // that a success, so "12abc" would otherwise be twelve.
     if (read.ec != std::errc{} || read.ptr != digits.data() + digits.size()) {
         return std::nullopt;
     }
@@ -76,7 +70,6 @@ struct OperatorSpelling {
     bool wordy;
 };
 
-/// Longest token first, so `<=` is not read as `<` followed by a stray `=`.
 constexpr std::array<OperatorSpelling, 9> kOperators{{
     {Operator::NotEqual, "!=", false},
     {Operator::LessOrEqual, "<=", false},
@@ -98,17 +91,13 @@ constexpr std::array<OperatorSpelling, 9> kOperators{{
     return {};
 }
 
-/// A word operator has to be a word: "matches" inside "rematches" is not one.
 [[nodiscard]] bool isWord(std::string_view text, std::size_t start, std::size_t length) {
     const bool freeBefore = start == 0 || !isLetterOrDigit(text[start - 1]);
     const bool freeAfter = start + length >= text.size() || !isLetterOrDigit(text[start + length]);
     return freeBefore && freeAfter;
 }
 
-/// The first operator outside a `%...%`.
-///
-/// Outside, because a placeholder's argument is free text and can contain anything: the separator
-/// in `%basalt_server_countdown_dd.MM.yyyy_01.01.2020%` must never be read as an operator.
+/// Outside a `%...%` only: a placeholder's argument is free text and must never be read as an operator.
 [[nodiscard]] std::optional<std::pair<Operator, std::size_t>> findOperator(std::string_view text) {
     bool inPlaceholder = false;
     for (std::size_t index = 0; index < text.size(); ++index) {

@@ -15,12 +15,10 @@
 namespace basalt::wire::bedrock {
 namespace {
 
-/// Half of a P-384 signature, and the size every coordinate on that curve is written at.
 constexpr std::size_t kCoordinateSize = 48;
 
 constexpr std::size_t kSignatureSize = kCoordinateSize * 2;
 
-/// A DER SubjectPublicKeyInfo for P-384 is a little over a hundred bytes.
 constexpr std::size_t kDerBufferSize = 256;
 
 std::array<std::uint8_t, kCoordinateSize> sha384(std::string_view text) {
@@ -69,7 +67,6 @@ std::optional<double> jsonNumber(const std::string_view json, const std::string_
     if (value == nullptr) {
         return std::nullopt;
     }
-    // A whole number keeps its own type in this reader, and every count a client writes is one.
     if (const auto* whole = value->get<std::int64_t>(); whole != nullptr) {
         return static_cast<double>(*whole);
     }
@@ -199,7 +196,6 @@ std::optional<EcKeyPair> EcKeyPair::generate() {
     if (written <= 0) {
         return std::nullopt;
     }
-    // mbedTLS writes DER backwards, so the bytes end at the tail of the buffer.
     const auto* start = buffer.data() + buffer.size() - static_cast<std::size_t>(written);
     state.publicDer.assign(start, start + written);
     return pair;

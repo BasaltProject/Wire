@@ -61,8 +61,6 @@ bool Link766::clientbound(ProtocolState state, MutablePacket& packet) {
     }
     if (state == ProtocolState::Play && packet.nativeId() == play::LevelEventPacket::kId) {
         const auto event = decode(packet, [](io::ByteBuffer& in) { return play::LevelEventPacket::read(in); });
-        // The song a jukebox plays is a registry id in 1.21 and an item id before it. There is no way
-        // to name it over there, so the record simply does not play.
         if (event.has_value() && event->event == kJukeboxPlay) {
             return false;
         }

@@ -10,7 +10,7 @@
 
 namespace basalt::wire::protocol::play {
 
-/// Where a vehicle is and which way it faces. parity: `PositionAndRotation`.
+/// parity: `PositionAndRotation`.
 struct VehiclePosition {
     double x = 0.0;
     double y = 0.0;
@@ -21,7 +21,7 @@ struct VehiclePosition {
     friend bool operator==(const VehiclePosition&, const VehiclePosition&) = default;
 };
 
-/// parity: `ServerboundMoveVehiclePacket`, the vehicle its driver moves on their own client.
+/// parity: `ServerboundMoveVehiclePacket`.
 struct ServerboundMoveVehiclePacket {
     static constexpr std::int32_t kId = 0x22;
 
@@ -34,7 +34,7 @@ struct ServerboundMoveVehiclePacket {
     friend bool operator==(const ServerboundMoveVehiclePacket&, const ServerboundMoveVehiclePacket&) = default;
 };
 
-/// parity: `ServerboundPaddleBoatPacket`, which oars the driver is pulling.
+/// parity: `ServerboundPaddleBoatPacket`.
 struct ServerboundPaddleBoatPacket {
     static constexpr std::int32_t kId = 0x23;
 
@@ -47,7 +47,7 @@ struct ServerboundPaddleBoatPacket {
     friend bool operator==(const ServerboundPaddleBoatPacket&, const ServerboundPaddleBoatPacket&) = default;
 };
 
-/// parity: `ClientboundMoveVehiclePacket`, the server putting a driver's vehicle back.
+/// parity: `ClientboundMoveVehiclePacket`.
 struct ClientboundMoveVehiclePacket {
     static constexpr std::int32_t kId = 0x3a;
 
@@ -59,7 +59,7 @@ struct ClientboundMoveVehiclePacket {
     friend bool operator==(const ClientboundMoveVehiclePacket&, const ClientboundMoveVehiclePacket&) = default;
 };
 
-/// parity: `ClientboundMountScreenOpenPacket`, the inventory of a horse, a llama or a camel.
+/// parity: `ClientboundMountScreenOpenPacket`.
 struct MountScreenOpenPacket {
     static constexpr std::int32_t kId = 0x2a;
 
@@ -73,7 +73,7 @@ struct MountScreenOpenPacket {
     friend bool operator==(const MountScreenOpenPacket&, const MountScreenOpenPacket&) = default;
 };
 
-/// parity: `NewMinecartBehavior.MinecartStep`, one point a cart passes through, weighted by how far.
+/// parity: `NewMinecartBehavior.MinecartStep`.
 struct MinecartStep {
     std::array<double, 3> position{};
     std::array<double, 3> movement{};
@@ -84,8 +84,7 @@ struct MinecartStep {
     friend bool operator==(const MinecartStep&, const MinecartStep&) = default;
 };
 
-/// parity: `ClientboundMoveMinecartPacket`, a cart's turn as the steps it took, under the
-/// `minecart_improvements` feature. The rotations travel as packed bytes.
+/// parity: `ClientboundMoveMinecartPacket`.
 struct ClientboundMoveMinecartPacket {
     static constexpr std::int32_t kId = 0x38;
 
@@ -98,7 +97,7 @@ struct ClientboundMoveMinecartPacket {
     friend bool operator==(const ClientboundMoveMinecartPacket&, const ClientboundMoveMinecartPacket&) = default;
 };
 
-/// parity: `ServerboundSetCommandMinecartPacket`, what somebody typed into a command block cart.
+/// parity: `ServerboundSetCommandMinecartPacket`.
 struct ServerboundSetCommandMinecartPacket {
     static constexpr std::int32_t kId = 0x38;
 

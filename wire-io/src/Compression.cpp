@@ -23,7 +23,6 @@ CompressionError translate(int code) noexcept {
     }
 }
 
-/// Runs one whole stream through zlib with the given window bits, growing the output as needed.
 std::expected<std::vector<std::uint8_t>, CompressionError>
 inflateWholeStream(std::span<const std::uint8_t> source, int windowBits, std::size_t initialCapacity) {
     if (source.empty()) {
@@ -57,7 +56,6 @@ inflateWholeStream(std::span<const std::uint8_t> source, int windowBits, std::si
             return std::unexpected{translate(result)};
         }
         if (written < out.size()) {
-            // zlib stopped without filling the buffer and without finishing: the input is truncated.
             inflateEnd(&stream);
             return std::unexpected{CompressionError::CorruptData};
         }
@@ -166,8 +164,6 @@ std::expected<std::vector<std::uint8_t>, CompressionError> compress(std::span<co
 }
 
 std::expected<std::vector<std::uint8_t>, CompressionError> decompress(std::span<const std::uint8_t> source) {
-    // RFC 1952 stores the uncompressed size in the last four bytes, little-endian and mod 2^32, so
-    // the usual first guess is exact rather than a guess.
     std::size_t hint = source.size() * 4 + 64;
     if (source.size() >= 4) {
         std::uint32_t declared = 0;

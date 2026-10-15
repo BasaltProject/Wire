@@ -170,7 +170,7 @@ std::optional<ChatSessionUpdatePacket> ChatSessionUpdatePacket::read(io::ByteBuf
 }
 
 void ChatTypeBound::write(io::ByteBuffer& buffer) const {
-    // parity: `ByteBufCodecs.holder`, a registry reference as its id plus one; zero is an inline type.
+    // parity: `ByteBufCodecs.holder`.
     varInt::write(buffer, chatType + 1);
     writeComponent(buffer, name);
     writeOptionalComponent(buffer, targetName);
@@ -235,7 +235,7 @@ std::optional<PlayerChatPacket> PlayerChatPacket::read(io::ByteBuffer& buffer) {
         packet.lastSeen.push_back(packed);
     }
     packet.unsignedContent = readOptionalComponent(buffer);
-    // parity: `ByIdMap.OutOfBoundsStrategy.ZERO`, an unknown type reads as pass-through.
+    // parity: `ByIdMap.OutOfBoundsStrategy.ZERO`.
     const std::int32_t type = varInt::read(buffer);
     packet.filterMask.type = type == 1   ? FilterMask::Type::FullyFiltered
                              : type == 2 ? FilterMask::Type::PartiallyFiltered

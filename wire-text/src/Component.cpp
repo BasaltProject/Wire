@@ -5,8 +5,6 @@
 namespace basalt::wire::text {
 namespace {
 
-/// Two optional sub-components are equal when both are absent, or both present and equal. Pointer
-/// identity is not the question: components are values.
 bool sameComponent(const std::shared_ptr<const Component>& lhs, const std::shared_ptr<const Component>& rhs) {
     if (lhs == nullptr || rhs == nullptr) {
         return lhs == rhs;

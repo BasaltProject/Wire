@@ -8,13 +8,11 @@ namespace basalt::wire::common {
 namespace {
 
 constexpr double kMaxTicksPerSecond = 20.0;
-/// One tick, the smallest span a rate can honestly be measured over.
 constexpr std::int64_t kNanosPerTick = 50'000'000;
 
 double toMillis(std::int64_t nanos) noexcept { return static_cast<double>(nanos) / 1'000'000.0; }
 
-/// Nearest-rank, which is what every server tool means by "the 95th percentile tick": the value an
-/// actual tick had, not one interpolated between two that never happened.
+/// Nearest-rank: the value an actual tick had, never interpolated.
 std::int64_t percentile(const std::vector<std::int64_t>& sorted, double fraction) noexcept {
     const auto rank =
         static_cast<std::size_t>(std::clamp(static_cast<std::ptrdiff_t>(fraction * static_cast<double>(sorted.size())),

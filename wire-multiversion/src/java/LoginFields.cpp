@@ -33,7 +33,7 @@ LoginFields::SpawnFields LoginFields::SpawnFields::read(io::ByteBuffer& input, b
     fields.hashedSeed = input.readLong();
     if (varIntGamemodes) {
         fields.gamemode = protocol::varInt::read(input);
-        // parity: GameType.OPTIONAL_STREAM_CODEC, zero for none; -1 is how the byte said it.
+        // parity: GameType.OPTIONAL_STREAM_CODEC.
         fields.previousGamemode = protocol::varInt::read(input) - 1;
     } else {
         fields.gamemode = input.readByte();

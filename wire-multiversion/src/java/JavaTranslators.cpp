@@ -91,8 +91,6 @@
 namespace basalt::wire::multiversion::java {
 namespace {
 
-/// One entry of the road down from the native version: what it reaches, whose tables it
-/// carries, and how to build the link itself.
 struct LinkEntry {
     std::int32_t version;
     const VersionTables& (*tables)();
@@ -104,13 +102,12 @@ std::unique_ptr<ProtocolLink> plain(const VersionTables& tables, const ComposedT
     return std::make_unique<T>(tables);
 }
 
-/// The links that have to look things up in the far end's own numbering.
 template <typename T>
 std::unique_ptr<ProtocolLink> composed(const VersionTables& tables, const ComposedTables& target) {
     return std::make_unique<T>(tables, target);
 }
 
-/// Newest first. Each entry is what translates *into* that version from the one above it.
+/// Newest first.
 constexpr std::array<LinkEntry, 49> kLinks = {{
     {protocolVersions::kV26_2, &tables776, &composed<Link776>},
     {protocolVersions::kV26_1, &tables775, &plain<Link775>},

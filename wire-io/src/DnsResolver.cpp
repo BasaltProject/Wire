@@ -172,7 +172,6 @@ std::expected<std::vector<TcpAddress>, DnsError> resolveDns(std::string_view hos
         auto ready = query.loop.wait(static_cast<int>(std::clamp<std::int64_t>(milliseconds, 0, 3600000)));
         if (!ready)
             return std::unexpected(DnsError{DnsError::Kind::IoFailed, ready.error()});
-        // Processing can change registrations and invalidate the borrowed readiness view.
         std::array<ares_fd_events_t, 64> events{};
         if (ready->size() > events.size())
             return std::unexpected(DnsError{DnsError::Kind::Limit});

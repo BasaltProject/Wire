@@ -11,7 +11,6 @@ using common::JsonValue;
 std::expected<NbtTag, JsonToNbtError> convertObject(const JsonObject& object) {
     NbtCompound compound;
     for (std::size_t i = 0; i < object.size(); ++i) {
-        // A null field is simply absent in NBT, which is what an optional codec expects anyway.
         if (object.values()[i].isNull()) {
             continue;
         }
@@ -36,7 +35,6 @@ std::expected<NbtTag, JsonToNbtError> convertArray(const std::vector<JsonValue>&
         if (!converted) {
             return converted;
         }
-        // Coercing a mixed array into one list type would change the data, so it is refused.
         if (!elements.empty() && converted->type() != elements.front().type()) {
             return std::unexpected{JsonToNbtError::MixedArray};
         }

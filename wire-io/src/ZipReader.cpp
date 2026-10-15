@@ -29,9 +29,6 @@ std::optional<std::uint32_t> readU32(std::span<const std::uint8_t> data, std::si
            (static_cast<std::uint32_t>(data[offset + 2]) << 16) | (static_cast<std::uint32_t>(data[offset + 3]) << 24);
 }
 
-/// The end-of-central-directory record sits at the end of the file, but a variable-length comment
-/// follows it, so it is found by scanning backwards for its signature. The format caps the comment
-/// at 65535 bytes, so the window is bounded.
 std::optional<std::size_t> findEndOfCentralDirectory(std::span<const std::uint8_t> data) {
     if (data.size() < kEocdFixedSize) {
         return std::nullopt;

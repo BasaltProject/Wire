@@ -16,7 +16,7 @@ namespace {
 namespace play = protocol::play;
 using protocol::ProtocolState;
 
-/// parity: `ServerboundClientInformationPacket`, which sits in both phases.
+/// parity: `ServerboundClientInformationPacket`.
 constexpr std::int32_t kClientInformationConfiguration = 0x00;
 constexpr std::int32_t kClientInformationPlay = 14;
 
@@ -38,7 +38,7 @@ constexpr std::int32_t kBiomesIn1_16 = 1024;
 constexpr int kHeightmapBits = 9;
 constexpr std::size_t kHeightmapEntries = 256;
 
-/// parity: `ClientboundSetTitlesPacket.Type`, the one packet 1.16 had for all of it.
+/// parity: `ClientboundSetTitlesPacket.Type`.
 constexpr std::int32_t kTitle = 0x4F;
 constexpr std::int32_t kSetTitle = 0;
 constexpr std::int32_t kSetSubtitle = 1;
@@ -88,10 +88,6 @@ void copyContainer(io::ByteBuffer& input, io::ByteBuffer& output, int maxIndirec
     }
 }
 
-/// The heightmaps with the floor put back at zero.
-///
-/// They count from the bottom of the world, which is sixty four blocks lower than a 1.16 client
-/// believes; left alone, rain and particles land that far off.
 [[nodiscard]] nbt::NbtCompound loweredHeightmaps(const nbt::NbtTag& tag) {
     const nbt::NbtCompound* root = tag.get<nbt::NbtCompound>();
     if (root == nullptr) {
@@ -180,7 +176,6 @@ bool Link754::clientbound(ProtocolState state, MutablePacket& packet) {
         return update.has_value() && update->pos.y >= 0 && update->pos.y <= kMaxY;
     }
     case play::UpdateAttributesPacket::kId: {
-        // 1.17 made the list of attributes a varint; 1.16 counts them in four bytes.
         io::ByteBuffer input = io::ByteBuffer::wrap(packet.body);
         const std::int32_t entityId = protocol::varInt::read(input);
         const std::int32_t count = protocol::varInt::read(input);
@@ -221,8 +216,6 @@ bool Link754::clientbound(ProtocolState state, MutablePacket& packet) {
         break;
     }
     case play::SectionBlocksUpdatePacket::kId: {
-        // The link to 1.19.4 put the light flag back in front of the changes, so the packet here is
-        // no longer the one this server writes.
         io::ByteBuffer input = io::ByteBuffer::wrap(packet.body);
         const std::int64_t packed = input.readLong();
         const std::uint8_t suppressLight = input.readByte();
@@ -246,7 +239,6 @@ bool Link754::clientbound(ProtocolState state, MutablePacket& packet) {
 }
 
 bool Link754::asTitle(MutablePacket& packet, std::int32_t action) {
-    // Already a string of json by here: the link to 1.20.2 put the text back.
     const std::string json = decode(packet, [](io::ByteBuffer& in) { return protocol::readString(in, kMaxText); });
     packet.overrideId(kTitle);
     encode(packet, [&](io::ByteBuffer& output) {
@@ -360,8 +352,7 @@ bool Link754::cutLight(MutablePacket& packet) {
 }
 
 bool Link754::serverbound(ProtocolState state, MutablePacket& packet) {
-    // What a client says about itself grew: 1.17 added whether it filters text. The link to 1.17.1
-    // fills in the other one 1.18 added.
+    // What a client says about itself grew: 1.17 added whether it filters text.
     const bool settings =
         (state == ProtocolState::Configuration && packet.nativeId() == kClientInformationConfiguration) ||
         (state == ProtocolState::Play && packet.nativeId() == kClientInformationPlay);

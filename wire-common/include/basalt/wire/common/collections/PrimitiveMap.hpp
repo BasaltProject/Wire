@@ -11,18 +11,12 @@
 
 namespace basalt::wire::common {
 
-/// splitmix64's finalizer. Not vanilla-related: it only spreads keys evenly across buckets, which
-/// packed chunk coordinates would otherwise refuse to do.
 [[nodiscard]] constexpr std::uint64_t mixKey(std::uint64_t x) noexcept {
     x = (x ^ (x >> 30)) * 0xbf58476d1ce4e5b9ULL;
     x = (x ^ (x >> 27)) * 0x94d049bb133111ebULL;
     return x ^ (x >> 31);
 }
 
-/// Open-addressing map keyed by a primitive integer: no boxing, no per-entry node, one probe
-/// sequence over two flat arrays. Replaces the hand-written Long2ObjectMap and Int2IntMap, which
-/// were the same code twice.
-///
 /// The two lowest key values are reserved as slot sentinels and must not be stored.
 template <typename Key, typename Value>
 class PrimitiveMap {
@@ -55,7 +49,6 @@ public:
         return found != nullptr ? *found : fallback;
     }
 
-    /// Returns the previous value, if the key was present.
     std::optional<Value> put(Key key, Value value) {
         assert(key != kEmpty && key != kTombstone && "key is reserved and cannot be stored");
         if (occupied_ * 4 >= keys_.size() * 3) {
@@ -87,7 +80,6 @@ public:
         }
     }
 
-    /// Returns the removed value, if the key was present.
     std::optional<Value> remove(Key key) {
         const std::ptrdiff_t slot = findSlot(key);
         if (slot < 0) {
@@ -103,7 +95,6 @@ public:
 
     void clear() { reset(keys_.size()); }
 
-    /// Calls `visit(key, value)` for every live entry, in slot order.
     template <typename Visitor>
     void forEach(Visitor&& visit) const {
         for (std::size_t i = 0; i < keys_.size(); ++i) {
@@ -157,7 +148,6 @@ private:
 
     std::vector<Key> keys_;
     std::vector<Value> values_;
-    /// Live entries plus tombstones from remove(); drives when to grow.
     std::size_t occupied_ = 0;
     std::size_t size_ = 0;
 };

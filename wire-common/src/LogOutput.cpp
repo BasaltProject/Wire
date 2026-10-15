@@ -8,8 +8,6 @@
 namespace basalt::wire::common::logOutput {
 namespace {
 
-// Written as an escape, not a literal ESC byte: a raw control character in source survives neither
-// editors nor copy-paste reliably.
 constexpr std::string_view kReset = "\x1B[0m";
 constexpr std::string_view kDim = "\x1B[2m";
 constexpr std::string_view kRed = "\x1B[31m";
@@ -20,11 +18,9 @@ constexpr std::string_view kCyan = "\x1B[36m";
 bool gUseColor = false;
 std::function<void(const std::function<void()>&)> gAroundConsoleLine;
 
-/// Whether the console's current line belongs to a run of in-place lines rather than to a finished
-/// one. Read by whichever thread logs next, so not a plain bool.
+/// Read by whichever thread logs next, so not a plain bool.
 std::atomic<bool> gInPlace{false};
 
-/// Carriage return and erase to the end of the line, which is what makes a line replaceable.
 constexpr std::string_view kWipeLine = "\r\x1B[K";
 
 std::vector<std::function<void(std::string_view)>>& sinks() {
@@ -48,8 +44,6 @@ constexpr std::string_view levelColor(LogLevel level) noexcept {
     return kGreen;
 }
 
-// Only warnings and errors tint the message itself; colouring every info line makes a busy console
-// harder to scan, not easier.
 constexpr std::string_view messageColor(LogLevel level) noexcept {
     switch (level) {
     case LogLevel::Warn:
@@ -128,10 +122,7 @@ Rendered render(LogLevel level, std::string_view timestamp, std::string_view nam
 void emit(LogLevel level, std::string_view timestamp, std::string_view name, std::string_view message) {
     const Rendered rendered = render(level, timestamp, name, message);
     const std::string_view console = gUseColor ? std::string_view{rendered.coloured} : std::string_view{rendered.plain};
-    // Flushed on every line: stdout is fully buffered when it is a pipe, and a server whose log
-    // only appears when the buffer fills is useless under systemd, Docker or a hosting panel.
     const auto write = [&console]() {
-        // A line that was being drawn in place is finished by this one rather than left half over it.
         if (gInPlace.exchange(false, std::memory_order_acq_rel) && gUseColor) {
             std::fwrite(kWipeLine.data(), 1, kWipeLine.size(), stdout);
         }
@@ -152,8 +143,6 @@ void emit(LogLevel level, std::string_view timestamp, std::string_view name, std
 
 void emitInPlace(LogLevel level, std::string_view timestamp, std::string_view name, std::string_view message) {
     const bool first = !gInPlace.load(std::memory_order_acquire);
-    // Without escape codes there is no drawing over anything, so the run is the announcement alone.
-    // Redrawing it as plain lines would fill a piped log with a hundred copies of the same one.
     if (!gUseColor) {
         if (first) {
             emit(level, timestamp, name, message);
@@ -162,9 +151,6 @@ void emitInPlace(LogLevel level, std::string_view timestamp, std::string_view na
         return;
     }
     const Rendered rendered = render(level, timestamp, name, message);
-    // Deliberately outside `gAroundConsoleLine`: that hook puts the console prompt back after the
-    // line, and a prompt drawn from column zero would land on top of this one. The prompt comes
-    // back with the next finished line, which is the one that ends the run.
     std::fwrite(kWipeLine.data(), 1, kWipeLine.size(), stdout);
     std::fwrite(rendered.coloured.data(), 1, rendered.coloured.size(), stdout);
     std::fflush(stdout);

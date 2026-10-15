@@ -224,7 +224,6 @@ struct EventLoop::Impl {
             return;
         }
         const Registration& item = watched.at(found->second);
-        // kqueue may report read and write in separate entries for the same registration.
         const auto existing =
             std::ranges::find_if(ready, [&](const IoReady& event) { return event.handle == item.handle; });
         if (existing != ready.end()) {

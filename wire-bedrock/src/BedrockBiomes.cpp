@@ -47,15 +47,13 @@ private:
 } // namespace
 
 void writeBiomeDefinitionList(io::ByteBuffer& buffer) {
-    // The shape is 844's: the four spore and ash fields went away there. Nothing of how a biome is
-    // generated is sent, the same as Geyser's stripped list.
     StringTable strings;
     const std::span<const BedrockBiomeDefinition> definitions = bedrockBiomeDefinitions();
     const std::span<const std::string_view> tags = bedrockBiomeTags();
     writeVarUInt(buffer, static_cast<std::uint32_t>(definitions.size()));
     for (const BedrockBiomeDefinition& definition : definitions) {
         writeShortLE(buffer, strings.indexOf(definition.name));
-        writeShortLE(buffer, static_cast<std::uint16_t>(-1)); // A vanilla biome, known by name.
+        writeShortLE(buffer, static_cast<std::uint16_t>(-1));
         writeFloatLE(buffer, definition.temperature);
         writeFloatLE(buffer, definition.downfall);
         writeFloatLE(buffer, definition.foliageSnow);
@@ -71,7 +69,7 @@ void writeBiomeDefinitionList(io::ByteBuffer& buffer) {
                 writeShortLE(buffer, strings.indexOf(tags[tag]));
             }
         }
-        buffer.writeByte(0); // No generation data.
+        buffer.writeByte(0);
     }
     strings.write(buffer);
 }
@@ -87,7 +85,7 @@ void writeBiomeSection(io::ByteBuffer& buffer, const BiomeQuarts& quarts) {
         }
     }
     if (palette.size() == 1) {
-        buffer.writeByte(0x01); // No bits per block: one palette entry fills the section.
+        buffer.writeByte(0x01);
         writeVarInt(buffer, palette.front());
         return;
     }
@@ -97,7 +95,6 @@ void writeBiomeSection(io::ByteBuffer& buffer, const BiomeQuarts& quarts) {
     for (std::size_t at = 0; at < kBlocks; at += perWord) {
         std::uint32_t word = 0;
         for (std::size_t slot = 0; slot < perWord && at + slot < kBlocks; ++slot) {
-            // Bedrock counts x slowest and y fastest; each block takes the quart it sits in.
             const std::size_t block = at + slot;
             const std::size_t x = (block >> 10U) & 3U;
             const std::size_t z = (block >> 6U) & 3U;

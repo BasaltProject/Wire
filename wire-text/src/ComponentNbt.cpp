@@ -183,7 +183,6 @@ Component deserializeCompound(const NbtCompound& compound) {
     return Component{std::move(payload), readStyle(compound), deserializeAll(compound.getList("extra"))};
 }
 
-/// A bare list is vanilla's shorthand for "the first entry, with the rest appended to it".
 Component deserializeSiblingChain(const NbtList& list) {
     if (list.empty()) {
         return Component::empty();

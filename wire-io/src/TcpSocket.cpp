@@ -12,7 +12,6 @@
 #include <ws2tcpip.h>
 using socklen_type = int;
 using namelen_type = DWORD;
-// Winsock's recv and send take an int length; POSIX takes a size_t.
 using iolen_type = int;
 #else
 #include <arpa/inet.h>
@@ -30,8 +29,6 @@ using iolen_type = std::size_t;
 namespace basalt::wire::io {
 namespace {
 
-/// One-time socket subsystem setup: nothing on POSIX, WSAStartup on Windows, which Winsock demands
-/// before any other socket call.
 void ensureSocketsInitialized() {
 #if defined(_WIN32)
     static const bool started = [] {
@@ -73,7 +70,6 @@ bool retryableAcceptError(int error) noexcept {
     if (error == ECONNABORTED || error == ECONNRESET || error == EPROTO)
         return true;
 #if defined(__linux__)
-    // Linux exposes queued-child network errors through accept; retry them like EAGAIN.
     return error == ENETDOWN || error == ENOPROTOOPT || error == EHOSTDOWN || error == ENONET ||
            error == EHOSTUNREACH || error == EOPNOTSUPP || error == ENETUNREACH;
 #else
@@ -97,7 +93,6 @@ std::expected<void, SocketError> nonBlocking(std::int64_t handle, bool enabled) 
     return {};
 }
 
-/// The peer is gone, which read and write treat as end of stream rather than as failure.
 bool errorIsPeerGone(int error) noexcept {
 #if defined(_WIN32)
     return error == WSAECONNRESET || error == WSAECONNABORTED || error == WSAENOTCONN || error == WSAESHUTDOWN;
@@ -279,7 +274,6 @@ void TcpConnection::close() noexcept {
 }
 
 std::expected<TcpConnection, SocketError> TcpConnection::connect(std::string_view host, std::uint16_t port) {
-    // Keep the blocking convenience method's literal-only contract. Resolve explicitly on a worker.
     const auto address = TcpAddress::literal(host, port);
     if (!address) {
         return std::unexpected{address.error()};
@@ -397,7 +391,6 @@ std::expected<bool, SocketError> TcpConnection::finishConnect() {
     if (error != 0) {
         return std::unexpected{SocketError{SocketError::Kind::ConnectFailed, error}};
     }
-    // SO_ERROR can be zero while the handshake is still in flight.
     sockaddr_storage peer{};
     size = static_cast<socklen_type>(sizeof(peer));
     if (::getpeername(asSocket(handle_), reinterpret_cast<sockaddr*>(&peer), &size) != 0) {
@@ -442,9 +435,7 @@ TcpListener::~TcpListener() { close(); }
 std::expected<void, SocketError> TcpListener::setNonBlocking(bool enabled) { return nonBlocking(handle_, enabled); }
 
 void TcpListener::close() noexcept {
-    // Closing the descriptor wakes a blocked accept() on macOS and Windows, but not on Linux: the
-    // acceptor thread stays parked until a connection arrives, so the process never exits. Shutting
-    // the socket down first is what breaks it there, and is a harmless no-op elsewhere.
+    // Closing wakes a blocked accept() on macOS and Windows but not Linux, so shut the socket down first.
     if (handle_ >= 0) {
 #if defined(_WIN32)
         ::shutdown(static_cast<SOCKET>(handle_), SD_BOTH);

@@ -227,7 +227,6 @@ std::optional<EntityEventPacket> EntityEventPacket::read(io::ByteBuffer& buffer)
 
 void TrackedWaypointPacket::write(io::ByteBuffer& buffer) const {
     varInt::write(buffer, static_cast<std::int32_t>(operation));
-    // True selects the UUID side of the either.
     writeBoolean(buffer, true);
     writeUuid(buffer, entityUuid);
     writeString(buffer, style);
@@ -303,8 +302,6 @@ std::optional<UpdateAttributesPacket> UpdateAttributesPacket::read(io::ByteBuffe
         const std::int32_t modifiers = readCollectionSize(buffer, 10);
         snapshot.modifiers.reserve(static_cast<std::size_t>(modifiers));
         for (std::int32_t k = 0; k < modifiers && !buffer.failed(); ++k) {
-            // Read in wire order as separate statements: folding them into one expression leaves
-            // the order to the compiler, and the wire has only one.
             auto id = common::Identifier::parse(readString(buffer));
             const double amount = buffer.readDouble();
             const auto operation = fromOrdinal<Operation>(varInt::read(buffer), 3);
@@ -321,7 +318,6 @@ std::optional<UpdateAttributesPacket> UpdateAttributesPacket::read(io::ByteBuffe
 
 void DamageEventPacket::write(io::ByteBuffer& buffer) const {
     varInt::write(buffer, entityId);
-    // A holder: zero would mean the type follows inline, so a registry id is written as id plus one.
     varInt::write(buffer, damageType + 1);
     varInt::write(buffer, causeEntityId + 1);
     varInt::write(buffer, directEntityId + 1);
@@ -394,7 +390,7 @@ std::optional<RemoveMobEffectPacket> RemoveMobEffectPacket::read(io::ByteBuffer&
     return buffer.failed() ? std::nullopt : std::optional{packet};
 }
 
-// parity: PositionPath.Type.LINEAR, the only shape this build sends.
+// parity: PositionPath.Type.LINEAR.
 constexpr std::int32_t kLinearPath = 0;
 
 void EntityPositionSyncPacket::write(io::ByteBuffer& buffer) const {
@@ -416,7 +412,7 @@ std::optional<EntityPositionSyncPacket> EntityPositionSyncPacket::read(io::ByteB
         packet.y = buffer.readDouble();
         packet.z = buffer.readDouble();
     } else {
-        // parity: PositionPath.Stepped, whose last step is where the entity ends up.
+        // parity: PositionPath.Stepped.
         const std::int32_t steps = readCollectionSize(buffer, 25);
         for (std::int32_t i = 0; i < steps && !buffer.failed(); ++i) {
             packet.x = buffer.readDouble();

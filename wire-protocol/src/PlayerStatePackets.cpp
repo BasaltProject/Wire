@@ -39,7 +39,7 @@ void SpawnInfo::write(io::ByteBuffer& buffer) const {
     writeString(buffer, dimensionName);
     buffer.writeLong(hashedSeed);
     varInt::write(buffer, static_cast<std::int32_t>(gamemode));
-    // parity: GameType.OPTIONAL_STREAM_CODEC, zero for none and the id plus one otherwise.
+    // parity: GameType.OPTIONAL_STREAM_CODEC.
     varInt::write(buffer, previousGamemode >= 0 && previousGamemode <= 3 ? previousGamemode + 1 : 0);
     writeBoolean(buffer, isDebug);
     writeBoolean(buffer, isFlat);

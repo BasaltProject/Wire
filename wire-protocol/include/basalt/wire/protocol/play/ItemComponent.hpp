@@ -12,8 +12,6 @@
 
 namespace basalt::wire::protocol::play {
 
-/// The data component ids this build knows how to write. parity: the registration order of
-/// DataComponents.
 namespace dataComponent {
 inline constexpr std::int32_t kCustomData = 0;
 inline constexpr std::int32_t kMaxStackSize = 1;
@@ -32,12 +30,9 @@ inline constexpr std::int32_t kStoredEnchantments = 45;
 inline constexpr std::int32_t kDyedColor = 47;
 } // namespace dataComponent
 
-/// One entry of an item stack's component patch. parity: `DataComponentPatch`, whose wire form is the
-/// added components then the removed ones, each by registry id. A component with no case here is
-/// kept as its raw bytes, so a stack round-trips unchanged; only writing a new value needs a case.
+/// parity: `DataComponentPatch`.
 class ItemComponent {
 public:
-    /// Enchantment registry id to level, for `enchantments` and `stored_enchantments`.
     struct Enchantments {
         std::vector<std::pair<std::int32_t, std::int32_t>> levels;
         bool stored = false;
@@ -45,22 +40,18 @@ public:
         friend bool operator==(const Enchantments&, const Enchantments&) = default;
     };
 
-    /// A component whose whole payload is one varint: damage, max_damage, max_stack_size,
-    /// repair_cost, rarity.
     struct Number {
         std::int32_t value = 0;
 
         friend bool operator==(const Number&, const Number&) = default;
     };
 
-    /// `dyed_color`, a plain big-endian int rather than a varint.
     struct Color {
         std::int32_t rgb = 0;
 
         friend bool operator==(const Color&, const Color&) = default;
     };
 
-    /// `custom_name` and `item_name`.
     struct Text {
         text::Component text;
 
@@ -74,7 +65,6 @@ public:
         friend bool operator==(const Lore&, const Lore&) = default;
     };
 
-    /// `custom_data`: a compound nothing but a datapack reads.
     struct CustomData {
         nbt::NbtCompound tag;
 
@@ -88,12 +78,10 @@ public:
         friend bool operator==(const Flag&, const Flag&) = default;
     };
 
-    /// Present or absent and carrying nothing: `unbreakable`, `creative_slot_lock`.
     struct Unit {
         friend bool operator==(const Unit&, const Unit&) = default;
     };
 
-    /// A component this build has no codec for, kept as the bytes it arrived as.
     struct Raw {
         std::vector<std::uint8_t> payload;
 
@@ -115,11 +103,6 @@ public:
 
     void writePayload(io::ByteBuffer& buffer) const;
 
-    /// Reads one component's payload, given how many bytes it occupies, or nothing when the length
-    /// is unknown and this build has no codec for that id.
-    ///
-    /// The typed cases are the ones a command can set, so they are also the ones that have to
-    /// survive a round trip through a client rather than coming back as opaque bytes.
     [[nodiscard]] static std::optional<ItemComponent> readPayload(io::ByteBuffer& buffer, std::int32_t id,
                                                                   std::optional<std::size_t> length);
 

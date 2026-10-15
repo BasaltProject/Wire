@@ -13,9 +13,6 @@ PlaceholderValue PlaceholderValue::of(std::string value) {
 PlaceholderValue PlaceholderValue::of(std::int64_t value) { return of(std::to_string(value)); }
 
 PlaceholderValue PlaceholderValue::of(double value) {
-    // A decimal point always, so a whole number still reads as a measurement: "20.0" ticks a
-    // second, not "20". Very large and very small numbers come out in the shortest round-trip form
-    // the platform writes, which is the exponent notation nobody is comparing against by hand.
     std::string written = std::format("{}", value);
     if (written.find('.') == std::string::npos && written.find('e') == std::string::npos &&
         written.find("inf") == std::string::npos && written.find("nan") == std::string::npos) {
@@ -103,8 +100,6 @@ const PlaceholderRegistry::Registration* PlaceholderRegistry::registrationFor(st
         if (!serves) {
             continue;
         }
-        // The longest match wins, which is what keeps `%basalt_server_online%` apart from a plugin
-        // that registered `basalt`.
         if (best == nullptr || identifier.size() > best->identifier.size()) {
             best = &registration;
         }
@@ -128,8 +123,6 @@ std::vector<std::string> PlaceholderRegistry::namesOf(std::string_view identifie
 }
 
 PlaceholderValue PlaceholderRegistry::resolve(std::string_view name, const PlaceholderContext& context) const {
-    // Through one matching, not a second copy of it: the copy is what let a broken one of them sit
-    // behind a working one.
     const std::string lowercase = lowercaseAscii(name);
     const Registration* found = registrationFor(lowercase);
     if (found == nullptr) {

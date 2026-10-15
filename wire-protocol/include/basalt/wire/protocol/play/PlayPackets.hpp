@@ -13,8 +13,6 @@
 #include <string>
 #include <vector>
 
-/// The packets about the session and the player: joining, moving, the tab list, chat, and the
-/// actions a client takes on the world.
 namespace basalt::wire::protocol::play {
 
 /// Clientbound, id 0x32: everything the client needs to enter the game.
@@ -40,14 +38,11 @@ struct LoginPlayPacket {
     friend bool operator==(const LoginPlayPacket&, const LoginPlayPacket&) = default;
 };
 
-/// Serverbound, id 0x2c: the client confirming it finished loading the world. No payload.
+/// Serverbound, id 0x2c: the client confirming it finished loading the world.
 inline constexpr std::int32_t kPlayerLoadedId = 0x2c;
 
-/// Serverbound, id 0x2e: the player punched the air or a block. No payload.
 inline constexpr std::int32_t kPunchId = 0x2e;
 
-/// Clientbound, id 0x49: an authoritative position sync, either the initial spawn or a forced
-/// teleport.
 struct PlayerPositionPacket {
     static constexpr std::int32_t kId = 0x49;
 
@@ -68,7 +63,6 @@ struct PlayerPositionPacket {
     friend bool operator==(const PlayerPositionPacket&, const PlayerPositionPacket&) = default;
 };
 
-/// Serverbound, id 0x00: acknowledges a teleport.
 struct AcceptTeleportationPacket {
     static constexpr std::int32_t kId = 0;
 
@@ -86,7 +80,6 @@ struct AcceptTeleportationPacket {
     friend bool operator==(const AcceptTeleportationPacket&, const AcceptTeleportationPacket&) = default;
 };
 
-/// Clientbound, id 0x63: the world spawn point the compass points at.
 struct SpawnPositionPacket {
     static constexpr std::int32_t kId = 0x63;
 
@@ -100,33 +93,24 @@ struct SpawnPositionPacket {
     friend bool operator==(const SpawnPositionPacket&, const SpawnPositionPacket&) = default;
 };
 
-/// One tab-list entry. Which of these fields actually travel is decided by the packet's action set.
 struct PlayerInfoEntry {
     common::Uuid uuid;
     std::string name;
     bool listed = false;
     std::int32_t latencyMillis = 0;
     Gamemode gamemode = Gamemode::Survival;
-    /// The signed profile properties from the session server, where a skin and cape live. A client
-    /// renders the default skin for a player it was told nothing about, so these travelling is the
-    /// whole difference between everyone looking like Steve and everyone looking like themselves.
-    /// Empty in offline mode, since nothing signs them there.
+    /// The signed profile properties from the session server, where a skin and cape live.
     std::vector<login::GameProfileProperty> properties;
-    /// Their chat session, which lets every client check what they sign. None clears it.
+    /// Their chat session, which lets every client check what they sign.
     std::optional<RemoteChatSessionData> chatSession;
 
     friend bool operator==(const PlayerInfoEntry&, const PlayerInfoEntry&) = default;
 };
 
-/// Clientbound, id 0x47: adds or updates tab list entries.
-///
-/// The action set is a bitset over vanilla's enum, so its ordinals are protocol. The game mode is not
-/// cosmetic: the client decides it is a spectator from its own entry, not from the game event.
+/// The action set is a bitset over vanilla's enum, so its ordinals are protocol.
 struct PlayerInfoUpdatePacket {
     static constexpr std::int32_t kId = 0x47;
 
-    /// The bits are positions in vanilla's own action enum, and the four this build does not write
-    /// still hold their places.
     static constexpr std::uint8_t kAddPlayer = 1 << 0;
     static constexpr std::uint8_t kInitializeChat = 1 << 1;
     static constexpr std::uint8_t kUpdateGameMode = 1 << 2;
@@ -136,9 +120,6 @@ struct PlayerInfoUpdatePacket {
     static constexpr std::uint8_t kUpdateHat = 1 << 6;
     static constexpr std::uint8_t kUpdateListOrder = 1 << 7;
 
-    /// What vanilla's createPlayerInitializing sends for a player who just joined, minus the actions
-    /// this build does not write. The game mode belongs in here: a player who joins in creative is a
-    /// spectator-or-not to everyone else from this packet alone.
     static constexpr std::uint8_t kInitializing =
         kAddPlayer | kInitializeChat | kUpdateGameMode | kUpdateListed | kUpdateLatency;
 
@@ -150,20 +131,17 @@ struct PlayerInfoUpdatePacket {
     /// The single-action update vanilla broadcasts when a player's game mode changes.
     [[nodiscard]] static PlayerInfoUpdatePacket gameMode(const common::Uuid& uuid, Gamemode gamemode);
 
-    /// parity: `ServerGamePacketListenerImpl.resetPlayerChatState`, broadcast when a session is set.
+    /// parity: `ServerGamePacketListenerImpl.resetPlayerChatState`.
     [[nodiscard]] static PlayerInfoUpdatePacket chatSession(const common::Uuid& uuid,
                                                             std::optional<RemoteChatSessionData> session);
 
     void write(io::ByteBuffer& buffer) const;
 
-    /// An action this build cannot write is also one it cannot read: the field widths are not on the
-    /// wire, so a packet carrying one is refused rather than misparsed.
     [[nodiscard]] static std::optional<PlayerInfoUpdatePacket> read(io::ByteBuffer& buffer);
 
     friend bool operator==(const PlayerInfoUpdatePacket&, const PlayerInfoUpdatePacket&) = default;
 };
 
-/// Clientbound, id 0x46: removes entries from the tab list.
 struct PlayerInfoRemovePacket {
     static constexpr std::int32_t kId = 0x46;
 
@@ -175,11 +153,7 @@ struct PlayerInfoRemovePacket {
     friend bool operator==(const PlayerInfoRemovePacket&, const PlayerInfoRemovePacket&) = default;
 };
 
-/// Clientbound, id 0x80: an absolute position and rotation update for an entity other than the
-/// receiving player.
-///
-/// parity: `PositionMoveRotation` is position, velocity, then two float rotations. The velocity is
-/// mandatory; without it the client reads past the end and drops the connection.
+/// parity: `PositionMoveRotation` is position, velocity, then two float rotations.
 struct EntityTeleportPacket {
     static constexpr std::int32_t kId = 0x80;
 
@@ -193,9 +167,7 @@ struct EntityTeleportPacket {
     /// Degrees as floats, not the packed angle bytes older protocols used here.
     float yaw = 0.0F;
     float pitch = 0.0F;
-    /// Vanilla's Relative bitmask: which fields the client should add to what it has instead of
-    /// replacing. Zero means everything is absolute, which is what telling a client where somebody
-    /// *is* always means.
+    /// Vanilla's Relative bitmask: which fields the client should add to what it has instead of replacing.
     std::int32_t relatives = 0;
     bool onGround = false;
 
@@ -205,7 +177,6 @@ struct EntityTeleportPacket {
     friend bool operator==(const EntityTeleportPacket&, const EntityTeleportPacket&) = default;
 };
 
-/// Both directions in play, with different ids.
 struct PlayKeepAlivePacket {
     static constexpr std::int32_t kClientboundId = 0x2d;
     static constexpr std::int32_t kServerboundId = 0x1c;
@@ -218,7 +189,6 @@ struct PlayKeepAlivePacket {
     friend bool operator==(const PlayKeepAlivePacket&, const PlayKeepAlivePacket&) = default;
 };
 
-/// Clientbound, id 0x7c: a system message, in chat or over the hotbar.
 struct SystemChatPacket {
     static constexpr std::int32_t kId = 0x7c;
 
@@ -231,7 +201,6 @@ struct SystemChatPacket {
     friend bool operator==(const SystemChatPacket&, const SystemChatPacket&) = default;
 };
 
-/// Clientbound, id 0x20: kicks the player with a reason.
 struct PlayDisconnectPacket {
     static constexpr std::int32_t kId = 0x20;
 
@@ -258,7 +227,6 @@ struct ServerboundPositionPacket {
     friend bool operator==(const ServerboundPositionPacket&, const ServerboundPositionPacket&) = default;
 };
 
-/// Serverbound, id 0x1f: a position and rotation update.
 struct ServerboundPositionLookPacket {
     static constexpr std::int32_t kId = 0x1f;
 
@@ -275,8 +243,6 @@ struct ServerboundPositionLookPacket {
     friend bool operator==(const ServerboundPositionLookPacket&, const ServerboundPositionLookPacket&) = default;
 };
 
-/// Clientbound, id 0x04: acknowledges a client-predicted dig or place, so the client can stop
-/// predicting past that point.
 struct BlockChangedAckPacket {
     static constexpr std::int32_t kId = 0x04;
 
@@ -288,7 +254,6 @@ struct BlockChangedAckPacket {
     friend bool operator==(const BlockChangedAckPacket&, const BlockChangedAckPacket&) = default;
 };
 
-/// Serverbound, id 0x29: digging a block, or a non-block player action such as dropping an item.
 struct ServerboundPlayerActionPacket {
     static constexpr std::int32_t kId = 0x29;
 
@@ -315,13 +280,11 @@ struct ServerboundPlayerActionPacket {
     friend bool operator==(const ServerboundPlayerActionPacket&, const ServerboundPlayerActionPacket&) = default;
 };
 
-/// Which hand an interaction used.
 enum class Hand : std::uint8_t {
     MainHand,
     OffHand,
 };
 
-/// Where on a block's face an interaction landed.
 struct BlockHitResult {
     BlockPos pos;
     Direction direction = Direction::Up;
@@ -337,7 +300,6 @@ struct BlockHitResult {
     friend bool operator==(const BlockHitResult&, const BlockHitResult&) = default;
 };
 
-/// Serverbound, id 0x42: using the held item on a block, which is placing and opening containers.
 struct ServerboundUseItemOnPacket {
     static constexpr std::int32_t kId = 0x42;
 
@@ -351,10 +313,7 @@ struct ServerboundUseItemOnPacket {
     friend bool operator==(const ServerboundUseItemOnPacket&, const ServerboundUseItemOnPacket&) = default;
 };
 
-/// Serverbound, id 0x43: using an item with no block under the crosshair.
-///
-/// Buckets use this rather than the use-on packet, since fluids are not block targets. The client
-/// predicts the change, so ignoring this leaves scooped water missing on that client for good.
+/// The client predicts the change, so ignoring this leaves scooped water missing on that client for good.
 struct ServerboundUseItemPacket {
     static constexpr std::int32_t kId = 0x43;
 
@@ -369,13 +328,10 @@ struct ServerboundUseItemPacket {
     friend bool operator==(const ServerboundUseItemPacket&, const ServerboundUseItemPacket&) = default;
 };
 
-/// Serverbound, id 0x25: middle-click pick block on an entity, which answers with its spawn egg or
-/// whatever item it is made of.
 struct PickItemFromEntityPacket {
     static constexpr std::int32_t kId = 0x25;
 
     std::int32_t entityId = 0;
-    /// The control-click that copies the entity's data, which this build ignores.
     bool includeData = false;
 
     void write(io::ByteBuffer& buffer) const;
@@ -384,12 +340,10 @@ struct PickItemFromEntityPacket {
     friend bool operator==(const PickItemFromEntityPacket&, const PickItemFromEntityPacket&) = default;
 };
 
-/// Serverbound, id 0x24: middle-click pick block on a targeted block.
 struct PickItemFromBlockPacket {
     static constexpr std::int32_t kId = 0x24;
 
     BlockPos pos;
-    /// Asks for the block entity's data copied onto the picked stack.
     bool includeData = false;
 
     void write(io::ByteBuffer& buffer) const;

@@ -39,8 +39,7 @@ io::UdpEndpoint readAddress(io::ByteBuffer& buffer) noexcept {
         endpoint.port = static_cast<std::uint16_t>(buffer.readShort());
         return endpoint;
     }
-    // A client announces its own addresses too, and a machine with IPv6 sends them. Nothing here
-    // routes to them, so they are stepped over rather than translated.
+    // A client announces its own addresses too, and a machine with IPv6 sends them.
     buffer.skip(28);
     return endpoint;
 }

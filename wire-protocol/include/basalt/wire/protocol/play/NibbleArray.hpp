@@ -13,7 +13,6 @@ void pack(std::span<const std::int32_t> values, std::span<std::uint8_t> into);
 
 void unpack(std::span<const std::uint8_t> bytes, std::span<std::int32_t> into);
 
-/// A section at one light level everywhere.
 [[nodiscard]] std::array<std::uint8_t, kSectionByteCount> uniform(std::int32_t level);
 
 } // namespace basalt::wire::protocol::play::nibbleArray

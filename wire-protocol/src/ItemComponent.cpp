@@ -24,8 +24,7 @@ void ItemComponent::writePayload(io::ByteBuffer& buffer) const {
     if (const auto* enchantments = as<Enchantments>()) {
         varInt::write(buffer, static_cast<std::int32_t>(enchantments->levels.size()));
         for (const auto& [enchantment, level] : enchantments->levels) {
-            // parity: Enchantment.STREAM_CODEC is holderRegistry, which writes the plain id. Adding
-            // one landed every enchantment on the next entry of the registry.
+            // parity: Enchantment.STREAM_CODEC is holderRegistry, which writes the plain id. Adding.
             varInt::write(buffer, enchantment);
             varInt::write(buffer, level);
         }
@@ -47,7 +46,6 @@ void ItemComponent::writePayload(io::ByteBuffer& buffer) const {
     } else if (const auto* raw = as<Raw>()) {
         buffer.writeBytes(raw->payload);
     }
-    // A unit component writes nothing at all: being there is the whole message.
 }
 
 std::optional<ItemComponent> ItemComponent::readPayload(io::ByteBuffer& buffer, std::int32_t id,

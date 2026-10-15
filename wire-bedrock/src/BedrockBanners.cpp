@@ -1,5 +1,4 @@
-// The two editions name a banner's patterns differently: this one spells each out and that one
-// abbreviates it. The list is the 26.2 banner_pattern registry, in its own alphabetical order.
+// The list is the 26.2 banner_pattern registry, in its own alphabetical order.
 
 #include <basalt/wire/bedrock/BedrockBanners.hpp>
 
@@ -58,8 +57,6 @@ constexpr std::array<Pair, 43> kPatterns{{
     {"triangles_top", "tts"},
 }};
 
-/// The sixteen dyes in the order both editions number them, which is the order a banner's colour
-/// is saved under as a name.
 constexpr std::array<std::string_view, 16> kDyes{"white", "orange", "magenta",    "light_blue", "yellow", "lime",
                                                  "pink",  "gray",   "light_gray", "cyan",       "purple", "blue",
                                                  "brown", "green",  "red",        "black"};

@@ -13,18 +13,13 @@ constexpr bool isAsciiLetter(char c) noexcept { return (c >= 'a' && c <= 'z') ||
 
 constexpr bool isDigit(char c) noexcept { return c >= '0' && c <= '9'; }
 
-/// One match of vanilla's `TranslatableContents.FORMAT_PATTERN`, `%(?:(\d+)\$)?([A-Za-z%]|$)`.
 struct Specifier {
     std::size_t start = 0;
     std::size_t end = 0;
-    /// Zero when the specifier carried no `N$` prefix.
     std::int32_t positional = 0;
-    /// The conversion letter, or '%' for a literal percent, or '\0' at end of input.
     char kind = '\0';
 };
 
-/// Scans by hand rather than through a regex engine: the pattern is four characters wide and this
-/// runs on every console line.
 std::optional<Specifier> nextSpecifier(std::string_view format, std::size_t from) {
     const std::size_t at = format.find('%', from);
     if (at == std::string_view::npos) {
@@ -53,7 +48,6 @@ std::optional<Specifier> nextSpecifier(std::string_view format, std::size_t from
     }
     const char kind = format[cursor];
     if (!isAsciiLetter(kind) && kind != '%') {
-        // Not a specifier at all; keep looking after this percent sign.
         return nextSpecifier(format, at + 1);
     }
     out.kind = kind;

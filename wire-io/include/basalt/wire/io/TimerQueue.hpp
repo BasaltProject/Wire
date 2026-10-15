@@ -14,8 +14,6 @@ struct TimerReady {
     std::uint64_t token;
 };
 
-/// Bounded monotonic deadlines, owned by one I/O loop. reschedule reuses a registration; canceled
-/// timers are removed immediately rather than retained as tombstones until their deadline.
 class TimerQueue {
 public:
     using Clock = std::chrono::steady_clock;
@@ -30,7 +28,6 @@ public:
     [[nodiscard]] bool cancel(std::uint64_t id);
     [[nodiscard]] std::size_t size() const noexcept;
     [[nodiscard]] std::optional<int> nextTimeout(TimePoint now) const;
-    /// Returned view expires at the next expire call. Contains no canceled registrations.
     [[nodiscard]] std::span<const TimerReady> expire(TimePoint now);
 
 private:

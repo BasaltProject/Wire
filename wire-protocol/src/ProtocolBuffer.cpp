@@ -13,8 +13,6 @@ void writeString(io::ByteBuffer& buffer, std::string_view value) {
 
 std::string readString(io::ByteBuffer& buffer, std::int32_t maxLength) {
     const std::int32_t length = varInt::read(buffer);
-    // Vanilla bounds the encoded length at three bytes per character before it reads anything, so a
-    // crafted length cannot make the server reserve for a string it never sent.
     if (length < 0 || length > maxLength * 3) {
         buffer.markFailed();
         return {};
@@ -83,8 +81,6 @@ std::int32_t readCollectionSize(io::ByteBuffer& buffer, std::int32_t bytesPerEnt
         buffer.markFailed();
         return 0;
     }
-    // Even a one-byte entry has to be in the buffer already, so a count larger than what is left is
-    // a lie and reserving for it is how a small packet turns into a large allocation.
     const std::int32_t maximum = static_cast<std::int32_t>(buffer.readableBytes()) / std::max(bytesPerEntry, 1);
     if (size > maximum) {
         buffer.markFailed();

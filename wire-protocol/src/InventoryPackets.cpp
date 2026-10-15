@@ -7,9 +7,7 @@
 namespace basalt::wire::protocol::play {
 namespace {
 
-/// Walks one HashedStack without interpreting it: an optional flag, then item and count, then the
-/// added component hashes (a type id and a four-byte hash each) and the removed type ids. Hashes are
-/// fixed width, so unlike a real component patch this can always be skipped.
+/// Hashes are fixed width, so unlike a real component patch this can always be skipped.
 bool skipHashedStack(io::ByteBuffer& buffer) {
     if (!readBoolean(buffer)) {
         return false;
@@ -102,8 +100,6 @@ std::optional<WireItemStack> WireItemStack::read(io::ByteBuffer& buffer) {
     stack.components.reserve(static_cast<std::size_t>(added));
     for (std::int32_t i = 0; i < added && !buffer.failed(); ++i) {
         const std::int32_t id = varInt::read(buffer);
-        // Nothing says how long an unknown component is here, so it cannot be skipped: the next
-        // stack would be read at the wrong offset.
         auto component = ItemComponent::readPayload(buffer, id, std::nullopt);
         if (!component) {
             buffer.markFailed();
@@ -142,7 +138,6 @@ std::optional<WireItemStack> WireItemStack::readDelimited(io::ByteBuffer& buffer
         buffer.skip(static_cast<std::size_t>(length) - consumed);
         stack.components.push_back(component ? std::move(*component) : ItemComponent{id, ItemComponent::Raw{}});
     }
-    // Removals are just the type ids, with no payload to skip.
     stack.removedComponents = readRemovedComponents(buffer, removed);
     return buffer.failed() ? std::nullopt : std::optional{std::move(stack)};
 }
@@ -208,8 +203,7 @@ std::optional<ServerboundContainerClickPacket> ServerboundContainerClickPacket::
     packet.button = static_cast<std::int8_t>(buffer.readByte());
 
     const std::int32_t modeId = varInt::read(buffer);
-    // parity: ByIdMap.OutOfBoundsStrategy.ZERO, which folds anything unknown to a plain pickup
-    // rather than refusing the packet.
+    // parity: ByIdMap.OutOfBoundsStrategy.ZERO.
     packet.mode = (modeId >= 0 && modeId <= static_cast<std::int32_t>(Mode::PickupAll)) ? static_cast<Mode>(modeId)
                                                                                         : Mode::Pickup;
 
@@ -272,7 +266,7 @@ std::optional<ContainerSetDataPacket> ContainerSetDataPacket::read(io::ByteBuffe
 void MerchantCost::write(io::ByteBuffer& buffer) const {
     varInt::write(buffer, itemId);
     varInt::write(buffer, count);
-    // parity: DataComponentExactPredicate, empty for every trade the jar ships as data.
+    // parity: DataComponentExactPredicate.
     varInt::write(buffer, 0);
 }
 

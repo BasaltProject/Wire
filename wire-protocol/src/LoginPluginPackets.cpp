@@ -7,7 +7,6 @@
 namespace basalt::wire::protocol::login {
 namespace {
 
-/// The payload has no length of its own: it is whatever is left in the frame, capped.
 std::vector<std::uint8_t> readRemaining(io::ByteBuffer& buffer) {
     const auto available = static_cast<std::int32_t>(
         std::min<std::size_t>(buffer.readableBytes(), static_cast<std::size_t>(kMaxLoginPayloadSize)));

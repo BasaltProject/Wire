@@ -88,8 +88,6 @@ std::optional<ParticleOptions> ParticleOptions::read(io::ByteBuffer& buffer, Par
         item.components.reserve(static_cast<std::size_t>(added));
         for (std::int32_t i = 0; i < added && !buffer.failed(); ++i) {
             const std::int32_t id = varInt::read(buffer);
-            // No length is on the wire here, so a component with no codec cannot be skipped over:
-            // the rest of the packet would be read at the wrong offset.
             auto component = ItemComponent::readPayload(buffer, id, std::nullopt);
             if (!component) {
                 buffer.markFailed();

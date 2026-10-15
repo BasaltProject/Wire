@@ -17,8 +17,6 @@ constexpr unsigned int kRsaKeyBits = 1024;
 constexpr int kRsaExponent = 65537;
 constexpr std::string_view kSeed = "basalt-session";
 
-/// One seeded generator for the process. Seeding costs entropy and time, and every use here is a
-/// few bytes at a time.
 struct Rng {
     mbedtls_entropy_context entropy{};
     mbedtls_ctr_drbg_context drbg{};
@@ -95,7 +93,6 @@ std::optional<SessionKeyPair> SessionKeyPair::generate() {
         return std::nullopt;
     }
 
-    // mbedtls_pk_write_pubkey_der fills the buffer from the back and returns the length written.
     std::array<unsigned char, 512> scratch{};
     const int written = mbedtls_pk_write_pubkey_der(&pair.state_->key, scratch.data(), scratch.size());
     if (written < 0) {
@@ -137,7 +134,6 @@ std::string formatSessionHash(std::span<const std::uint8_t> digest) {
     const bool negative = (digest[0] & 0x80) != 0;
     std::vector<std::uint8_t> magnitude{digest.begin(), digest.end()};
     if (negative) {
-        // Two's-complement negation, so the value prints as `-<magnitude>` the way BigInteger does.
         int carry = 1;
         for (std::size_t i = magnitude.size(); i-- > 0;) {
             const int sum = (magnitude[i] ^ 0xFF) + carry;
@@ -174,8 +170,6 @@ std::string sessionHash(std::string_view serverId, std::span<const std::uint8_t>
     mbedtls_sha1_init(&context);
     mbedtls_sha1_starts(&context);
 
-    // ISO-8859-1, which for the empty server id modern versions send is the same as nothing at all,
-    // but the encoding is part of the parity contract.
     for (const char c : serverId) {
         const auto byte = static_cast<unsigned char>(c);
         mbedtls_sha1_update(&context, &byte, 1);

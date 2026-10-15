@@ -7,7 +7,6 @@
 
 namespace basalt::wire::text {
 
-/// An RGB colour, either one of the sixteen named legacy colours or arbitrary truecolor.
 class TextColor {
 public:
     constexpr explicit TextColor(std::int32_t rgb) noexcept : rgb_(rgb) {}
@@ -28,13 +27,10 @@ public:
 
     [[nodiscard]] static std::optional<TextColor> fromHex(std::string_view hex);
 
-    /// Looks up one of the sixteen vanilla colour names.
     [[nodiscard]] static std::optional<TextColor> named(std::string_view name);
 
-    /// The vanilla name for this colour, when it has one.
     [[nodiscard]] static std::optional<std::string_view> nameOf(TextColor color);
 
-    /// A colour name first, a `#rrggbb` literal second: the order the chat format uses.
     [[nodiscard]] static std::optional<TextColor> parse(std::string_view text);
 
     [[nodiscard]] static TextColor lerp(TextColor from, TextColor to, float fraction) noexcept;

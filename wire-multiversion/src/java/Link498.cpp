@@ -21,14 +21,12 @@ constexpr std::int32_t kColumnSide = 16;
 constexpr std::int32_t kBiomeCell = 4;
 constexpr std::int32_t kBiomeSide = 4;
 
-/// What 1.15 calls the two spawns that carry the entity's data with them.
 constexpr std::int32_t kAddMob = 0x03;
 constexpr std::int32_t kAddPlayer = 0x05;
 
 /// parity: `EntityDataSerializer` ends a list with an index of 255.
 constexpr std::uint8_t kEndOfData = 0xFF;
 
-/// The biome of a column, which 1.15 has one of per four blocks of height and 1.14 one of.
 [[nodiscard]] std::int32_t biomeOf(std::span<const std::int32_t> biomes, std::int32_t column) {
     const std::int32_t x = (column % kColumnSide) / kBiomeCell;
     const std::int32_t z = (column / kColumnSide) / kBiomeCell;
@@ -56,8 +54,6 @@ bool Link498::clientbound(protocol::ProtocolState state, MutablePacket& packet) 
         shortenCoordinates(packet);
         break;
     case play::SpawnEntityPacket::kId:
-        // A mob and a player are the same packet here as far as this server is concerned, so which
-        // one it is has to be read off the number 1.15 gave it.
         if (packet.id == kAddMob || packet.id == kAddPlayer) {
             appendEmptyData(packet);
         }

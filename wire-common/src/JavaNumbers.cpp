@@ -23,7 +23,6 @@ template <typename T>
     if (value == 0) {
         return std::signbit(value) ? "-0.0" : "0.0";
     }
-    // Shortest round-trip digits as d.ddde±x, which Java's own algorithm also picks.
     std::array<char, 48> buffer{};
     const auto result =
         std::to_chars(buffer.data(), buffer.data() + buffer.size(), value, std::chars_format::scientific);

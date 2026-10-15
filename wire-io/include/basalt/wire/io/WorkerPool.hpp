@@ -15,9 +15,7 @@ struct WorkerPoolError {
     int platformCode = 0;
 };
 
-/// Bounded executor for slow native operations. Work must honor its stop token and bound any
-/// blocking calls itself; this pool cannot interrupt an uncooperative system call. Completion
-/// callbacks run on workers (or the shutdown caller), and must post results back to their owner.
+/// Work must honor its stop token; callbacks run on workers and must post results back to their owner.
 class WorkerPool {
 public:
     using Work = std::function<void(std::stop_token)>;
@@ -32,12 +30,8 @@ public:
     WorkerPool(const WorkerPool&) = delete;
     WorkerPool& operator=(const WorkerPool&) = delete;
 
-    /// Returns a per-work cancellation source. Rejected submissions invoke no callbacks. Failure
-    /// reporting is mandatory; callbacks throwing themselves are contained and counted.
-    /// canceled reports work discarded before execution; running work handles its own stop token.
     [[nodiscard]] std::expected<std::stop_source, WorkerPoolError> submit(Work work, Failure failed,
                                                                           Canceled canceled = {});
-    /// Reject new work, discard queued work and request cooperative stop of running work.
     /// Safe from a worker or callback; does not join threads.
     void requestStop();
     /// Coordinator only. Joins running work; callbacks must not destroy/join their own pool.

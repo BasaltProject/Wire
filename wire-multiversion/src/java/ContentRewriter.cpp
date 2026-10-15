@@ -25,14 +25,12 @@ namespace {
 using protocol::ProtocolState;
 namespace play = protocol::play;
 
-/// Reads the packet's body without changing it.
 template <typename Read>
 auto decode(const MutablePacket& packet, Read&& read) {
     io::ByteBuffer input = io::ByteBuffer::wrap(packet.body);
     return std::forward<Read>(read)(input);
 }
 
-/// Replaces the packet's body with whatever `write` puts in the buffer.
 template <typename Write>
 void encode(MutablePacket& packet, Write&& write) {
     io::ByteBuffer output;
@@ -43,7 +41,6 @@ void encode(MutablePacket& packet, Write&& write) {
 /// An entity nothing announced the type of: only its shared fields can be placed.
 constexpr std::int32_t kUnknownType = -1;
 
-/// Stone's item id, the same in every version this reaches.
 constexpr std::int32_t kStone = 1;
 
 } // namespace
@@ -106,9 +103,6 @@ bool ContentRewriter::clientbound(ProtocolState state, MutablePacket& packet) {
         break;
     }
     case play::LevelParticlesPacket::kId: {
-        // Only the leading type id, which is all this has business touching: which options a type
-        // carries is the registry's business and is not on the wire, so decoding the rest would mean
-        // guessing at a shape to write straight back out.
         io::ByteBuffer input = io::ByteBuffer::wrap(packet.body);
         const std::int32_t nativeType = protocol::varInt::read(input);
         if (input.failed()) {
@@ -260,7 +254,6 @@ bool ContentRewriter::clientbound(ProtocolState state, MutablePacket& packet) {
         rewriteAdvancements(packet);
         break;
     case play::MapItemDataPacket::kId: {
-        // Written whole in the far end's layout: the links in between could not read it back.
         const auto map = decode(packet, [](io::ByteBuffer& in) { return play::MapItemDataPacket::read(in); });
         if (map.has_value()) {
             encode(packet, [&](io::ByteBuffer& out) { mapLayouts::write(out, *map, farEnd_); });
@@ -280,9 +273,6 @@ bool ContentRewriter::rewriteSpawn(MutablePacket& packet) {
     }
     const std::int32_t type = tables_->entityType.map(spawn->entityType);
     if (type == IdMap::kNone) {
-        // A player has no number of its own below 1.13, because it is never spawned as an entity
-        // there: it keeps this build's and the link that makes it the packet those versions do have
-        // recognises it by that.
         return spawn->entityType == tables_->nativePlayerEntityType();
     }
     entityTypes_[spawn->entityId] = spawn->entityType;
@@ -369,9 +359,6 @@ void ContentRewriter::rewriteEntityData(MutablePacket& packet) const {
             item->stack = stack(item->stack);
         }
     }
-    // What a mob standing in for another one is told about itself is held to what every entity has.
-    // Past that the entries belong to the type this client is not being shown, and reading a size
-    // where it expects a variant is how a client crashes.
     const auto found = entityTypes_.find(data->entityId);
     const std::int32_t nativeType = found == entityTypes_.end() ? kUnknownType : found->second;
     if (nativeType >= 0 && tables_->entityType.substitutes(nativeType)) {
@@ -420,9 +407,6 @@ bool ContentRewriter::rewriteTags(MutablePacket& packet) const {
     if (!tags.has_value()) {
         return true;
     }
-    // A whole group goes when its registry is one that version does not have: the client looks the
-    // registry up to hang the tags on it and gives up on the connection when it is not there, which
-    // is what a real 1.21.10 client did with the timelines 26.1 invented.
     std::erase_if(tags->groups, [this](const protocol::configuration::TagGroup& group) {
         return tables_->missingRegistries().contains(group.registryId);
     });
@@ -431,9 +415,6 @@ bool ContentRewriter::rewriteTags(MutablePacket& packet) const {
         if (map == nullptr) {
             continue;
         }
-        // A tag is a list of numbers, so a client that numbers its blocks differently is told that
-        // the wrong blocks are logs. What has no counterpart drops out of the tag rather than
-        // pointing at something else.
         for (protocol::configuration::TagEntry& tag : group.tags) {
             std::vector<std::int32_t> kept;
             kept.reserve(tag.ids.size());
@@ -514,8 +495,6 @@ std::optional<play::WireItemStack> ContentRewriter::stack(const std::optional<pl
     }
     play::WireItemStack item = labelled(*source);
     item.itemId = id;
-    // Every component, not only the ones carried as bytes: a release inserts component ids the same
-    // way it inserts item ids, so `custom_name` is not the same number in two versions.
     std::vector<play::ItemComponent> components;
     components.reserve(item.components.size());
     for (const play::ItemComponent& component : item.components) {
@@ -576,8 +555,6 @@ void ContentRewriter::nameOver(MutablePacket& packet, std::int32_t entityId, std
         {play::SetEntityDataPacket::kCustomNameIndex, play::SetEntityDataPacket::OptionalTextValue{*std::move(label)}});
     named.entries.push_back(
         {play::SetEntityDataPacket::kCustomNameVisibleIndex, play::SetEntityDataPacket::BoolValue{true}});
-    // Through the same translation as any other entity data: this is the one packet nothing else has
-    // written, so it is the one that would go out in this version's own numbers.
     std::vector<std::uint8_t> body;
     if (auto translated = entityData_.rewrite(named, nativeType)) {
         body = *std::move(translated);

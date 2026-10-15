@@ -37,7 +37,6 @@ constexpr std::int32_t kDefaultWaterFog = 329011;
 
 constexpr std::int64_t kMillisPerTick = 50;
 
-/// 26.x writes a colour as `#rrggbb`; every version below it reads the number.
 [[nodiscard]] std::optional<std::int32_t> colourOf(const nbt::NbtTag* tag) {
     if (tag == nullptr) {
         return std::nullopt;
@@ -111,16 +110,12 @@ constexpr std::int64_t kMillisPerTick = 50;
            static_cast<std::int32_t>(blue * 255.0F);
 }
 
-/// The sky a temperature gives, which older versions are told outright and this one works out.
-///
-/// parity: `OverworldBiomeBuilder.calculateSkyColor`, hue and saturation moving with the temperature
-/// and full value.
+/// parity: `OverworldBiomeBuilder.calculateSkyColor`.
 [[nodiscard]] std::int32_t skyFor(float temperature) {
     const float scaled = std::clamp(temperature / 3.0F, -1.0F, 1.0F);
     return hsvToRgb(0.62222224F - scaled * 0.05F, 0.5F + scaled * 0.1F, 1.0F);
 }
 
-/// The colours and sounds of a biome, back in the one block of effects they used to live in.
 [[nodiscard]] std::optional<nbt::NbtTag> oldEffects(const std::optional<nbt::NbtTag>& value) {
     if (!value.has_value()) {
         return value;

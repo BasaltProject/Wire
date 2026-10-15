@@ -10,8 +10,6 @@ namespace {
 
 constexpr std::size_t kTrailerSize = 8;
 
-/// One direction of the stream: its own key schedule, its own counter block, and the packet number
-/// the checksum is built on.
 struct Direction {
     mbedtls_aes_context aes{};
     std::array<std::uint8_t, 16> counterBlock{};
@@ -24,8 +22,6 @@ void initDirection(Direction& direction, const SessionKey& key) {
     basalt_mbedtls_threading_init();
     mbedtls_aes_init(&direction.aes);
     mbedtls_aes_setkey_enc(&direction.aes, key.data(), 256);
-    // The counter is the first twelve bytes of the key and then a two, which is what Bedrock does
-    // with what would be a GCM nonce.
     std::memcpy(direction.counterBlock.data(), key.data(), 12);
     direction.counterBlock[15] = 2;
 }

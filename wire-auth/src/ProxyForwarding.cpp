@@ -14,7 +14,6 @@ constexpr std::array<std::pair<std::string_view, ForwardingMode>, 10> kNames = {
     {"bungeeguard", ForwardingMode::BungeeGuard},
     {"safenet", ForwardingMode::SafeNet},
     {"velocity", ForwardingMode::Velocity},
-    // The names other software uses for the same thing.
     {"legacy", ForwardingMode::BungeeCord},
     {"bungee", ForwardingMode::BungeeCord},
     {"modern", ForwardingMode::Velocity},
@@ -25,7 +24,6 @@ constexpr std::array<std::pair<std::string_view, ForwardingMode>, 10> kNames = {
 } // namespace
 
 std::string_view forwardingModeName(ForwardingMode mode) noexcept {
-    // A switch, not an index into the alias table: that table is deliberately not in enum order.
     switch (mode) {
     case ForwardingMode::None:
         return "none";

@@ -5,14 +5,11 @@
 namespace basalt::wire::common::placeholder {
 namespace {
 
-/// The whitespace a placeholder name may not contain. ASCII, because a name is ASCII: the point is
-/// that prose with a per cent sign in it holds no placeholder, and a space is what proves it.
 [[nodiscard]] bool isWhitespace(char character) {
     return character == ' ' || character == '\t' || character == '\n' || character == '\r' || character == '\f' ||
            character == '\v';
 }
 
-/// The closing `%` of the placeholder opening at `start`, or nothing if this is not one.
 [[nodiscard]] std::optional<std::size_t> closingIndex(std::string_view text, std::size_t start) {
     for (std::size_t index = start + 1; index < text.size(); ++index) {
         const char character = text[index];
@@ -20,8 +17,6 @@ namespace {
             return std::nullopt;
         }
         if (character == '%') {
-            // `%%` is a literal per cent sign, not an empty name. Both callers take that case
-            // before asking, so this only keeps the answer right for anyone who does not.
             return index == start + 1 ? std::nullopt : std::optional<std::size_t>{index};
         }
     }
@@ -32,7 +27,6 @@ namespace {
 
 std::string substitute(std::string_view text, const PlaceholderRegistry& registry, const PlaceholderContext& context,
                        const UnresolvedHandler& onUnresolved) {
-    // Most operator-written text holds no placeholder at all, and this is what makes that free.
     if (text.find('%') == std::string_view::npos) {
         return std::string{text};
     }
@@ -121,7 +115,6 @@ bool globMatches(std::string_view pattern, std::string_view value) {
     }
     std::size_t index = parts.front().size();
     for (std::size_t part = 1; part + 1 < parts.size(); ++part) {
-        // Two stars in a row, whose empty middle is found wherever the search is standing.
         if (parts[part].empty()) {
             continue;
         }
@@ -131,8 +124,6 @@ bool globMatches(std::string_view pattern, std::string_view value) {
         }
         index = found + parts[part].size();
     }
-    // The trailing literal has to fit after everything already matched, or "a*bc" would accept
-    // "abc" twice over by counting the same characters as both.
     return index + parts.back().size() <= text.size();
 }
 

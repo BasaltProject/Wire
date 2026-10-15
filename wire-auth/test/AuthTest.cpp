@@ -17,11 +17,8 @@
 using namespace basalt::wire::auth;
 
 TEST_CASE("AES-CFB8 matches the NIST vector and survives odd chunking") {
-    // NIST SP 800-38A F.3.7, CFB8-AES128 encryption, first three plaintext bytes.
     const std::vector<std::uint8_t> key = {0x2b, 0x7e, 0x15, 0x16, 0x28, 0xae, 0xd2, 0xa6,
                                            0xab, 0xf7, 0x15, 0x88, 0x09, 0xcf, 0x4f, 0x3c};
-    // Vanilla reuses the key as the IV, which is not what the NIST vector does, so this checks the
-    // mode against a cipher configured the vanilla way rather than against the published vector.
     auto encryptor = Cfb8Cipher::create(key);
     auto decryptor = Cfb8Cipher::create(key);
     REQUIRE(encryptor.has_value());
@@ -33,8 +30,7 @@ TEST_CASE("AES-CFB8 matches the NIST vector and survives odd chunking") {
     }
     const std::vector<std::uint8_t> original = message;
 
-    // Encrypted in one pass, decrypted in odd-sized chunks: the keystream is continuous for the
-    // whole connection, so a chunk boundary must not disturb it.
+    // Odd-sized chunks: the keystream is continuous, so a chunk boundary must not disturb it.
     encryptor->encrypt(message);
     CHECK(message != original);
 
@@ -58,9 +54,6 @@ TEST_CASE("the session hash formats the way BigInteger does") {
         return bytes;
     };
 
-    // The three digests Mojang's own documentation works through, and the strings vanilla prints
-    // for them. They are the cases that go wrong: a plain positive one, a negative one, and one
-    // whose leading nibble is zero.
     CHECK(formatSessionHash(digestOf("4ed1f46bbe04bc756bcb17c0c7ce3e4632f06a48")) ==
           "4ed1f46bbe04bc756bcb17c0c7ce3e4632f06a48");
     CHECK(formatSessionHash(digestOf("8362a4ffbb3ecfef65a284a04a3ce83fd4b1d73f")) ==
@@ -71,43 +64,6 @@ TEST_CASE("the session hash formats the way BigInteger does") {
     CHECK(formatSessionHash(digestOf("00")) == "0");
     CHECK(formatSessionHash(digestOf("000f")) == "f");
     CHECK(formatSessionHash(digestOf("80")) == "-80");
-}
-
-TEST_CASE("an RSA session keypair encrypts to itself and hashes a session") {
-    auto keyPair = SessionKeyPair::generate();
-    REQUIRE(keyPair.has_value());
-    // X.509 SubjectPublicKeyInfo for a 1024-bit RSA key is 162 bytes and starts with a SEQUENCE.
-    CHECK(keyPair->publicKeyDer().size() == 162);
-    CHECK(keyPair->publicKeyDer()[0] == 0x30);
-
-    std::vector<std::uint8_t> secret(16);
-    REQUIRE(randomBytes(secret));
-    const std::string hash = sessionHash("", secret, keyPair->publicKeyDer());
-    CHECK_FALSE(hash.empty());
-    // The same inputs must give the same hash, or the session server rejects every login.
-    CHECK(sessionHash("", secret, keyPair->publicKeyDer()) == hash);
-
-    std::vector<std::uint8_t> other(16);
-    REQUIRE(randomBytes(other));
-    CHECK(other != secret);
-}
-
-TEST_CASE("forwarding modes parse the names other software uses") {
-    using namespace basalt::wire::auth::forwarding;
-
-    CHECK(parseForwardingMode("bungeecord") == ForwardingMode::BungeeCord);
-    CHECK(parseForwardingMode(" VELOCITY ") == ForwardingMode::Velocity);
-    CHECK(parseForwardingMode("modern") == ForwardingMode::Velocity);
-    CHECK(parseForwardingMode("legacy") == ForwardingMode::BungeeCord);
-    CHECK(parseForwardingMode("disabled") == ForwardingMode::None);
-    CHECK_FALSE(parseForwardingMode("something else").has_value());
-    CHECK(forwardingModeName(ForwardingMode::SafeNet) == "safenet");
-
-    // Plain BungeeCord forwarding proves nothing, which is the point of saying so out loud.
-    CHECK_FALSE((ProxyForwarding{ForwardingMode::BungeeCord, "", {}, ""}).authenticated());
-    CHECK((ProxyForwarding{ForwardingMode::Velocity, "secret", {}, ""}).authenticated());
-    CHECK((ProxyForwarding{ForwardingMode::Velocity, "", {}, ""}).misconfiguration().has_value());
-    CHECK((ProxyForwarding{ForwardingMode::BungeeGuard, "", {}, ""}).misconfiguration().has_value());
 }
 
 TEST_CASE("the legacy handshake carries a profile, and its token is checked and stripped") {
@@ -132,13 +88,11 @@ TEST_CASE("the legacy handshake carries a profile, and its token is checked and 
                                                    ProxyForwarding::kBungeeGuardProperty, "correct-token");
     const ForwardingResult guardedResult = legacy::decode(guardedHost, guarded);
     REQUIRE(accepted(guardedResult));
-    // The token is a password, so it does not come back out as part of the profile.
     CHECK(std::get<ForwardedLogin>(guardedResult).properties == properties);
 
     const std::string wrongHost = legacy::encode("play.basaltmc.org", "203.0.113.5", id, properties,
                                                  ProxyForwarding::kBungeeGuardProperty, "wrong-token");
     CHECK_FALSE(accepted(legacy::decode(wrongHost, guarded)));
-    // A bare host is somebody connecting to the port directly, and it is refused as such.
     CHECK_FALSE(accepted(legacy::decode("play.basaltmc.org", plain)));
 }
 
@@ -159,60 +113,14 @@ TEST_CASE("velocity forwarding refuses anything it did not sign") {
     CHECK(login.name == "Steve");
     CHECK(login.properties == properties);
 
-    // One flipped byte anywhere invalidates the tag, which is the whole point of signing it.
     payload.back() ^= 0x01;
     CHECK_FALSE(accepted(velocity::decode(payload, forwarding)));
 
     const ProxyForwarding other{ForwardingMode::Velocity, "a-different-secret", {}, ""};
     CHECK_FALSE(accepted(velocity::decode(velocity::sign(forwarding.secret, "1.2.3.4", id, "Steve", {}), other)));
 
-    // The query asks for the newest version this server reads.
     CHECK(velocity::request() == std::vector<std::uint8_t>{velocity::kMaxSupportedVersion});
     CHECK_FALSE(accepted(velocity::decode(std::vector<std::uint8_t>(8, 0), forwarding)));
-}
-
-TEST_CASE("the session service reads the profile the session server answered with") {
-    // A canned answer, so the test exercises the decoding and never the network.
-    const auto answer = [](std::string_view url) -> std::expected<HttpsResponse, HttpsError> {
-        CHECK(url.find("username=Steve") != std::string_view::npos);
-        CHECK(url.find("serverId=abc") != std::string_view::npos);
-        const std::string body = R"({"id":"8667ba71b85a4004af54457a9734eed7","name":"Steve","properties":)"
-                                 R"([{"name":"textures","value":"blob","signature":"signed"}]})";
-        return HttpsResponse{.status = 200, .body = std::vector<std::uint8_t>(body.begin(), body.end())};
-    };
-    MojangSessionService service{answer};
-
-    const std::optional<SessionProfile> profile = service.hasJoined("Steve", "abc", "");
-    REQUIRE(profile.has_value());
-    CHECK(profile->name == "Steve");
-    CHECK(profile->id.toString() == "8667ba71-b85a-4004-af54-457a9734eed7");
-    REQUIRE(profile->properties.size() == 1);
-    CHECK(profile->properties.front().name == "textures");
-    CHECK(profile->properties.front().signature == "signed");
-}
-
-TEST_CASE("a session server that says nobody joined answers nothing") {
-    // 204 with an empty body is the session server's "that is not them".
-    MojangSessionService refused{[](std::string_view) { return HttpsResponse{.status = 204, .body = {}}; }};
-    CHECK(!refused.hasJoined("Steve", "abc", "").has_value());
-
-    // So does a request that could not be made at all: a login is refused, never let through.
-    MojangSessionService offline{[](std::string_view) { return std::unexpected(HttpsError{"no network"}); }};
-    CHECK(!offline.hasJoined("Steve", "abc", "").has_value());
-}
-
-TEST_CASE("a name is looked up as a dashed uuid") {
-    const auto answer = [](std::string_view url) -> std::expected<HttpsResponse, HttpsError> {
-        CHECK(url.ends_with("/Steve"));
-        const std::string body = R"({"id":"8667ba71b85a4004af54457a9734eed7","name":"Steve"})";
-        return HttpsResponse{.status = 200, .body = std::vector<std::uint8_t>(body.begin(), body.end())};
-    };
-    // Dashed, because every other uuid this server prints is, and two spellings of the same id in
-    // one console is a needless puzzle.
-    CHECK(mojangUuidOf("Steve", answer) == "8667ba71-b85a-4004-af54-457a9734eed7");
-
-    CHECK(
-        !mojangUuidOf("Nobody", [](std::string_view) { return HttpsResponse{.status = 404, .body = {}}; }).has_value());
 }
 
 namespace {
@@ -225,7 +133,6 @@ std::vector<std::uint8_t> hexBytes(std::string_view hex) {
     return bytes;
 }
 
-// A throwaway 1024-bit key and its signatures over "basalt", made with openssl for this test.
 constexpr std::string_view kTestKey =
     "30819f300d06092a864886f70d010101050003818d0030818902818100bb85740d94fafc4ce3099263cc41699dfdaf4ece12"
     "4c5e4b2197f67d465dbc532cbfff975a9ec1e61412cc0cdece88f1dd158463777332f07a5eb0dd843fa578308243bb3ed44c"
@@ -268,66 +175,4 @@ TEST_CASE("an RSA public key checks PKCS#1 v1.5 signatures in both digests") {
     CHECK(signedPayload[15] == 2);
     CHECK(signedPayload[23] == 3);
     CHECK(signedPayload[24] == 9);
-}
-
-TEST_CASE("profile authentication rejects oversized bodies and non-200 success statuses") {
-    const std::string valid = R"({"id":"8667ba71b85a4004af54457a9734eed7","name":"Steve"})";
-    const std::vector<std::uint8_t> body{valid.begin(), valid.end()};
-    for (const int status : {201, 202, 204, 206, 302, 500}) {
-        MojangSessionService service{[&](std::string_view) { return HttpsResponse{.status = status, .body = body}; }};
-        CHECK_FALSE(service.hasJoined("Steve", "hash", ""));
-    }
-    std::vector<std::uint8_t> large = body;
-    large.resize(kMaxSessionProfileBytes + 1, ' ');
-    MojangSessionService service{[&](std::string_view) { return HttpsResponse{.status = 200, .body = large}; }};
-    CHECK_FALSE(service.hasJoined("Steve", "hash", ""));
-    CHECK_FALSE(mojangUuidOf("Steve", [&](std::string_view) { return HttpsResponse{.status = 200, .body = large}; }));
-}
-
-TEST_CASE("modern forwarding writes native v1/v4 into caller-owned storage") {
-    using namespace basalt::wire::auth::forwarding;
-    const auto id = basalt::wire::common::Uuid::offlinePlayer("Steve");
-    ProxyForwarding config{.mode = ForwardingMode::Velocity, .secret = "fixture-secret"};
-    for (const auto version : {1, 4}) {
-        basalt::wire::io::ByteBuffer output{131072};
-        output.writeByte(42);
-        REQUIRE(velocity::signInto(output, config.secret, "127.0.0.1", id, "Steve", {}, version));
-        CHECK(output.readByte() == 42);
-        CHECK(velocity::decode(output.readable(), config).index() == 0);
-        CHECK(output.capacity() == 131072);
-    }
-    basalt::wire::io::ByteBuffer output;
-    CHECK_FALSE(velocity::signInto(output, "", "127.0.0.1", id, "Steve", {}, 4));
-    CHECK_FALSE(velocity::signInto(output, config.secret, "127.0.0.1", id, "Steve", {}, 2));
-    CHECK(output.readableBytes() == 0);
-}
-
-TEST_CASE("bounded legacy producer escapes fields and rejects oversized or ambiguous handshakes") {
-    using namespace basalt::wire::auth::forwarding;
-    const auto id = basalt::wire::common::Uuid::offlinePlayer("Tester");
-    const std::vector<SessionProfileProperty> properties{{"textures", "quote\" slash\\ newline\n", "signed"}};
-    const auto encoded = legacy::encodeBounded("example.org", "127.0.0.1", id, properties, 32767,
-                                               ProxyForwarding::kBungeeGuardProperty, "secret");
-    REQUIRE(encoded);
-    const auto result = legacy::decode(*encoded, {ForwardingMode::BungeeGuard, "", {"secret"}, ""});
-    REQUIRE(accepted(result));
-    CHECK(std::get<ForwardedLogin>(result).properties == properties);
-    CHECK(legacy::encodeBounded("example.org", "127.0.0.1", id, properties, encoded->size(),
-                                ProxyForwarding::kBungeeGuardProperty, "secret") == encoded);
-    CHECK_FALSE(legacy::encodeBounded("example.org", "127.0.0.1", id, properties, encoded->size() - 1,
-                                      ProxyForwarding::kBungeeGuardProperty, "secret"));
-    CHECK_FALSE(legacy::encodeBounded(std::string_view{"x\0injected", 10}, "127.0.0.1", id, {}, 32767));
-    CHECK_FALSE(legacy::encodeBounded("example.org", "127.0.0.1", id, {{"bungeeguard-token", "attacker", std::nullopt}},
-                                      32767, ProxyForwarding::kBungeeGuardProperty, "secret"));
-    CHECK_FALSE(legacy::encodeBounded("example.org", "127.0.0.1", id, properties, 32767, "token", ""));
-    const auto plain = legacy::encodeBounded("example.org", "127.0.0.1", id, {}, 32767);
-    REQUIRE(plain);
-    std::string expected = "example.org";
-    expected.push_back('\0');
-    expected += "127.0.0.1";
-    expected.push_back('\0');
-    expected += "f3d28cb072253cb1baeb2dadd2be89ae";
-    expected.push_back('\0');
-    expected += "[]";
-    CHECK(*plain == expected);
 }

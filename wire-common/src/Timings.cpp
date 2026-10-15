@@ -12,7 +12,6 @@ void Timing::record(std::int64_t nanos) noexcept {
     totalNanos_.fetch_add(nanos, std::memory_order_relaxed);
     std::int64_t worst = maxNanos_.load(std::memory_order_relaxed);
     while (nanos > worst && !maxNanos_.compare_exchange_weak(worst, nanos, std::memory_order_relaxed)) {
-        // compare_exchange_weak refreshes `worst` on failure, so the loop reads the new maximum.
     }
 }
 

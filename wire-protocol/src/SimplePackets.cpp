@@ -98,7 +98,6 @@ void ExplodePacket::write(io::ByteBuffer& buffer) const {
     }
 
     varInt::write(buffer, particleId);
-    // The sound travels as a direct holder: a zero id, then the name, then no fixed range.
     varInt::write(buffer, 0);
     writeString(buffer, sound);
     writeBoolean(buffer, false);
@@ -138,7 +137,6 @@ std::optional<ExplodePacket> ExplodePacket::read(io::ByteBuffer& buffer) {
         packet.blockParticles.push_back(
             ExplosionParticle{varInt::read(buffer), buffer.readFloat(), buffer.readFloat(), varInt::read(buffer)});
     }
-    // Absent in 26.2, whose shape the translators below this one read with this same codec.
     packet.playSound = buffer.readableBytes() == 0 || readBoolean(buffer);
     return buffer.failed() ? std::nullopt : std::optional{std::move(packet)};
 }

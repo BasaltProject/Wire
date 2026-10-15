@@ -11,9 +11,7 @@
 
 namespace basalt::wire::protocol::login {
 
-/// Serverbound, id 0x00: the first packet of login. parity: ServerboundHelloPacket. Used for both
-/// the offline and online paths; which one follows depends on whether the server answers with a
-/// HelloPacket before the compression and finish packets.
+/// parity: ServerboundHelloPacket. Used for both.
 struct LoginStartPacket {
     static constexpr std::int32_t kId = 0;
     static constexpr std::int32_t kMaxNameLength = 16;
@@ -27,11 +25,7 @@ struct LoginStartPacket {
     friend bool operator==(const LoginStartPacket&, const LoginStartPacket&) = default;
 };
 
-/// Clientbound, id 0x01: starts the online-mode key exchange. parity: ClientboundHelloPacket.
-///
-/// `serverId` is always empty in this version, a vestige of very old revisions. `publicKey` is the
-/// server's RSA key in X.509 SubjectPublicKeyInfo DER form. `challenge` is four random bytes the
-/// client echoes back RSA-encrypted, proving it can encrypt to the matching key.
+/// parity: ClientboundHelloPacket.
 struct HelloPacket {
     static constexpr std::int32_t kId = 1;
     static constexpr std::int32_t kMaxServerIdLength = 20;
@@ -47,8 +41,7 @@ struct HelloPacket {
     friend bool operator==(const HelloPacket&, const HelloPacket&) = default;
 };
 
-/// Serverbound, id 0x01: answers HelloPacket. parity: ServerboundKeyPacket. Both fields are
-/// RSA-PKCS1 encrypted to the key the server just sent.
+/// parity: ServerboundKeyPacket.
 struct KeyPacket {
     static constexpr std::int32_t kId = 1;
 
@@ -61,7 +54,6 @@ struct KeyPacket {
     friend bool operator==(const KeyPacket&, const KeyPacket&) = default;
 };
 
-/// Clientbound, id 0x03: negotiates the compression threshold.
 struct LoginCompressionPacket {
     static constexpr std::int32_t kId = 3;
 
@@ -89,8 +81,7 @@ struct GameProfile {
     friend bool operator==(const GameProfile&, const GameProfile&) = default;
 };
 
-/// Clientbound, id 0x02: login success. parity: ClientboundLoginFinishedPacket, which in this
-/// version carries a session id alongside the profile.
+/// parity: ClientboundLoginFinishedPacket.
 struct LoginFinishedPacket {
     static constexpr std::int32_t kId = 2;
 
@@ -103,10 +94,8 @@ struct LoginFinishedPacket {
     friend bool operator==(const LoginFinishedPacket&, const LoginFinishedPacket&) = default;
 };
 
-/// Serverbound, id 0x03: acknowledges login, moving the connection to configuration. No payload.
 inline constexpr std::int32_t kLoginAcknowledgedId = 3;
 
-/// Clientbound, id 0x00: rejects the login with a reason.
 struct LoginDisconnectPacket {
     static constexpr std::int32_t kId = 0;
 

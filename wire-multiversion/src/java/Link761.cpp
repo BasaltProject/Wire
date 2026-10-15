@@ -30,8 +30,6 @@ bool Link761::clientbound(protocol::ProtocolState state, MutablePacket& packet) 
     }
     switch (packet.nativeId()) {
     case play::SpawnEntityPacket::kId: {
-        // The shape here is the one the link to 1.21.8 left: the velocity is three shorts at the end
-        // and the angles are bytes.
         io::ByteBuffer input = io::ByteBuffer::wrap(packet.body);
         const std::int32_t entityId = protocol::varInt::read(input);
         const std::int64_t mostSignificant = input.readLong();
@@ -64,7 +62,6 @@ bool Link761::clientbound(protocol::ProtocolState state, MutablePacket& packet) 
     case play::PlayerPositionPacket::kId:
         encode(packet, [&](io::ByteBuffer& output) {
             output.writeBytes(packet.body);
-            // 1.19.3 is told whether this teleport takes the player off whatever they rode.
             protocol::writeBoolean(output, false);
         });
         break;
@@ -97,8 +94,7 @@ bool Link761::clientbound(protocol::ProtocolState state, MutablePacket& packet) 
         if (!effect.has_value() || effect->durationTicks >= 0) {
             return true;
         }
-        // An effect that never ends is new in 1.19.4. A number this big is the same thing to anyone
-        // watching it count down.
+        // An effect that never ends is new in 1.19.4.
         effect->durationTicks = kPracticallyForever;
         encode(packet, [&](io::ByteBuffer& out) { effect->write(out); });
         break;

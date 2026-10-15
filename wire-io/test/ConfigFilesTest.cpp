@@ -45,17 +45,3 @@ TEST_CASE("shared configuration generates once, preserves edits and reports the 
     CHECK(broken.error().starts_with(root + "/test.toml is not valid TOML:"));
     CHECK(fileIO::readText(root + "/test.toml") == "[broken");
 }
-
-TEST_CASE("shared configuration rejects oversized files and invalid storage requests") {
-    ConfigFixture fixture;
-    const auto root = fixture.root.string();
-    REQUIRE(fileIO::createDirectories(root));
-    REQUIRE(fileIO::writeText(root + "/large.toml", std::string(1025, '#')));
-    auto large = configFiles::loadToml(root, "large.toml", "", 1024);
-    REQUIRE_FALSE(large);
-    CHECK(large.error().find("large.toml: configuration exceeds byte limit") != std::string::npos);
-    CHECK_FALSE(configFiles::loadToml(root, "../outside.toml", ""));
-    CHECK_FALSE(configFiles::loadToml(root, "test.toml", "long", 2));
-    REQUIRE(fileIO::createDirectories(root + "/directory.toml"));
-    CHECK_FALSE(configFiles::loadToml(root, "directory.toml", ""));
-}

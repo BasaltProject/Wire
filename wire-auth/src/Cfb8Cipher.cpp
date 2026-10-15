@@ -12,7 +12,6 @@ constexpr std::size_t kBlockSize = 16;
 
 } // namespace
 
-/// The expanded AES-128 round keys, kept opaque so no consumer of this header has to see mbedtls.
 struct Cfb8Cipher::KeySchedule {
     mbedtls_aes_context context{};
 

@@ -19,7 +19,6 @@ namespace {
 namespace play = protocol::play;
 using protocol::ProtocolState;
 
-/// 1.21's own numbering for the two packets that were renamed or replaced under it.
 constexpr std::int32_t kTeleportEntity767 = 112;
 constexpr std::int32_t kSetCarriedItem767 = 83;
 constexpr std::int32_t kClientInformationPlay = 14;
@@ -34,12 +33,10 @@ constexpr std::int32_t kParticlesAll = 0;
 
 bool Link767::clientbound(ProtocolState state, MutablePacket& packet) {
     if (state == ProtocolState::Login && packet.nativeId() == protocol::login::LoginFinishedPacket::kId) {
-        // 1.21 reads one more flag after the profile. Newer clients behave as if it were on.
         encode(packet, [&](io::ByteBuffer& output) {
             output.writeBytes(packet.body);
             protocol::writeBoolean(output, true);
         });
-        // 1.21 calls it game_profile, so the tables see the name as gone and would drop it.
         packet.overrideId(protocol::login::LoginFinishedPacket::kId);
         return true;
     }
@@ -48,7 +45,6 @@ bool Link767::clientbound(ProtocolState state, MutablePacket& packet) {
     }
     switch (packet.nativeId()) {
     case play::LoginPlayPacket::kId: {
-        // The online-mode flag is already gone: 26.2 to 26.1 took it out.
         const LoginFields login = decode(packet, [](io::ByteBuffer& in) { return LoginFields::read(in, false, true); });
         encode(packet, [&](io::ByteBuffer& out) { login.write(out, false, false); });
         break;
@@ -72,8 +68,7 @@ bool Link767::clientbound(ProtocolState state, MutablePacket& packet) {
             output.writeDouble(position->z);
             output.writeFloat(position->yaw);
             output.writeFloat(position->pitch);
-            // The same bits, in the byte 1.21 keeps them in. The delta movement has nowhere to go: a
-            // client that cannot be told about it keeps whatever it had.
+            // The delta movement has nowhere to go: a client that cannot be told about it keeps whatever it had.
             output.writeByte(static_cast<std::uint8_t>(position->relativeFlags));
             protocol::varInt::write(output, position->teleportId);
         });
@@ -84,7 +79,6 @@ bool Link767::clientbound(ProtocolState state, MutablePacket& packet) {
         rewrite(packet, [](io::ByteBuffer& input, io::ByteBuffer& output) {
             protocol::varInt::write(output, protocol::varInt::read(input));
             output.writeBytes(input.readSpan(3 * 8));
-            // The velocity has nowhere to go below 1.21.2.
             input.skip(3 * 8);
             const float yaw = input.readFloat();
             const float pitch = input.readFloat();
@@ -137,8 +131,6 @@ bool Link767::serverbound(ProtocolState state, MutablePacket& packet) {
         widenContainer(packet);
         return true;
     }
-    // The client's own settings gained the particle setting in 1.21.2; a 1.21 client stops one field
-    // short, so the one this server reads is written in for it.
     const bool clientInformation =
         (state == ProtocolState::Configuration && packet.nativeId() == kClientInformationConfiguration) ||
         (state == ProtocolState::Play && packet.nativeId() == kClientInformationPlay);

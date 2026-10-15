@@ -60,7 +60,6 @@ std::optional<SlotDisplay> SlotDisplay::read(io::ByteBuffer& buffer) {
         return SlotDisplay{Item{varInt::read(buffer)}};
     }
     if (type != kCompositeType) {
-        // A shape this build does not write, and there is no length to skip it by.
         buffer.markFailed();
         return std::nullopt;
     }
@@ -128,7 +127,6 @@ void RecipeBookEntry::write(io::ByteBuffer& buffer) const {
     varInt::write(buffer, recipeId);
     varInt::write(buffer, display.type());
     display.write(buffer);
-    // The optional group id, which nothing here groups by.
     writeBoolean(buffer, false);
     varInt::write(buffer, category);
 
@@ -157,8 +155,6 @@ void RecipeBookEntry::write(io::ByteBuffer& buffer) const {
 std::optional<RecipeBookEntry> RecipeBookEntry::read(io::ByteBuffer& buffer) {
     RecipeBookEntry entry;
     entry.recipeId = varInt::read(buffer);
-    // The type varint the entry writes in front of the display is the display's own: its reader
-    // consumes it, so nothing here reads it separately.
     auto display = RecipeDisplay::read(buffer);
     if (!display) {
         return std::nullopt;
@@ -247,20 +243,15 @@ void UpdateRecipesPacket::write(io::ByteBuffer& buffer) const {
     }
     varInt::write(buffer, static_cast<std::int32_t>(stonecutter.size()));
     for (const StonecutterOption& option : stonecutter) {
-        // parity: ByteBufCodecs.holderSet writes the size plus one, since zero would mean a tag
-        // follows instead. The items are plain registry ids: holderRegistry writes the id and
-        // nothing else, and adding one to it shifted every ingredient by a place, which is why the
-        // stonecutter drew no buttons at all.
+        // parity: ByteBufCodecs.holderSet writes the size plus one, since zero would mean a tag.
         varInt::write(buffer, static_cast<std::int32_t>(option.inputItemIds.size()) + 1);
         for (const std::int32_t id : option.inputItemIds) {
             varInt::write(buffer, id);
         }
         varInt::write(buffer, SlotDisplay::kItemStackType);
-        // parity: ItemStackTemplate.STREAM_CODEC, which is not an item stack: the item comes first
-        // and the count second, and a stack's own order left every button showing air.
+        // parity: ItemStackTemplate.STREAM_CODEC.
         varInt::write(buffer, option.resultItemId);
         varInt::write(buffer, option.resultCount);
-        // An empty component patch: nothing added, nothing removed.
         varInt::write(buffer, 0);
         varInt::write(buffer, 0);
     }

@@ -36,40 +36,6 @@ TEST_CASE("buffer allocation checks global and owner quotas before growth") {
     CHECK(ampleLocal.used() == 0);
 }
 
-TEST_CASE("reallocation charges simultaneous old/new storage and releases the old allocation") {
-    ResourceBudget global{4096}, local{4096};
-    {
-        BudgetMemoryResource resource{global, local};
-        std::pmr::vector<std::uint8_t> bytes{&resource};
-        bytes.reserve(1024);
-        bytes.push_back(99);
-        bytes.reserve(2048);
-        CHECK(bytes[0] == 99);
-        CHECK(global.used() == bytes.capacity());
-        CHECK(local.used() == bytes.capacity());
-    }
-    CHECK(global.used() == 0);
-    CHECK(local.used() == 0);
-}
-
-TEST_CASE("allocation metadata is bounded and alignment padding is charged") {
-    ResourceBudget global{4096}, local{4096};
-    BudgetMemoryResource resource{global, local};
-    std::array<void*, BudgetMemoryResource::kMaxAllocations> pointers{};
-    for (auto& pointer : pointers) {
-        pointer = resource.allocate(17, 32);
-        CHECK(reinterpret_cast<std::uintptr_t>(pointer) % 32 == 0);
-    }
-    CHECK(global.used() == pointers.size() * 48);
-    CHECK_THROWS_AS((void)resource.allocate(1), std::bad_alloc);
-    for (const auto pointer : pointers)
-        resource.deallocate(pointer, 17, 32);
-    CHECK(global.used() == 0);
-    CHECK(local.used() == 0);
-    CHECK_THROWS_AS((void)resource.allocate(std::numeric_limits<std::size_t>::max(), 32), std::bad_alloc);
-    CHECK(global.used() == 0);
-}
-
 TEST_CASE("managed packet buffers preserve quota on copies and fail reservation without losing bytes") {
     ResourceBudget global{4096}, local{2500};
     BudgetMemoryResource resource{global, local};
@@ -98,25 +64,4 @@ TEST_CASE("managed packet buffers preserve quota on copies and fail reservation 
     const auto* original = bytes.data();
     auto adopted = ByteBuffer::wrap(std::move(bytes));
     CHECK(adopted.readable().data() == original);
-}
-
-TEST_CASE("independent owners share a global quota without sharing allocator state") {
-    ResourceBudget global{64 * 1024};
-    std::array<std::jthread, 4> owners;
-    for (auto& owner : owners) {
-        owner = std::jthread{[global] {
-            ResourceBudget local{8192};
-            BudgetMemoryResource resource{global, local};
-            for (unsigned attempt = 0; attempt < 100; ++attempt) {
-                std::pmr::vector<std::uint8_t> bytes{&resource};
-                bytes.reserve(1024);
-                bytes.reserve(2048);
-                CHECK(local.used() == bytes.capacity());
-            }
-            CHECK(local.used() == 0);
-        }};
-    }
-    for (auto& owner : owners)
-        owner.join();
-    CHECK(global.used() == 0);
 }

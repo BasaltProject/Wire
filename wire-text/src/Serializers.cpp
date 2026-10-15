@@ -7,12 +7,9 @@
 namespace basalt::wire::text {
 namespace {
 
-// Written as an escape rather than a literal ESC byte: a raw control character in source survives
-// neither editors nor copy-paste reliably.
 constexpr std::string_view kEscape = "\x1B[";
 constexpr std::string_view kReset = "\x1B[0m";
 
-/// The text a component contributes on its own, before its children.
 void appendOwnText(std::string& out, const Component& component) {
     if (const auto* text = component.as<Component::Text>()) {
         out += text->content;
@@ -79,15 +76,12 @@ void appendStyled(std::string& out, const Component& component, const Style& inh
     }
 }
 
-/// The sixteen colours a `§` code can name, in the order of their codes.
 constexpr std::array<TextColor, 16> kLegacyColors{kBlack, kDarkBlue,    kDarkGreen, kDarkAqua, kDarkRed, kDarkPurple,
                                                   kGold,  kGray,        kDarkGray,  kBlue,     kGreen,   kAqua,
                                                   kRed,   kLightPurple, kYellow,    kWhite};
 
 constexpr std::string_view kLegacyCodes = "0123456789abcdef";
 
-/// The code of the nearest of the sixteen, by plain distance in RGB. A colour the other side cannot
-/// draw is drawn as the one it can that is closest to it.
 [[nodiscard]] char legacyCodeFor(const TextColor color) {
     std::size_t best = 0;
     std::int64_t bestDistance = -1;
@@ -104,8 +98,6 @@ constexpr std::string_view kLegacyCodes = "0123456789abcdef";
     return kLegacyCodes[best];
 }
 
-/// The codes one style needs, in the order a client reads them: the colour resets everything, so it
-/// goes first and the decorations follow it.
 void appendLegacyCodes(std::string& out, const Style& style) {
     const auto code = [&out](const char letter) {
         out += "\u00a7";

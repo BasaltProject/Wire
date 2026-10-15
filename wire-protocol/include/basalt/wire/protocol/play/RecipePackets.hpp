@@ -11,31 +11,25 @@
 
 namespace basalt::wire::protocol::play {
 
-/// One slot of a recipe as the book draws it. parity: SlotDisplay, of which the shapes a crafting
-/// recipe needs are here: nothing, one item, or a choice between several.
-///
-/// The type ids are SlotDisplays' own registration order, which is what the wire carries.
+/// parity: SlotDisplay.
 class SlotDisplay {
 public:
     static constexpr std::int32_t kEmptyType = 0;
     static constexpr std::int32_t kItemType = 4;
     static constexpr std::int32_t kCompositeType = 10;
-    /// parity: SlotDisplays.bootstrap, where `item_stack` is the sixth registered.
+    /// parity: SlotDisplays.bootstrap.
     static constexpr std::int32_t kItemStackType = 5;
 
-    /// An empty cell of a shaped recipe.
     struct Empty {
         friend bool operator==(const Empty&, const Empty&) = default;
     };
 
-    /// One item, by its protocol id.
     struct Item {
         std::int32_t itemId = 0;
 
         friend bool operator==(const Item&, const Item&) = default;
     };
 
-    /// Any of several items, which is what an ingredient built from a tag looks like.
     struct Composite {
         std::vector<SlotDisplay> options;
 
@@ -61,7 +55,6 @@ public:
         return std::get_if<T>(&payload_);
     }
 
-    /// Writes the type and then the body, which is how every one of these travels.
     void write(io::ByteBuffer& buffer) const;
 
     [[nodiscard]] static std::optional<SlotDisplay> read(io::ByteBuffer& buffer);
@@ -72,8 +65,7 @@ private:
     Payload payload_;
 };
 
-/// A recipe as the book draws it. parity: RecipeDisplay, limited to the two crafting shapes this
-/// server understands; the type ids are RecipeDisplays' registration order.
+/// parity: RecipeDisplay.
 struct RecipeDisplay {
     static constexpr std::int32_t kShapelessType = 0;
     static constexpr std::int32_t kShapedType = 1;
@@ -85,8 +77,7 @@ struct RecipeDisplay {
         friend bool operator==(const Grid&, const Grid&) = default;
     };
 
-    /// Present exactly when the recipe is shaped. A shapeless recipe has no grid at all, and giving
-    /// it two fields that the wire then drops is a state that only ever produces bugs.
+    /// Present exactly when the recipe is shaped.
     std::optional<Grid> grid;
     std::vector<SlotDisplay> ingredients;
     SlotDisplay result;
@@ -100,10 +91,7 @@ struct RecipeDisplay {
     friend bool operator==(const RecipeDisplay&, const RecipeDisplay&) = default;
 };
 
-/// One entry of the recipe book. The crafting requirements are what the book highlights with: each
-/// ingredient is a holder set of item ids, and a recipe with none can be shown but never suggested.
 struct RecipeBookEntry {
-    /// parity: RecipeBookCategories' registration order; `crafting_misc` is what a command adds to.
     static constexpr std::int32_t kCraftingMiscCategory = 3;
 
     std::int32_t recipeId = 0;
@@ -119,7 +107,6 @@ struct RecipeBookEntry {
     friend bool operator==(const RecipeBookEntry&, const RecipeBookEntry&) = default;
 };
 
-/// Clientbound, id 0x4b: adds recipes to the book.
 struct RecipeBookAddPacket {
     static constexpr std::int32_t kId = 0x4b;
 
@@ -132,7 +119,6 @@ struct RecipeBookAddPacket {
     friend bool operator==(const RecipeBookAddPacket&, const RecipeBookAddPacket&) = default;
 };
 
-/// Clientbound, id 0x4c: takes recipes back out of the book.
 struct RecipeBookRemovePacket {
     static constexpr std::int32_t kId = 0x4c;
 
@@ -144,7 +130,6 @@ struct RecipeBookRemovePacket {
     friend bool operator==(const RecipeBookRemovePacket&, const RecipeBookRemovePacket&) = default;
 };
 
-/// One row of a stonecutter's list: what goes in, and the stack the button shows.
 struct StonecutterOption {
     std::vector<std::int32_t> inputItemIds;
     std::int32_t resultItemId = 0;
@@ -153,7 +138,6 @@ struct StonecutterOption {
     friend bool operator==(const StonecutterOption&, const StonecutterOption&) = default;
 };
 
-/// One `RecipePropertySet`: the items a slot takes, such as a furnace's input or a brewing reagent.
 struct ItemPropertySet {
     std::string key;
     std::vector<std::int32_t> itemIds;
@@ -162,9 +146,6 @@ struct ItemPropertySet {
 };
 
 /// Clientbound, id 0x88: the recipes a client needs to have itself.
-///
-/// The stonecutter is why it exists: the client draws its buttons from this list and sends back an
-/// index into it. The property sets decide what the client lets into a furnace or brewing stand slot.
 struct UpdateRecipesPacket {
     static constexpr std::int32_t kId = 0x88;
 

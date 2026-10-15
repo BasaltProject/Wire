@@ -10,9 +10,7 @@
 
 namespace basalt::wire::nbt {
 
-/// Minimal big-endian cursor over a caller-owned buffer, self-contained so wire-nbt needs no
-/// dependency on wire-io's network buffers. Every read is bounds checked and returns a value, never
-/// throws: this is what parses hostile input.
+/// Every read is bounds checked and returns a value, never throws: this parses hostile input.
 class ByteReader {
 public:
     explicit ByteReader(std::span<const std::uint8_t> bytes) noexcept : bytes_(bytes) {}
@@ -69,7 +67,6 @@ private:
     std::size_t position_ = 0;
 };
 
-/// Growable big-endian byte sink.
 class ByteWriter {
 public:
     explicit ByteWriter(std::size_t initialCapacity = 64) { buffer_.reserve(initialCapacity); }

@@ -10,9 +10,7 @@
 
 namespace basalt::wire::io {
 
-/// Where a datagram came from, or is going to. IPv4 only, like the rest of this layer.
 struct UdpEndpoint {
-    /// Network order, the same shape parseIpv4 returns.
     std::uint32_t address = 0;
     std::uint16_t port = 0;
 
@@ -21,8 +19,6 @@ struct UdpEndpoint {
     [[nodiscard]] std::string toString() const;
 };
 
-/// An unconnected IPv4 UDP socket. One socket serves every peer, which is what RakNet expects: a
-/// session is an address and a port, not a file descriptor.
 class UdpSocket {
 public:
     UdpSocket() = default;
@@ -34,17 +30,12 @@ public:
 
     [[nodiscard]] static std::expected<UdpSocket, SocketError> bind(std::uint16_t port);
 
-    /// Waits up to timeoutMs for one datagram. An empty result is the timeout, not a failure, and a
-    /// datagram of zero bytes is a real (if useless) datagram, so the two cannot share a value.
     [[nodiscard]] std::expected<std::optional<std::size_t>, SocketError> receiveFrom(std::span<std::uint8_t> into,
                                                                                      UdpEndpoint& from, int timeoutMs);
 
-    /// A datagram goes out whole or not at all, so there is no partial write to loop over. An
-    /// unreachable peer answers with an ICMP error that the next call reports; that is ordinary and
-    /// comes back as success, because UDP promises nothing.
+    /// An unreachable peer's ICMP error surfaces on the next call and is reported as success.
     [[nodiscard]] std::expected<void, SocketError> sendTo(std::span<const std::uint8_t> bytes, const UdpEndpoint& to);
 
-    /// The port actually bound, which is what port 0 was resolved to.
     [[nodiscard]] std::expected<std::uint16_t, SocketError> localPort() const;
 
     [[nodiscard]] std::int64_t nativeHandle() const noexcept { return handle_; }

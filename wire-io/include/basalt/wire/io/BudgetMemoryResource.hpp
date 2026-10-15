@@ -10,7 +10,6 @@
 
 namespace basalt::wire::io {
 
-/// Owner-only allocation resource. Both budgets include old and new storage during reallocation.
 class BudgetMemoryResource final : public std::pmr::memory_resource {
 public:
     static constexpr std::size_t kMaxAllocations = 16;

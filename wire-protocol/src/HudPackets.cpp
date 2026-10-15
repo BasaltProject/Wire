@@ -82,8 +82,6 @@ void SoundPacket::write(io::ByteBuffer& buffer) const {
 
 std::optional<SoundPacket> SoundPacket::read(io::ByteBuffer& buffer) {
     if (varInt::read(buffer) != 0) {
-        // A registry index instead of a direct holder: nothing here writes one, and reading one
-        // would need the sound_event table this module deliberately does not have.
         return std::nullopt;
     }
     SoundPacket packet;

@@ -12,12 +12,6 @@
 
 namespace basalt::wire::text {
 
-/// An immutable, styled piece of text, mirroring Adventure's Component model. Every public API that
-/// shows text to a player takes one of these, never a formatted string: legacy `§` codes are not an
-/// internal representation anywhere in Basalt.
-///
-/// The `nbt` and `object` variants (dynamic `/data`-query text, embedded map-icon text) are not
-/// implemented; both are rare enough to defer.
 class Component {
 public:
     struct Text {
@@ -72,7 +66,6 @@ public:
     [[nodiscard]] static Component score(std::string name, std::string objective);
     [[nodiscard]] static Component empty();
 
-    /// Interleaves `separator` between the components, as one parentless text node holding them all.
     [[nodiscard]] static Component join(const Component& separator, const std::vector<Component>& components);
 
     [[nodiscard]] const Payload& payload() const noexcept { return payload_; }

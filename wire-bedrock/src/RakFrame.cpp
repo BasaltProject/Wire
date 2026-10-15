@@ -3,7 +3,6 @@
 namespace basalt::wire::bedrock {
 namespace {
 
-/// The header cost of a reliability, which is what decides where a split has to fall.
 [[nodiscard]] std::size_t counterSize(Reliability reliability) noexcept {
     std::size_t size = 0;
     if (isReliable(reliability)) {

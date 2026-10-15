@@ -12,7 +12,6 @@
 namespace basalt::wire::auth::forwarding::velocity {
 namespace {
 
-/// The tag is a fixed-size SHA-256 HMAC, so the payload starts right after it.
 constexpr std::size_t kSignatureLength = 32;
 constexpr std::int32_t kMaxNameLength = 16;
 
@@ -27,8 +26,7 @@ std::optional<std::array<std::uint8_t, kSignatureLength>> hmac(std::string_view 
     return tag;
 }
 
-/// Constant time, because a byte-by-byte compare on a signature leaks where it first differed and
-/// that is enough to forge one a byte at a time.
+/// Constant time: a byte-by-byte compare leaks where a signature first differed.
 bool sameTag(std::span<const std::uint8_t> a, std::span<const std::uint8_t> b) noexcept {
     if (a.size() != b.size()) {
         return false;
@@ -69,7 +67,6 @@ ForwardingResult readPayload(std::span<const std::uint8_t> payload) {
     if (buffer.failed()) {
         return std::string{"the forwarded payload is malformed"};
     }
-    // Whatever a version 2 or 3 proxy appended is the chat signing key, which nothing reads here.
     return login;
 }
 

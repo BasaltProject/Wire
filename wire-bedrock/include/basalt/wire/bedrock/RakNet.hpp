@@ -9,8 +9,7 @@
 
 namespace basalt::wire::bedrock {
 
-/// RakNet's own message ids. Everything below 0x80 belongs to the transport; 0xfe is the game, and
-/// it is the only one this layer hands upwards.
+/// Everything below 0x80 belongs to the transport; 0xfe is the game, and it is the only one this layer hands upwards.
 enum class RakId : std::uint8_t {
     ConnectedPing = 0x00,
     UnconnectedPing = 0x01,
@@ -34,8 +33,6 @@ enum class RakId : std::uint8_t {
     Game = 0xfe,
 };
 
-/// How a message is delivered. The number is the wire value: it travels in the top three bits of a
-/// frame's flags, so the order of this enum is the protocol's and not ours to sort.
 enum class Reliability : std::uint8_t {
     Unreliable = 0,
     UnreliableSequenced = 1,
@@ -61,12 +58,10 @@ enum class Reliability : std::uint8_t {
            reliability == Reliability::UnreliableSequencedWithAckReceipt;
 }
 
-/// The sixteen bytes every unconnected message carries, which is how a RakNet datagram is told from
-/// whatever else arrives at a UDP port.
 inline constexpr std::array<std::uint8_t, 16> kMagic{0x00, 0xff, 0xff, 0x00, 0xfe, 0xfe, 0xfe, 0xfe,
                                                      0xfd, 0xfd, 0xfd, 0xfd, 0x12, 0x34, 0x56, 0x78};
 
-/// The RakNet protocol version Mojang's client speaks. Anything else gets told so by number.
+/// The RakNet protocol version Mojang's client speaks.
 inline constexpr std::uint8_t kRakNetProtocol = 11;
 
 inline constexpr std::uint16_t kMinimumMtu = 576;
@@ -77,8 +72,7 @@ inline constexpr std::size_t kIpv4Overhead = 28;
 
 inline constexpr std::size_t kDatagramHeaderSize = 4;
 
-/// Flags of a frame with everything set: three bytes of base, ten of reliability and ordering, ten
-/// of split. A frame never needs more room than this for its header.
+/// A frame never needs more room than this for its header.
 inline constexpr std::size_t kMaxFrameHeaderSize = 23;
 
 /// Flags of the first byte of a datagram.
@@ -87,17 +81,13 @@ inline constexpr std::uint8_t kFlagAck = 0x40;
 inline constexpr std::uint8_t kFlagNak = 0x20;
 inline constexpr std::uint8_t kFlagSplit = 0x10;
 
-/// A session with nothing coming in for this long is gone, whether it said so or not.
 inline constexpr std::uint64_t kSessionTimeoutMs = 10000;
 
-/// Three bytes, little endian, which is how RakNet writes every one of its counters. The rest of
-/// the protocol is big endian, and no, there is no reason for it.
 void writeMediumLE(io::ByteBuffer& buffer, std::uint32_t value);
 
 [[nodiscard]] std::uint32_t readMediumLE(io::ByteBuffer& buffer) noexcept;
 
-/// An address as RakNet writes it: a version byte, then the four octets with every bit flipped,
-/// then the port. The flipping is RakNet's, not a mistake.
+/// The flipping is RakNet's, not a mistake.
 void writeAddress(io::ByteBuffer& buffer, const io::UdpEndpoint& endpoint);
 
 [[nodiscard]] io::UdpEndpoint readAddress(io::ByteBuffer& buffer) noexcept;

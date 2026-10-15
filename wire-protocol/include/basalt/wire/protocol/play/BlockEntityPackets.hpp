@@ -12,9 +12,6 @@
 namespace basalt::wire::protocol::play {
 
 /// Clientbound, id 0x06: one block entity's data, for a change that is not a change of block.
-///
-/// A chunk carries its block entities with it, so this is what keeps them up to date afterwards: the
-/// text written on a sign, a chest that was renamed.
 struct BlockEntityDataPacket {
     static constexpr std::int32_t kId = 0x06;
 
@@ -28,10 +25,7 @@ struct BlockEntityDataPacket {
     friend bool operator==(const BlockEntityDataPacket&, const BlockEntityDataPacket&) = default;
 };
 
-/// Clientbound, id 0x07: a one-off event on a block, as two bytes the block itself gives meaning to.
-///
-/// How a chest lid opens, a note block plays and a piston is drawn sliding: none of it is a change of
-/// state. The bytes are named after the packet because each block reads them its own way.
+/// The bytes are named after the packet because each block reads them its own way.
 struct BlockEventPacket {
     static constexpr std::int32_t kId = 0x07;
 
@@ -46,8 +40,6 @@ struct BlockEventPacket {
     friend bool operator==(const BlockEventPacket&, const BlockEventPacket&) = default;
 };
 
-/// Clientbound, id 0x3d: open the sign editor. The client refuses to edit a sign it was not asked
-/// to edit, so placing one without this leaves a blank sign and no way to write on it.
 struct OpenSignEditorPacket {
     static constexpr std::int32_t kId = 0x3d;
 
@@ -60,14 +52,10 @@ struct OpenSignEditorPacket {
     friend bool operator==(const OpenSignEditorPacket&, const OpenSignEditorPacket&) = default;
 };
 
-/// Serverbound, id 0x3e: the four lines someone typed.
-///
-/// They arrive as plain text, not as components: what the client sends is exactly what was typed,
-/// and the server is what turns it into the text a sign shows.
 struct SignUpdatePacket {
     static constexpr std::int32_t kId = 0x3e;
     static constexpr std::size_t kLines = 4;
-    /// parity: ServerboundSignUpdatePacket.MAX_STRING_LENGTH, which is not the sign's own limit.
+    /// parity: ServerboundSignUpdatePacket.MAX_STRING_LENGTH.
     static constexpr std::int32_t kMaxLineLength = 384;
 
     BlockPos pos;
@@ -80,14 +68,11 @@ struct SignUpdatePacket {
     friend bool operator==(const SignUpdatePacket&, const SignUpdatePacket&) = default;
 };
 
-/// Serverbound, id 0x37: what somebody typed into a command block's screen.
-///
-/// parity: `ServerboundSetCommandBlockPacket`. The mode is the block itself (impulse, repeating or
-/// chain), so accepting one puts a different block down; the flags are one byte (1, 2, 4).
+/// parity: `ServerboundSetCommandBlockPacket`.
 struct SetCommandBlockPacket {
     static constexpr std::int32_t kId = 0x37;
 
-    /// parity: `CommandBlockEntity.Mode`, in the enum's own order, which is what the byte carries.
+    /// parity: `CommandBlockEntity.Mode`.
     enum class Mode : std::int32_t { Sequence, Auto, Redstone };
 
     static constexpr std::int32_t kTrackOutputFlag = 1;
@@ -107,10 +92,7 @@ struct SetCommandBlockPacket {
     friend bool operator==(const SetCommandBlockPacket&, const SetCommandBlockPacket&) = default;
 };
 
-/// Serverbound, id 0x3c: what somebody set in a structure block's screen, and the button they pressed.
-///
-/// parity: `ServerboundSetStructureBlockPacket`. The offset and size travel as clamped bytes and the
-/// four switches as one flag byte; the enums are varints in their declared order.
+/// parity: `ServerboundSetStructureBlockPacket`.
 struct SetStructureBlockPacket {
     static constexpr std::int32_t kId = 0x3c;
 
@@ -133,9 +115,9 @@ struct SetStructureBlockPacket {
     std::string name;
     std::array<std::int32_t, 3> offset{};
     std::array<std::int32_t, 3> size{};
-    /// parity: `Mirror`, none, left-right and front-back.
+    /// parity: `Mirror`.
     std::int32_t mirror = 0;
-    /// parity: `Rotation`, in quarter turns clockwise.
+    /// parity: `Rotation`.
     std::int32_t rotation = 0;
     std::string data;
     bool ignoreEntities = true;

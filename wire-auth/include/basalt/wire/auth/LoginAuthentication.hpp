@@ -52,9 +52,7 @@ using AuthenticationFetch = std::function<std::expected<HttpsResponse, HttpsErro
 
 [[nodiscard]] bool validLoginName(std::string_view name) noexcept;
 
-/// Worker only: validates bounded RSA fields/challenge, then verifies the session with one
-/// deadline/stop token through DNS/HTTPS. Never falls back to an offline identity.
-/// An injected fetch must honor its deadline/token and may be called concurrently by workers.
+/// Worker only; never falls back to an offline identity, and an injected fetch must be thread-safe.
 [[nodiscard]] std::expected<AuthenticatedLogin, LoginAuthenticationFailure>
 authenticateLogin(const SessionKeyPair& key, const OnlineLoginRequest& request, std::stop_token stop,
                   const AuthenticationFetch& fetch = {});

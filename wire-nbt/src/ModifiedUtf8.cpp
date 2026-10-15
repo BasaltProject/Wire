@@ -6,7 +6,6 @@
 namespace basalt::wire::nbt::modifiedUtf8 {
 namespace {
 
-/// Walks the UTF-16 code units of a UTF-8 string, which is the unit modified UTF-8 counts in.
 template <typename Sink>
 void forEachUtf16Unit(std::string_view value, Sink&& sink) {
     for (std::size_t i = 0; i < value.size();) {
@@ -136,8 +135,6 @@ std::expected<std::string, NbtError> decode(ByteReader& source, std::size_t byte
     out.reserve(byteLength);
     for (std::size_t i = 0; i < units.size(); ++i) {
         const std::uint16_t unit = units[i];
-        // A supplementary character arrived as its two surrogate halves; put it back together so
-        // the result is ordinary UTF-8 rather than CESU-8.
         if (unit >= 0xD800 && unit <= 0xDBFF && i + 1 < units.size() && units[i + 1] >= 0xDC00 &&
             units[i + 1] <= 0xDFFF) {
             const std::uint32_t code =

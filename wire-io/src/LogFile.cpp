@@ -77,8 +77,6 @@ bool install(const std::string& root, int keepDays, std::string_view header) {
         const std::scoped_lock lock{gWriteMutex};
         gPath = path;
     }
-    // The banner and version line reach the console through plain printing, before any logger
-    // exists; without this the log would open mid-startup with no idea what built it.
     if (!header.empty()) {
         append(header);
     }

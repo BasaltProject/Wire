@@ -42,7 +42,7 @@ std::optional<BlockEventPacket> BlockEventPacket::read(io::ByteBuffer& buffer) {
 
 namespace {
 
-// parity: SignTextSlot, BACK 0 and FRONT 1, anything else reading as back.
+// parity: SignTextSlot.
 void writeSignSlot(io::ByteBuffer& buffer, bool front) { varInt::write(buffer, front ? 1 : 0); }
 
 bool readSignSlot(io::ByteBuffer& buffer) { return varInt::read(buffer) == 1; }
@@ -101,8 +101,6 @@ std::optional<SetCommandBlockPacket> SetCommandBlockPacket::read(io::ByteBuffer&
     packet.pos = BlockPos::unpack(buffer.readLong());
     packet.command = readString(buffer);
     const std::int32_t mode = varInt::read(buffer);
-    // A mode the client should never send lands on the impulse block, which is what an unknown enum
-    // value does in vanilla's own `readEnum`: it would throw there, and here it is the harmless one.
     packet.mode = mode == static_cast<std::int32_t>(Mode::Sequence) ? Mode::Sequence
                   : mode == static_cast<std::int32_t>(Mode::Auto)   ? Mode::Auto
                                                                     : Mode::Redstone;
@@ -142,7 +140,7 @@ std::optional<SetStructureBlockPacket> SetStructureBlockPacket::read(io::ByteBuf
     packet.pos = BlockPos::unpack(buffer.readLong());
     const std::int32_t update = varInt::read(buffer);
     const std::int32_t mode = varInt::read(buffer);
-    // parity: `readEnum`, which refuses an ordinal past the end.
+    // parity: `readEnum`.
     if (update < 0 || update > static_cast<std::int32_t>(Update::ScanArea) || mode < 0 ||
         mode > static_cast<std::int32_t>(Mode::Data)) {
         return std::nullopt;

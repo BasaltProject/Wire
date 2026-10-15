@@ -45,7 +45,6 @@ struct WorkerPool::Impl {
         }
 
         ~Job() {
-            // Discarding an accepted queued job is cancellation, not silent loss of its completion.
             if (state == State::Pending) {
                 cancel();
             }
@@ -64,7 +63,6 @@ struct WorkerPool::Impl {
         workers.reserve(count);
         for (std::size_t i = 0; i < count; ++i) {
             workers.emplace_back([this](std::stop_token threadStop) {
-                // Also releases partially constructed pools if creating a later thread fails.
                 std::stop_callback onThreadStop{threadStop, [this] { stop.request_stop(); }};
                 while (true) {
                     std::unique_lock lock{mutex};
@@ -90,7 +88,6 @@ struct WorkerPool::Impl {
             }
             closed = true;
         }
-        // Stop callbacks and queued captures can reenter submit/requestStop. Neither lock is held.
         stop.request_stop();
         jobs.close();
         notification.notify_all();

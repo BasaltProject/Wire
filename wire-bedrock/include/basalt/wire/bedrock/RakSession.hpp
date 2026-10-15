@@ -16,28 +16,19 @@
 
 namespace basalt::wire::bedrock {
 
-/// Where a datagram goes once the session has built it. A function and not a socket because a test
-/// wants the bytes and a server wants them sent.
+/// A function and not a socket because a test wants the bytes and a server wants them sent.
 using DatagramSink = std::function<void(std::span<const std::uint8_t>)>;
 
-/// Sixteen ordering channels, which is what RakNet defines. Bedrock uses one of them.
 inline constexpr std::size_t kOrderChannels = 16;
 
 /// How long a reliable datagram waits for its acknowledgement before going out again.
 inline constexpr std::uint64_t kResendTimeoutMs = 500;
 
-/// Nothing to say for this long and the session says something anyway, so the peer does not decide
-/// we are gone.
 inline constexpr std::uint64_t kKeepAliveMs = 2500;
 
-/// One peer's half of RakNet: acknowledgement, ordering, splitting and the handshake that turns an
-/// address into a connection. It never touches a socket; the datagrams it builds go to a sink.
+/// It never touches a socket; the datagrams it builds go to a sink.
 class RakSession {
 public:
-    /// What the transport did for this peer, kept so a session that goes quiet can be told apart
-    /// from one that said goodbye. A client that stops acknowledging halfway through a burst is a
-    /// transport problem; one that acknowledges everything and then leaves read something it did
-    /// not like.
     struct Stats {
         std::uint64_t datagramsSent = 0;
         std::uint64_t datagramsReceived = 0;
@@ -56,34 +47,25 @@ public:
 
     [[nodiscard]] std::uint16_t mtu() const noexcept { return mtu_; }
 
-    /// True once the peer has finished the RakNet handshake and its messages are the game's.
     [[nodiscard]] bool connected() const noexcept { return connected_; }
 
     [[nodiscard]] bool closed() const noexcept { return closed_; }
 
-    /// True when the peer sent a disconnection notification rather than simply going quiet.
     [[nodiscard]] bool saidGoodbye() const noexcept { return saidGoodbye_; }
 
     [[nodiscard]] const Stats& stats() const noexcept { return stats_; }
 
     [[nodiscard]] std::uint64_t lastHeardMs() const noexcept { return lastHeardMs_; }
 
-    /// Takes one datagram off the socket. Game payloads that came out whole and in order are
-    /// appended to messages, with the 0xfe already stripped; everything else the transport answers
-    /// by itself.
     void receiveDatagram(std::span<const std::uint8_t> datagram, std::uint64_t nowMs,
                          std::vector<std::vector<std::uint8_t>>& messages);
 
-    /// Queues a game payload. The 0xfe goes on here, so callers pass the batch and nothing else.
     void sendGame(std::span<const std::uint8_t> payload);
 
-    /// Queues a raw RakNet message, id byte included.
     void sendMessage(std::span<const std::uint8_t> message, Reliability reliability, std::uint8_t channel = 0);
 
-    /// Everything that has to go out now: acknowledgements, resends and queued frames.
     void flush(std::uint64_t nowMs, const DatagramSink& sink);
 
-    /// Tells the peer we are done and marks the session closed.
     void disconnect(std::uint64_t nowMs, const DatagramSink& sink);
 
 private:

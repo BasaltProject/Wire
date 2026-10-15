@@ -8,7 +8,6 @@
 namespace basalt::wire::protocol::play::lowPrecisionVec3 {
 namespace {
 
-// parity: the constants of LpVec3, which the packing is written in terms of.
 constexpr std::uint64_t kDataMask = 32767;
 constexpr double kMaxQuantized = 32766.0;
 constexpr std::uint64_t kScaleMask = 3;

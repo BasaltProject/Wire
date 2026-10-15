@@ -14,8 +14,7 @@ constexpr std::uint8_t kFlagCustomSuggestions = 16;
 constexpr std::uint8_t kBoundMin = 1;
 constexpr std::uint8_t kBoundMax = 2;
 
-/// The flag byte and then whichever bounds it claims. Shared by the three bounded number parsers,
-/// which differ only in the width of what follows.
+/// Shared by the three bounded number parsers, which differ only in the width of what follows.
 template <typename T, typename Read>
 ArgumentParser::Bounds<T> readBounds(io::ByteBuffer& buffer, Read&& read) {
     const std::uint8_t flags = buffer.readByte();

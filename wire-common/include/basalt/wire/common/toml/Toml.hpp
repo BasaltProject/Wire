@@ -12,7 +12,6 @@
 
 namespace basalt::wire::common::toml {
 
-/// Why a TOML document did not parse.
 enum class TomlError : std::uint8_t {
     ArrayOfTablesUnsupported,
     MalformedTableHeader,
@@ -29,7 +28,6 @@ enum class TomlError : std::uint8_t {
 
 class TomlValue;
 
-/// A table, in the order its keys appear on the page, which is the order they are written back in.
 class TomlTable {
 public:
     TomlTable();
@@ -59,11 +57,8 @@ public:
 
     [[nodiscard]] std::optional<bool> boolean(std::string_view key) const noexcept;
 
-    /// An array of strings, skipping any entry that is not one, so one bad element is not one bad
-    /// file.
     [[nodiscard]] std::vector<std::string> stringList(std::string_view key) const;
 
-    /// Same tolerance for one bad element as stringList.
     [[nodiscard]] std::vector<std::int64_t> integerList(std::string_view key) const;
 
     friend bool operator==(const TomlTable&, const TomlTable&);
@@ -110,13 +105,7 @@ private:
     Storage storage_;
 };
 
-/// A hand-written parser for the subset of TOML the files under `config/` actually use: comments,
-/// `[table]` and `[table.sub]` headers, bare and quoted keys, and string, integer, float, bool and
-/// array values.
-///
-/// No multi-line strings, inline tables, arrays of tables or dates: none of those appear in any of
-/// them, so they are refused rather than guessed at. Arrays *do* span lines, because a hand-edited
-/// list of permissions or worlds is written one entry per line.
+/// Subset of TOML the config files use; unsupported constructs are refused rather than guessed at.
 [[nodiscard]] std::expected<TomlTable, TomlError> parse(std::string_view text);
 
 } // namespace basalt::wire::common::toml
