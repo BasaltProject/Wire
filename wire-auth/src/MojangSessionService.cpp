@@ -6,6 +6,24 @@
 namespace basalt::wire::auth {
 namespace {
 
+std::string encodeQueryValue(std::string_view value) {
+    constexpr std::string_view hex = "0123456789ABCDEF";
+    std::string result;
+    result.reserve(value.size());
+    for (char character : value) {
+        const auto byte = static_cast<unsigned char>(character);
+        if ((byte >= 'a' && byte <= 'z') || (byte >= 'A' && byte <= 'Z') || (byte >= '0' && byte <= '9') ||
+            byte == '-' || byte == '.' || byte == '_' || byte == '~') {
+            result.push_back(character);
+        } else {
+            result.push_back('%');
+            result.push_back(hex[byte >> 4]);
+            result.push_back(hex[byte & 15]);
+        }
+    }
+    return result;
+}
+
 /// One string member of a JSON object, or nothing when it is absent or not a string.
 [[nodiscard]] std::optional<std::string> stringMember(const common::JsonObject& object, std::string_view key) {
     const common::JsonValue* value = object.find(key);
@@ -73,12 +91,13 @@ MojangSessionService::MojangSessionService(Fetch fetch) : fetch_(std::move(fetch
 
 std::optional<SessionProfile> MojangSessionService::hasJoined(std::string_view username, std::string_view serverHash,
                                                               std::string_view clientAddress) {
-    std::string url = "https://sessionserver.mojang.com/session/minecraft/hasJoined?username=" + std::string{username} +
-                      "&serverId=" + std::string{serverHash};
+    std::string url =
+        "https://sessionserver.mojang.com/session/minecraft/hasJoined?username=" + encodeQueryValue(username) +
+        "&serverId=" + encodeQueryValue(serverHash);
     // Sent only when the operator asked for it: it is the player's own address, and Mojang uses it
     // to tie the session to where the login came from.
     if (!clientAddress.empty()) {
-        url += "&ip=" + std::string{clientAddress};
+        url += "&ip=" + encodeQueryValue(clientAddress);
     }
     const std::expected<HttpsResponse, HttpsError> answered = fetch_(url);
     // A 204 with no body is "that is not them", and so is anything that is not a 200 with JSON.
@@ -95,7 +114,7 @@ std::optional<std::string> mojangUuidOf(const std::string& name, const MojangSes
                                {.deadline = std::chrono::steady_clock::now() + std::chrono::seconds{10}});
     }};
     const std::expected<HttpsResponse, HttpsError> answered =
-        get("https://api.mojang.com/users/profiles/minecraft/" + name);
+        get("https://api.mojang.com/users/profiles/minecraft/" + encodeQueryValue(name));
     if (!answered.has_value() || answered->status != 200 || answered->body.empty() ||
         answered->body.size() > kMaxSessionProfileBytes) {
         return std::nullopt;
