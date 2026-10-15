@@ -1,5 +1,6 @@
 #include <basalt/wire/auth/Cfb8Cipher.hpp>
 
+#include <basalt_mbedtls_threads.h>
 #include <cstdint>
 #include <cstring>
 #include <mbedtls/aes.h>
@@ -15,7 +16,10 @@ constexpr std::size_t kBlockSize = 16;
 struct Cfb8Cipher::KeySchedule {
     mbedtls_aes_context context{};
 
-    KeySchedule() { mbedtls_aes_init(&context); }
+    KeySchedule() {
+        basalt_mbedtls_threading_init();
+        mbedtls_aes_init(&context);
+    }
 
     ~KeySchedule() { mbedtls_aes_free(&context); }
 

@@ -64,7 +64,7 @@ namespace {
 
 MojangSessionService::MojangSessionService(Fetch fetch) : fetch_(std::move(fetch)) {
     if (!fetch_) {
-        fetch_ = [](std::string_view url) { return httpsGet(url); };
+        fetch_ = [](std::string_view url) { return httpsGet(url, kMaxSessionProfileBytes); };
     }
 }
 
@@ -79,18 +79,21 @@ std::optional<SessionProfile> MojangSessionService::hasJoined(std::string_view u
     }
     const std::expected<HttpsResponse, HttpsError> answered = fetch_(url);
     // A 204 with no body is "that is not them", and so is anything that is not a 200 with JSON.
-    if (!answered.has_value() || !answered->ok() || answered->body.empty()) {
+    if (!answered.has_value() || answered->status != 200 || answered->body.empty() ||
+        answered->body.size() > kMaxSessionProfileBytes) {
         return std::nullopt;
     }
     return profileFrom(answered->text());
 }
 
 std::optional<std::string> mojangUuidOf(const std::string& name, const MojangSessionService::Fetch& fetch) {
-    const MojangSessionService::Fetch get =
-        fetch ? fetch : MojangSessionService::Fetch{[](std::string_view url) { return httpsGet(url); }};
+    const MojangSessionService::Fetch get = fetch ? fetch : MojangSessionService::Fetch{[](std::string_view url) {
+        return httpsGet(url, kMaxSessionProfileBytes);
+    }};
     const std::expected<HttpsResponse, HttpsError> answered =
         get("https://api.mojang.com/users/profiles/minecraft/" + name);
-    if (!answered.has_value() || !answered->ok() || answered->body.empty()) {
+    if (!answered.has_value() || answered->status != 200 || answered->body.empty() ||
+        answered->body.size() > kMaxSessionProfileBytes) {
         return std::nullopt;
     }
     const std::expected<common::JsonValue, common::JsonError> parsed = common::parseJson(answered->text());

@@ -1,5 +1,6 @@
 #include <basalt/wire/bedrock/BedrockCipher.hpp>
 
+#include <basalt_mbedtls_threads.h>
 #include <cstring>
 #include <mbedtls/aes.h>
 #include <mbedtls/sha256.h>
@@ -20,6 +21,7 @@ struct Direction {
 };
 
 void initDirection(Direction& direction, const SessionKey& key) {
+    basalt_mbedtls_threading_init();
     mbedtls_aes_init(&direction.aes);
     mbedtls_aes_setkey_enc(&direction.aes, key.data(), 256);
     // The counter is the first twelve bytes of the key and then a two, which is what Bedrock does
@@ -42,6 +44,7 @@ std::array<std::uint8_t, kTrailerSize> trailer(std::uint64_t counter, std::span<
     }
 
     mbedtls_sha256_context context;
+    basalt_mbedtls_threading_init();
     mbedtls_sha256_init(&context);
     mbedtls_sha256_starts(&context, 0);
     mbedtls_sha256_update(&context, counterBytes.data(), counterBytes.size());
@@ -109,6 +112,7 @@ bool BedrockCipher::decrypt(std::span<const std::uint8_t> payload, std::vector<s
 
 SessionKey deriveSessionKey(std::span<const std::uint8_t> salt, std::span<const std::uint8_t> sharedSecret) {
     mbedtls_sha256_context context;
+    basalt_mbedtls_threading_init();
     mbedtls_sha256_init(&context);
     mbedtls_sha256_starts(&context, 0);
     if (!salt.empty()) {
