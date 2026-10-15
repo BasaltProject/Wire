@@ -12,6 +12,8 @@ endif()
 
 list(APPEND CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/cmake)
 
+include(BasaltCcache)
+
 option(BASALT_BUILD_TESTS "Build the test executables" ON)
 option(BASALT_BUILD_BENCH "Build the benchmark executables" OFF)
 option(BASALT_WERROR "Treat warnings as errors" OFF)

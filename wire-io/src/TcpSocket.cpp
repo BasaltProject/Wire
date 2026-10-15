@@ -1,22 +1,29 @@
 #include <basalt/wire/io/TcpSocket.hpp>
 
+#include <algorithm>
 #include <charconv>
 #include <cstdint>
 #include <cstring>
+#include <limits>
+#include <memory>
 
 #if defined(_WIN32)
 #include <winsock2.h>
 #include <ws2tcpip.h>
 using socklen_type = int;
+using namelen_type = DWORD;
 // Winsock's recv and send take an int length; POSIX takes a size_t.
 using iolen_type = int;
 #else
 #include <arpa/inet.h>
 #include <cerrno>
+#include <fcntl.h>
+#include <netdb.h>
 #include <netinet/in.h>
 #include <sys/socket.h>
 #include <unistd.h>
 using socklen_type = socklen_t;
+using namelen_type = socklen_t;
 using iolen_type = std::size_t;
 #endif
 
@@ -51,6 +58,29 @@ bool errorIsInterrupt(int error) noexcept {
 #endif
 }
 
+bool errorWouldBlock(int error) noexcept {
+#if defined(_WIN32)
+    return error == WSAEWOULDBLOCK || error == WSAEINPROGRESS;
+#else
+    return error == EAGAIN || error == EWOULDBLOCK || error == EINPROGRESS;
+#endif
+}
+
+std::expected<void, SocketError> nonBlocking(std::int64_t handle, bool enabled) {
+#if defined(_WIN32)
+    u_long mode = enabled ? 1 : 0;
+    const int result = ::ioctlsocket(static_cast<SOCKET>(handle), FIONBIO, &mode);
+#else
+    const int flags = ::fcntl(static_cast<int>(handle), F_GETFL, 0);
+    const int result =
+        flags < 0 ? -1 : ::fcntl(static_cast<int>(handle), F_SETFL, enabled ? flags | O_NONBLOCK : flags & ~O_NONBLOCK);
+#endif
+    if (result != 0) {
+        return std::unexpected{SocketError{SocketError::Kind::ConfigureFailed, lastSocketError()}};
+    }
+    return {};
+}
+
 /// The peer is gone, which read and write treat as end of stream rather than as failure.
 bool errorIsPeerGone(int error) noexcept {
 #if defined(_WIN32)
@@ -71,12 +101,19 @@ void closeHandle(std::int64_t handle) noexcept {
 #endif
 }
 
-std::int64_t createSocket() {
+std::int64_t createSocket(int family = AF_INET) {
 #if defined(_WIN32)
-    const SOCKET raw = ::socket(AF_INET, SOCK_STREAM, 0);
+    const SOCKET raw = ::socket(family, SOCK_STREAM, 0);
     return raw == INVALID_SOCKET ? -1 : static_cast<std::int64_t>(raw);
 #else
-    return ::socket(AF_INET, SOCK_STREAM, 0);
+    const int handle = ::socket(family, SOCK_STREAM, 0);
+#if defined(__APPLE__)
+    const int noSignal = 1;
+    if (handle >= 0) {
+        ::setsockopt(handle, SOL_SOCKET, SO_NOSIGPIPE, &noSignal, sizeof(noSignal));
+    }
+#endif
+    return handle;
 #endif
 }
 
@@ -122,6 +159,87 @@ std::string formatIpv4(std::uint32_t networkOrder) {
     return out;
 }
 
+std::expected<std::vector<TcpAddress>, SocketError> TcpAddress::lookup(std::string_view host, std::uint16_t port,
+                                                                       bool numeric) {
+    ensureSocketsInitialized();
+    if (host.empty() || host.find('\0') != std::string_view::npos) {
+        return std::unexpected{SocketError{SocketError::Kind::InvalidAddress, 0}};
+    }
+    const std::string name{host};
+    const std::string service = std::to_string(port);
+    addrinfo hints{};
+    hints.ai_family = AF_UNSPEC;
+    hints.ai_socktype = SOCK_STREAM;
+    hints.ai_protocol = IPPROTO_TCP;
+    hints.ai_flags = AI_NUMERICSERV | (numeric ? AI_NUMERICHOST : 0);
+    addrinfo* raw = nullptr;
+    const int error = ::getaddrinfo(name.c_str(), service.c_str(), &hints, &raw);
+    if (error != 0) {
+        return std::unexpected{
+            SocketError{numeric ? SocketError::Kind::InvalidAddress : SocketError::Kind::ResolveFailed, error}};
+    }
+    const std::unique_ptr<addrinfo, decltype(&::freeaddrinfo)> owned{raw, &::freeaddrinfo};
+    std::vector<TcpAddress> addresses;
+    for (const addrinfo* current = raw; current != nullptr; current = current->ai_next) {
+        if ((current->ai_family != AF_INET && current->ai_family != AF_INET6) || current->ai_addrlen > 128) {
+            continue;
+        }
+        TcpAddress address;
+        address.family_ = current->ai_family;
+        address.size_ = static_cast<std::uint32_t>(current->ai_addrlen);
+        address.port_ = port;
+        std::memcpy(address.storage_.data(), current->ai_addr, address.size_);
+        if (!std::ranges::any_of(addresses, [&](const TcpAddress& other) {
+                return other.family_ == address.family_ && other.size_ == address.size_ &&
+                       other.storage_ == address.storage_;
+            })) {
+            addresses.push_back(address);
+        }
+    }
+    if (addresses.empty()) {
+        return std::unexpected{SocketError{SocketError::Kind::InvalidAddress, 0}};
+    }
+    return addresses;
+}
+
+std::expected<std::vector<TcpAddress>, SocketError> TcpAddress::resolve(std::string_view host, std::uint16_t port) {
+    return lookup(host, port, false);
+}
+
+std::expected<TcpAddress, SocketError> TcpAddress::literal(std::string_view host, std::uint16_t port) {
+    if (host.find(':') == std::string_view::npos) {
+        const auto ipv4 = parseIpv4(host);
+        if (!ipv4) {
+            return std::unexpected{SocketError{SocketError::Kind::InvalidAddress, 0}};
+        }
+        sockaddr_in native{};
+        native.sin_family = AF_INET;
+        native.sin_port = htons(port);
+        native.sin_addr.s_addr = *ipv4;
+        TcpAddress address;
+        address.family_ = AF_INET;
+        address.size_ = sizeof(native);
+        address.port_ = port;
+        std::memcpy(address.storage_.data(), &native, sizeof(native));
+        return address;
+    }
+    auto addresses = lookup(host, port, true);
+    if (!addresses) {
+        return std::unexpected{addresses.error()};
+    }
+    return addresses->front();
+}
+
+std::string TcpAddress::host() const {
+    std::array<char, NI_MAXHOST> text{};
+    if (size_ == 0 ||
+        ::getnameinfo(reinterpret_cast<const sockaddr*>(storage_.data()), static_cast<socklen_type>(size_), text.data(),
+                      static_cast<namelen_type>(text.size()), nullptr, 0, NI_NUMERICHOST) != 0) {
+        return {};
+    }
+    return std::string{text.data()};
+}
+
 TcpConnection::TcpConnection(TcpConnection&& other) noexcept
     : handle_(other.handle_), remoteAddress_(std::move(other.remoteAddress_)) {
     other.handle_ = -1;
@@ -145,29 +263,41 @@ void TcpConnection::close() noexcept {
 }
 
 std::expected<TcpConnection, SocketError> TcpConnection::connect(std::string_view host, std::uint16_t port) {
-    ensureSocketsInitialized();
-
-    const std::optional<std::uint32_t> address = parseIpv4(host);
+    // Keep the blocking convenience method's literal-only contract. Resolve explicitly on a worker.
+    const auto address = TcpAddress::literal(host, port);
     if (!address) {
+        return std::unexpected{address.error()};
+    }
+    return connect(*address);
+}
+
+std::expected<TcpConnection, SocketError> TcpConnection::connect(const TcpAddress& address) {
+    return connectAddress(address, false);
+}
+
+std::expected<TcpConnection, SocketError> TcpConnection::connectAddress(const TcpAddress& address, bool nonblocking) {
+    ensureSocketsInitialized();
+    if (address.size_ == 0) {
         return std::unexpected{SocketError{SocketError::Kind::InvalidAddress, 0}};
     }
-
-    const std::int64_t handle = createSocket();
-    if (handle < 0) {
+    TcpConnection connection{createSocket(address.family_)};
+    if (connection.isClosed()) {
         return std::unexpected{SocketError{SocketError::Kind::CreateFailed, lastSocketError()}};
     }
-
-    sockaddr_in target{};
-    target.sin_family = AF_INET;
-    target.sin_port = htons(port);
-    std::memcpy(&target.sin_addr, &*address, sizeof(std::uint32_t));
-
-    if (::connect(asSocket(handle), reinterpret_cast<const sockaddr*>(&target), sizeof(target)) != 0) {
-        const int error = lastSocketError();
-        closeHandle(handle);
-        return std::unexpected{SocketError{SocketError::Kind::ConnectFailed, error}};
+    if (nonblocking) {
+        const auto configured = connection.setNonBlocking();
+        if (!configured) {
+            return std::unexpected{configured.error()};
+        }
     }
-    return TcpConnection{handle};
+    if (::connect(asSocket(connection.handle_), reinterpret_cast<const sockaddr*>(address.storage_.data()),
+                  static_cast<socklen_type>(address.size_)) != 0) {
+        const int error = lastSocketError();
+        if (!nonblocking || !errorWouldBlock(error)) {
+            return std::unexpected{SocketError{SocketError::Kind::ConnectFailed, error}};
+        }
+    }
+    return connection;
 }
 
 std::expected<std::size_t, SocketError> TcpConnection::read(std::span<std::uint8_t> into) {
@@ -184,6 +314,9 @@ std::expected<std::size_t, SocketError> TcpConnection::read(std::span<std::uint8
         if (errorIsInterrupt(error)) {
             continue;
         }
+        if (errorWouldBlock(error)) {
+            return std::unexpected{SocketError{SocketError::Kind::WouldBlock, error}};
+        }
         if (errorIsPeerGone(error)) {
             return std::size_t{0};
         }
@@ -197,21 +330,84 @@ std::expected<void, SocketError> TcpConnection::write(std::span<const std::uint8
     }
     std::size_t written = 0;
     while (written < bytes.size()) {
-        const auto sent = ::send(asSocket(handle_), reinterpret_cast<const char*>(bytes.data() + written),
-                                 static_cast<iolen_type>(bytes.size() - written), 0);
-        if (sent < 0) {
-            const int error = lastSocketError();
-            if (errorIsInterrupt(error)) {
-                continue;
-            }
-            if (errorIsPeerGone(error)) {
+        const auto sent = writeSome(bytes.subspan(written));
+        if (!sent) {
+            if (errorIsPeerGone(sent.error().platformCode)) {
                 return {};
             }
-            return std::unexpected{SocketError{SocketError::Kind::SendFailed, error}};
+            return std::unexpected{sent.error()};
         }
-        written += static_cast<std::size_t>(sent);
+        written += *sent;
     }
     return {};
+}
+
+std::expected<std::size_t, SocketError> TcpConnection::writeSome(std::span<const std::uint8_t> bytes) {
+    if (bytes.empty()) {
+        return std::size_t{0};
+    }
+    const auto length =
+        static_cast<iolen_type>(std::min(bytes.size(), static_cast<std::size_t>(std::numeric_limits<int>::max())));
+#if defined(MSG_NOSIGNAL)
+    constexpr int kSendFlags = MSG_NOSIGNAL;
+#else
+    constexpr int kSendFlags = 0;
+#endif
+    while (true) {
+        const auto sent = ::send(asSocket(handle_), reinterpret_cast<const char*>(bytes.data()), length, kSendFlags);
+        if (sent > 0) {
+            return static_cast<std::size_t>(sent);
+        }
+        const int error = sent == 0 ? 0 : lastSocketError();
+        if (errorIsInterrupt(error)) {
+            continue;
+        }
+        return std::unexpected{
+            SocketError{errorWouldBlock(error) ? SocketError::Kind::WouldBlock : SocketError::Kind::SendFailed, error}};
+    }
+}
+
+std::expected<void, SocketError> TcpConnection::setNonBlocking(bool enabled) { return nonBlocking(handle_, enabled); }
+
+std::expected<bool, SocketError> TcpConnection::finishConnect() {
+    int error = 0;
+    auto size = static_cast<socklen_type>(sizeof(error));
+    if (::getsockopt(asSocket(handle_), SOL_SOCKET, SO_ERROR, reinterpret_cast<char*>(&error), &size) != 0) {
+        return std::unexpected{SocketError{SocketError::Kind::ConnectFailed, lastSocketError()}};
+    }
+    if (errorWouldBlock(error)) {
+        return false;
+    }
+    if (error != 0) {
+        return std::unexpected{SocketError{SocketError::Kind::ConnectFailed, error}};
+    }
+    // SO_ERROR can be zero while the handshake is still in flight.
+    sockaddr_storage peer{};
+    size = static_cast<socklen_type>(sizeof(peer));
+    if (::getpeername(asSocket(handle_), reinterpret_cast<sockaddr*>(&peer), &size) != 0) {
+        const int code = lastSocketError();
+#if defined(_WIN32)
+        if (code == WSAENOTCONN) {
+#else
+        if (code == ENOTCONN) {
+#endif
+            return false;
+        }
+        return std::unexpected{SocketError{SocketError::Kind::ConnectFailed, code}};
+    }
+    return true;
+}
+
+std::expected<TcpConnection, SocketError> TcpConnection::connectNonBlocking(std::string_view host, std::uint16_t port) {
+    const auto address = TcpAddress::literal(host, port);
+    if (!address) {
+        return std::unexpected{address.error()};
+    }
+    return connectNonBlocking(*address);
+}
+
+std::expected<TcpConnection, SocketError> TcpConnection::connectNonBlocking(const TcpAddress& address) {
+    return connectAddress(address, true);
 }
 
 TcpListener::TcpListener(TcpListener&& other) noexcept : handle_(other.handle_) { other.handle_ = -1; }
@@ -226,6 +422,8 @@ TcpListener& TcpListener::operator=(TcpListener&& other) noexcept {
 }
 
 TcpListener::~TcpListener() { close(); }
+
+std::expected<void, SocketError> TcpListener::setNonBlocking(bool enabled) { return nonBlocking(handle_, enabled); }
 
 void TcpListener::close() noexcept {
     // Closing the descriptor wakes a blocked accept() on macOS and Windows, but not on Linux: the
@@ -243,37 +441,44 @@ void TcpListener::close() noexcept {
 }
 
 std::expected<TcpListener, SocketError> TcpListener::bind(std::uint16_t port, int backlog) {
-    ensureSocketsInitialized();
+    const auto address = TcpAddress::literal("0.0.0.0", port);
+    if (!address) {
+        return std::unexpected{address.error()};
+    }
+    return bind(*address, backlog);
+}
 
-    const std::int64_t handle = createSocket();
-    if (handle < 0) {
+std::expected<TcpListener, SocketError> TcpListener::bind(const TcpAddress& address, int backlog, bool dualStack) {
+    ensureSocketsInitialized();
+    if (address.size_ == 0) {
+        return std::unexpected{SocketError{SocketError::Kind::InvalidAddress, 0}};
+    }
+    TcpListener listener{createSocket(address.family_)};
+    if (listener.handle_ < 0) {
         return std::unexpected{SocketError{SocketError::Kind::CreateFailed, lastSocketError()}};
     }
-
-    // Restarting the server should not have to wait out the previous socket's TIME_WAIT.
     const int reuse = 1;
-    ::setsockopt(asSocket(handle), SOL_SOCKET, SO_REUSEADDR, reinterpret_cast<const char*>(&reuse), sizeof(reuse));
-
-    sockaddr_in address{};
-    address.sin_family = AF_INET;
-    address.sin_port = htons(port);
-    address.sin_addr.s_addr = INADDR_ANY;
-
-    if (::bind(asSocket(handle), reinterpret_cast<const sockaddr*>(&address), sizeof(address)) != 0) {
-        const int error = lastSocketError();
-        closeHandle(handle);
-        return std::unexpected{SocketError{SocketError::Kind::BindFailed, error}};
+    ::setsockopt(asSocket(listener.handle_), SOL_SOCKET, SO_REUSEADDR, reinterpret_cast<const char*>(&reuse),
+                 sizeof(reuse));
+    if (address.family_ == AF_INET6) {
+        const int onlyV6 = dualStack ? 0 : 1;
+        if (::setsockopt(asSocket(listener.handle_), IPPROTO_IPV6, IPV6_V6ONLY, reinterpret_cast<const char*>(&onlyV6),
+                         sizeof(onlyV6)) != 0) {
+            return std::unexpected{SocketError{SocketError::Kind::ConfigureFailed, lastSocketError()}};
+        }
     }
-    if (::listen(asSocket(handle), backlog) != 0) {
-        const int error = lastSocketError();
-        closeHandle(handle);
-        return std::unexpected{SocketError{SocketError::Kind::ListenFailed, error}};
+    if (::bind(asSocket(listener.handle_), reinterpret_cast<const sockaddr*>(address.storage_.data()),
+               static_cast<socklen_type>(address.size_)) != 0) {
+        return std::unexpected{SocketError{SocketError::Kind::BindFailed, lastSocketError()}};
     }
-    return TcpListener{handle};
+    if (::listen(asSocket(listener.handle_), backlog) != 0) {
+        return std::unexpected{SocketError{SocketError::Kind::ListenFailed, lastSocketError()}};
+    }
+    return listener;
 }
 
 std::expected<TcpConnection, SocketError> TcpListener::accept() {
-    sockaddr_in peer{};
+    sockaddr_storage peer{};
     auto length = static_cast<socklen_type>(sizeof(peer));
     while (true) {
         const auto raw = ::accept(asSocket(handle_), reinterpret_cast<sockaddr*>(&peer), &length);
@@ -283,25 +488,34 @@ std::expected<TcpConnection, SocketError> TcpListener::accept() {
         const std::int64_t clientHandle = raw;
 #endif
         if (clientHandle >= 0) {
-            std::uint32_t address = 0;
-            std::memcpy(&address, &peer.sin_addr, sizeof(address));
-            return TcpConnection{clientHandle, formatIpv4(address)};
+            std::array<char, NI_MAXHOST> host{};
+            const int code = ::getnameinfo(reinterpret_cast<const sockaddr*>(&peer), length, host.data(),
+                                           static_cast<namelen_type>(host.size()), nullptr, 0, NI_NUMERICHOST);
+            if (code != 0) {
+                closeHandle(clientHandle);
+                return std::unexpected{SocketError{SocketError::Kind::AcceptFailed, code}};
+            }
+            return TcpConnection{clientHandle, std::string{host.data()}};
         }
         const int error = lastSocketError();
         if (errorIsInterrupt(error)) {
             continue;
         }
-        return std::unexpected{SocketError{SocketError::Kind::AcceptFailed, error}};
+        return std::unexpected{SocketError{
+            errorWouldBlock(error) ? SocketError::Kind::WouldBlock : SocketError::Kind::AcceptFailed, error}};
     }
 }
 
 std::expected<std::uint16_t, SocketError> TcpListener::localPort() const {
-    sockaddr_in address{};
+    sockaddr_storage address{};
     auto length = static_cast<socklen_type>(sizeof(address));
     if (::getsockname(asSocket(handle_), reinterpret_cast<sockaddr*>(&address), &length) != 0) {
         return std::unexpected{SocketError{SocketError::Kind::BindFailed, lastSocketError()}};
     }
-    return ntohs(address.sin_port);
+    if (address.ss_family == AF_INET6) {
+        return ntohs(reinterpret_cast<const sockaddr_in6*>(&address)->sin6_port);
+    }
+    return ntohs(reinterpret_cast<const sockaddr_in*>(&address)->sin_port);
 }
 
 } // namespace basalt::wire::io

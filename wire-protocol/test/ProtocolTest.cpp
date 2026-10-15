@@ -33,6 +33,7 @@
 
 #include <doctest.h>
 
+#include <array>
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -140,7 +141,7 @@ TEST_CASE("a collection length larger than the packet is refused") {
 TEST_CASE("uncompressed framing round trips") {
     const std::vector<std::uint8_t> packet = {0x00, 'h', 'i'};
     io::ByteBuffer wire;
-    packetFraming::writeUncompressed(wire, packet);
+    REQUIRE(packetFraming::writeUncompressed(wire, packet));
 
     io::ByteBuffer frame;
     const auto got = packetFraming::tryReadFrame(wire, false, frame);
@@ -152,7 +153,7 @@ TEST_CASE("uncompressed framing round trips") {
 TEST_CASE("a partial frame is left alone until the rest of it arrives") {
     const std::vector<std::uint8_t> packet(200, 0x42);
     io::ByteBuffer complete;
-    packetFraming::writeUncompressed(complete, packet);
+    REQUIRE(packetFraming::writeUncompressed(complete, packet));
     const std::vector<std::uint8_t> bytes = complete.toVector();
 
     io::ByteBuffer partial;
@@ -193,6 +194,54 @@ TEST_CASE("a frame claiming more than the protocol allows is refused") {
     varInt::write(wire, packetFraming::kMaxUncompressedSize + 1);
     io::ByteBuffer frame;
     CHECK(packetFraming::tryReadFrame(wire, false, frame).error() == FramingError::FrameTooBig);
+}
+
+TEST_CASE("a compressed length cannot consume bytes from the next frame") {
+    // First frame contains only an unterminated data-length VarInt. The next frame is valid.
+    io::ByteBuffer wire;
+    wire.writeBytes(std::array<std::uint8_t, 5>{1, 0x80, 2, 0, 0x42});
+    io::ByteBuffer frame;
+    const auto malformed = packetFraming::tryReadFrame(wire, true, frame);
+    REQUIRE_FALSE(malformed.has_value());
+    CHECK(wire.readerIndex() <= 2);
+    CHECK(frame.readableBytes() == 0);
+}
+
+TEST_CASE("a zero-length frame is refused") {
+    io::ByteBuffer wire;
+    wire.writeByte(0);
+    io::ByteBuffer frame;
+    CHECK_FALSE(packetFraming::tryReadFrame(wire, false, frame).has_value());
+}
+
+TEST_CASE("frame lengths cannot be encoded wider than twenty-one bits") {
+    io::ByteBuffer wire;
+    wire.writeBytes(std::array<std::uint8_t, 4>{0x81, 0x80, 0x80, 0});
+    wire.writeByte(0x42);
+    io::ByteBuffer frame;
+    CHECK_FALSE(packetFraming::tryReadFrame(wire, false, frame).has_value());
+}
+
+TEST_CASE("compressed packets validate the negotiated threshold and declared size") {
+    const std::vector<std::uint8_t> packet(200, 0x42);
+    io::ByteBuffer wire;
+    REQUIRE(packetFraming::writeCompressed(wire, packet, 0));
+    io::ByteBuffer frame;
+    const auto below = packetFraming::tryReadFrame(wire, true, frame, 256);
+    REQUIRE_FALSE(below.has_value());
+    CHECK(below.error() == FramingError::BelowCompressionThreshold);
+    CHECK(wire.readerIndex() == 0);
+    REQUIRE(*packetFraming::tryReadFrame(wire, true, frame, 0));
+    CHECK(frame.toVector() == packet);
+
+    // The compressed bytes really expand to 200, not the forged declared size of 201.
+    io::ByteBuffer forged;
+    REQUIRE(packetFraming::writeCompressed(forged, packet, 0));
+    forged.mutableSpan(0)[1] = 201;
+    const auto wrongSize = packetFraming::tryReadFrame(forged, true, frame, 0);
+    REQUIRE_FALSE(wrongSize.has_value());
+    CHECK(wrongSize.error() == FramingError::DecompressionFailed);
+    CHECK(frame.readableBytes() == 0);
 }
 
 TEST_CASE("BlockPos packs the way vanilla does") {
@@ -1837,4 +1886,21 @@ TEST_CASE("the advancement packets round-trip, positions after the telemetry fla
     REQUIRE(opened.has_value());
     CHECK(opened->action == SeenAdvancementsPacket::Action::OpenedTab);
     CHECK(opened->tab == "minecraft:adventure/root");
+}
+
+TEST_CASE("frame writers reject empty and oversized raw packets without changing queued frames") {
+    io::ByteBuffer output;
+    output.writeByte(0x42);
+    const std::vector<std::uint8_t> tooLarge(static_cast<std::size_t>(packetFraming::kMaxFrameSize) + 1, 1);
+    const auto raw = packetFraming::writeUncompressed(output, tooLarge);
+    REQUIRE_FALSE(raw);
+    CHECK(raw.error() == FramingError::FrameTooBig);
+    CHECK(output.toVector() == std::vector<std::uint8_t>{0x42});
+    const auto belowThreshold = packetFraming::writeCompressed(output, tooLarge, packetFraming::kMaxUncompressedSize);
+    REQUIRE_FALSE(belowThreshold);
+    CHECK(belowThreshold.error() == FramingError::FrameTooBig);
+    CHECK(output.toVector() == std::vector<std::uint8_t>{0x42});
+    CHECK_FALSE(packetFraming::writeUncompressed(output, {}));
+    CHECK_FALSE(packetFraming::writeCompressed(output, {}, 0));
+    CHECK(output.toVector() == std::vector<std::uint8_t>{0x42});
 }
