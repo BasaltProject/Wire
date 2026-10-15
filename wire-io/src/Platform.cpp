@@ -270,7 +270,7 @@ bool waitForInput(const std::chrono::milliseconds timeout) {
     watched.fd = STDIN_FILENO;
     watched.events = POLLIN;
     const int ready = ::poll(&watched, 1, static_cast<int>(timeout.count()));
-    return ready != 0;
+    return ready > 0;
 #endif
 }
 

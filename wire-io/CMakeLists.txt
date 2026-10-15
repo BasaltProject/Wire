@@ -3,6 +3,7 @@ basalt_module(wire-io
         src/BudgetMemoryResource.cpp
         src/Compression.cpp
         src/ConfigFiles.cpp
+        src/ConsoleInput.cpp
         src/DnsResolver.cpp
         src/EventLoop.cpp
         src/FileIO.cpp
@@ -29,6 +30,7 @@ basalt_test(wire-io-test
     SOURCES
         test/IoTest.cpp
         test/ConfigFilesTest.cpp
+        test/ConsoleInputTest.cpp
         test/DnsResolverTest.cpp
         test/ResourceBudgetTest.cpp
         test/BudgetMemoryResourceTest.cpp
