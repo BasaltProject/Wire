@@ -2,6 +2,7 @@
 #include <basalt/wire/io/ByteBuffer.hpp>
 #include <basalt/wire/protocol/ProtocolBuffer.hpp>
 
+#include <algorithm>
 #include <array>
 #include <basalt_mbedtls_threads.h>
 #include <cstdint>
@@ -15,12 +16,14 @@ namespace {
 constexpr std::size_t kSignatureLength = 32;
 constexpr std::int32_t kMaxNameLength = 16;
 
-std::array<std::uint8_t, kSignatureLength> hmac(std::string_view secret, std::span<const std::uint8_t> payload) {
+std::optional<std::array<std::uint8_t, kSignatureLength>> hmac(std::string_view secret,
+                                                               std::span<const std::uint8_t> payload) {
     std::array<std::uint8_t, kSignatureLength> tag{};
     basalt_mbedtls_threading_init();
     const mbedtls_md_info_t* info = mbedtls_md_info_from_type(MBEDTLS_MD_SHA256);
-    mbedtls_md_hmac(info, reinterpret_cast<const unsigned char*>(secret.data()), secret.size(), payload.data(),
-                    payload.size(), tag.data());
+    if (!info || mbedtls_md_hmac(info, reinterpret_cast<const unsigned char*>(secret.data()), secret.size(),
+                                 payload.data(), payload.size(), tag.data()) != 0)
+        return std::nullopt;
     return tag;
 }
 
@@ -84,7 +87,8 @@ ForwardingResult decode(std::span<const std::uint8_t> data, const ProxyForwardin
 
     const std::span<const std::uint8_t> signature = data.first(kSignatureLength);
     const std::span<const std::uint8_t> payload = data.subspan(kSignatureLength);
-    if (!sameTag(signature, hmac(forwarding.secret, payload))) {
+    const auto tag = hmac(forwarding.secret, payload);
+    if (!tag || !sameTag(signature, *tag)) {
         return std::string{"the forwarded payload is not signed with the configured secret"};
     }
     return readPayload(payload);
@@ -94,28 +98,50 @@ std::vector<std::uint8_t> sign(std::string_view secret, std::string_view address
                                std::string_view name, const std::vector<SessionProfileProperty>& properties,
                                std::int32_t version) {
     io::ByteBuffer buffer;
-    protocol::varInt::write(buffer, version);
-    protocol::writeString(buffer, address);
-    protocol::writeUuid(buffer, profileId);
-    protocol::writeString(buffer, name);
-    protocol::varInt::write(buffer, static_cast<std::int32_t>(properties.size()));
-    for (const SessionProfileProperty& property : properties) {
-        protocol::writeString(buffer, property.name);
-        protocol::writeString(buffer, property.value);
-        protocol::writeBoolean(buffer, property.signature.has_value());
-        if (property.signature) {
-            protocol::writeString(buffer, *property.signature);
-        }
+    if (!signInto(buffer, secret, address, profileId, name, properties, version))
+        return {};
+    return buffer.toVector();
+}
+
+std::expected<void, EncodeError> signInto(io::ByteBuffer& output, std::string_view secret, std::string_view address,
+                                          const common::Uuid& profileId, std::string_view name,
+                                          const std::vector<SessionProfileProperty>& properties, std::int32_t version) {
+    if (version != kVersionDefault && version != kVersionLazySession)
+        return std::unexpected(EncodeError::kUnsupportedVersion);
+    if (secret.empty() || address.empty() || address.size() > 64 || name.empty() || name.size() > 16 ||
+        properties.size() > 64)
+        return std::unexpected(EncodeError::kInvalidIdentity);
+    std::size_t strings = address.size() + name.size();
+    for (const auto& property : properties) {
+        if (property.name.size() > 256 || property.value.size() > 32768 ||
+            (property.signature && property.signature->size() > 8192))
+            return std::unexpected(EncodeError::kInvalidIdentity);
+        strings += property.name.size() + property.value.size() + (property.signature ? property.signature->size() : 0);
     }
-
-    const std::vector<std::uint8_t> payload = buffer.toVector();
-    const std::array<std::uint8_t, kSignatureLength> tag = hmac(secret, payload);
-
-    std::vector<std::uint8_t> out;
-    out.reserve(tag.size() + payload.size());
-    out.insert(out.end(), tag.begin(), tag.end());
-    out.insert(out.end(), payload.begin(), payload.end());
-    return out;
+    if (strings > 65536)
+        return std::unexpected(EncodeError::kInvalidIdentity);
+    const auto offset = output.writerIndex();
+    const std::array<std::uint8_t, kSignatureLength> blank{};
+    output.writeBytes(blank);
+    protocol::varInt::write(output, version);
+    protocol::writeString(output, address);
+    protocol::writeUuid(output, profileId);
+    protocol::writeString(output, name);
+    protocol::varInt::write(output, static_cast<std::int32_t>(properties.size()));
+    for (const auto& property : properties) {
+        protocol::writeString(output, property.name);
+        protocol::writeString(output, property.value);
+        protocol::writeBoolean(output, property.signature.has_value());
+        if (property.signature)
+            protocol::writeString(output, *property.signature);
+    }
+    const auto tag = hmac(secret, output.mutableSpan(offset).subspan(kSignatureLength));
+    if (!tag) {
+        output.trimTail(output.writerIndex() - offset);
+        return std::unexpected(EncodeError::kCryptoFailed);
+    }
+    std::copy(tag->begin(), tag->end(), output.mutableSpan(offset).begin());
+    return {};
 }
 
 } // namespace basalt::wire::auth::forwarding::velocity

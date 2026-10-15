@@ -23,4 +23,12 @@ namespace basalt::wire::auth::forwarding::legacy {
                                  const std::vector<SessionProfileProperty>& properties,
                                  std::string_view tokenProperty = {}, std::string_view token = {});
 
+/// Bounded producer for native handshakes. Rejects reserved token collisions and NUL injection.
+/// The result never exceeds maxBytes; no JSON object tree is materialized.
+[[nodiscard]] std::optional<std::string> encodeBounded(std::string_view host, std::string_view address,
+                                                       const common::Uuid& profileId,
+                                                       const std::vector<SessionProfileProperty>& properties,
+                                                       std::size_t maxBytes, std::string_view tokenProperty = {},
+                                                       std::string_view token = {});
+
 } // namespace basalt::wire::auth::forwarding::legacy

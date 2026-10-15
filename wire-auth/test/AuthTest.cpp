@@ -6,6 +6,7 @@
 #include <basalt/wire/auth/forwarding/LegacyForwarding.hpp>
 #include <basalt/wire/auth/forwarding/VelocityForwarding.hpp>
 #include <basalt/wire/common/Base64.hpp>
+#include <basalt/wire/io/ByteBuffer.hpp>
 
 #include <doctest.h>
 
@@ -281,4 +282,52 @@ TEST_CASE("profile authentication rejects oversized bodies and non-200 success s
     MojangSessionService service{[&](std::string_view) { return HttpsResponse{.status = 200, .body = large}; }};
     CHECK_FALSE(service.hasJoined("Steve", "hash", ""));
     CHECK_FALSE(mojangUuidOf("Steve", [&](std::string_view) { return HttpsResponse{.status = 200, .body = large}; }));
+}
+
+TEST_CASE("modern forwarding writes native v1/v4 into caller-owned storage") {
+    using namespace basalt::wire::auth::forwarding;
+    const auto id = basalt::wire::common::Uuid::offlinePlayer("Steve");
+    ProxyForwarding config{.mode = ForwardingMode::Velocity, .secret = "fixture-secret"};
+    for (const auto version : {1, 4}) {
+        basalt::wire::io::ByteBuffer output{131072};
+        output.writeByte(42);
+        REQUIRE(velocity::signInto(output, config.secret, "127.0.0.1", id, "Steve", {}, version));
+        CHECK(output.readByte() == 42);
+        CHECK(velocity::decode(output.readable(), config).index() == 0);
+        CHECK(output.capacity() == 131072);
+    }
+    basalt::wire::io::ByteBuffer output;
+    CHECK_FALSE(velocity::signInto(output, "", "127.0.0.1", id, "Steve", {}, 4));
+    CHECK_FALSE(velocity::signInto(output, config.secret, "127.0.0.1", id, "Steve", {}, 2));
+    CHECK(output.readableBytes() == 0);
+}
+
+TEST_CASE("bounded legacy producer escapes fields and rejects oversized or ambiguous handshakes") {
+    using namespace basalt::wire::auth::forwarding;
+    const auto id = basalt::wire::common::Uuid::offlinePlayer("Tester");
+    const std::vector<SessionProfileProperty> properties{{"textures", "quote\" slash\\ newline\n", "signed"}};
+    const auto encoded = legacy::encodeBounded("example.org", "127.0.0.1", id, properties, 32767,
+                                               ProxyForwarding::kBungeeGuardProperty, "secret");
+    REQUIRE(encoded);
+    const auto result = legacy::decode(*encoded, {ForwardingMode::BungeeGuard, "", {"secret"}, ""});
+    REQUIRE(accepted(result));
+    CHECK(std::get<ForwardedLogin>(result).properties == properties);
+    CHECK(legacy::encodeBounded("example.org", "127.0.0.1", id, properties, encoded->size(),
+                                ProxyForwarding::kBungeeGuardProperty, "secret") == encoded);
+    CHECK_FALSE(legacy::encodeBounded("example.org", "127.0.0.1", id, properties, encoded->size() - 1,
+                                      ProxyForwarding::kBungeeGuardProperty, "secret"));
+    CHECK_FALSE(legacy::encodeBounded(std::string_view{"x\0injected", 10}, "127.0.0.1", id, {}, 32767));
+    CHECK_FALSE(legacy::encodeBounded("example.org", "127.0.0.1", id, {{"bungeeguard-token", "attacker", std::nullopt}},
+                                      32767, ProxyForwarding::kBungeeGuardProperty, "secret"));
+    CHECK_FALSE(legacy::encodeBounded("example.org", "127.0.0.1", id, properties, 32767, "token", ""));
+    const auto plain = legacy::encodeBounded("example.org", "127.0.0.1", id, {}, 32767);
+    REQUIRE(plain);
+    std::string expected = "example.org";
+    expected.push_back('\0');
+    expected += "127.0.0.1";
+    expected.push_back('\0');
+    expected += "f3d28cb072253cb1baeb2dadd2be89ae";
+    expected.push_back('\0');
+    expected += "[]";
+    CHECK(*plain == expected);
 }
