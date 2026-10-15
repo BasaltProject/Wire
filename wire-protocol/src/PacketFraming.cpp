@@ -2,6 +2,8 @@
 #include <basalt/wire/protocol/PacketFraming.hpp>
 #include <basalt/wire/protocol/VarInt.hpp>
 
+#include <algorithm>
+#include <array>
 #include <cstdint>
 #include <cstring>
 
@@ -35,6 +37,50 @@ std::expected<std::optional<PeekedVarInt>, FramingError> peekVarInt(std::span<co
 }
 
 } // namespace
+
+std::expected<std::optional<FrameSizeHint>, FramingError> inspectFrame(std::span<const std::uint8_t> bytes,
+                                                                       bool compressed, std::size_t maxPacketBytes,
+                                                                       std::optional<std::int32_t> threshold) {
+    const auto outer = peekVarInt(bytes, 3);
+    if (!outer)
+        return std::unexpected(outer.error());
+    if (!*outer)
+        return std::optional<FrameSizeHint>{};
+    const auto header = **outer;
+    if (header.value == 0)
+        return std::unexpected(FramingError::EmptyFrame);
+    const auto length = static_cast<std::size_t>(header.value);
+    FrameSizeHint hint{header.byteLength + length, std::nullopt, bytes.size() - header.byteLength >= length};
+    if (!compressed) {
+        hint.packetBytes = length;
+    } else {
+        const auto body = bytes.subspan(header.byteLength).first(std::min(length, bytes.size() - header.byteLength));
+        const auto data = peekVarInt(body, varInt::kMaxBytes);
+        if (!data)
+            return std::unexpected(data.error());
+        if (!*data) {
+            if (hint.complete)
+                return std::unexpected(FramingError::MalformedVarInt);
+            return std::optional{hint};
+        }
+        const auto expanded = **data;
+        if (expanded.value < 0)
+            return std::unexpected(FramingError::NegativeLength);
+        if (expanded.value > kMaxUncompressedSize)
+            return std::unexpected(FramingError::FrameTooBig);
+        if (length == expanded.byteLength)
+            return std::unexpected(FramingError::EmptyFrame);
+        if (expanded.value > 0 && threshold && expanded.value < *threshold)
+            return std::unexpected(FramingError::BelowCompressionThreshold);
+        hint.packetBytes =
+            expanded.value == 0 ? length - expanded.byteLength : static_cast<std::size_t>(expanded.value);
+    }
+    if (hint.packetBytes && *hint.packetBytes == 0)
+        return std::unexpected(FramingError::EmptyFrame);
+    if (hint.packetBytes && *hint.packetBytes > maxPacketBytes)
+        return std::unexpected(FramingError::FrameTooBig);
+    return std::optional{hint};
+}
 
 std::expected<void, FramingError> writeUncompressed(io::ByteBuffer& output,
                                                     std::span<const std::uint8_t> packetIdAndData) {
@@ -89,9 +135,17 @@ std::expected<void, FramingError> writeCompressed(io::ByteBuffer& output, std::s
         output.trimTail(output.writerIndex() - lengthAt);
         return std::unexpected{FramingError::FrameTooBig};
     }
-    io::ByteBuffer header{varInt::kMaxBytes};
-    varInt::write(header, bodyLength);
-    const std::span<const std::uint8_t> headerBytes = header.readable();
+    std::array<std::uint8_t, varInt::kMaxBytes> header{};
+    std::size_t headerLength = 0;
+    auto remaining = static_cast<std::uint32_t>(bodyLength);
+    do {
+        auto byte = static_cast<std::uint8_t>(remaining & 0x7fU);
+        remaining >>= 7;
+        if (remaining != 0)
+            byte |= 0x80U;
+        header[headerLength++] = byte;
+    } while (remaining != 0);
+    const std::span<const std::uint8_t> headerBytes{header.data(), headerLength};
 
     // The reserved run is five bytes wide and the real length may be shorter, so the body slides
     // back over the unused slack.

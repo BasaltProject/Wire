@@ -1904,3 +1904,35 @@ TEST_CASE("frame writers reject empty and oversized raw packets without changing
     CHECK_FALSE(packetFraming::writeCompressed(output, {}, 0));
     CHECK(output.toVector() == std::vector<std::uint8_t>{0x42});
 }
+
+TEST_CASE("frame inspection bounds declarations before body buffering or inflation") {
+    using packetFraming::inspectFrame;
+    const std::array<std::uint8_t, 1> partial{0x80};
+    auto absent = inspectFrame(partial, false);
+    REQUIRE(absent);
+    CHECK_FALSE(*absent);
+    const std::array<std::uint8_t, 2> raw{0x81, 0x08};
+    auto hint = inspectFrame(raw, false);
+    REQUIRE(hint);
+    REQUIRE(*hint);
+    CHECK((**hint).frameBytes == 1027);
+    CHECK((**hint).packetBytes == 1025);
+    CHECK_FALSE((**hint).complete);
+    CHECK(inspectFrame(raw, false, 1024).error() == FramingError::FrameTooBig);
+    const std::array<std::uint8_t, 4> expanded{4, 0x80, 0x80, 0x40};
+    CHECK(inspectFrame(expanded, true, 1024).error() == FramingError::FrameTooBig);
+    const std::array<std::uint8_t, 4> borrowing{1, 0x80, 1, 0};
+    CHECK(inspectFrame(borrowing, true).error() == FramingError::MalformedVarInt);
+    const std::array<std::uint8_t, 2> empty{1, 0};
+    CHECK(inspectFrame(empty, true).error() == FramingError::EmptyFrame);
+    const std::array<std::uint8_t, 2> noCompressedBody{1, 8};
+    CHECK(inspectFrame(noCompressedBody, true).error() == FramingError::EmptyFrame);
+    const std::array<std::uint8_t, 3> below{2, 8, 0};
+    CHECK(inspectFrame(below, true, 1024, 256).error() == FramingError::BelowCompressionThreshold);
+    const std::array<std::uint8_t, 2> awaitingData{3, 0x80};
+    auto incomplete = inspectFrame(awaitingData, true);
+    REQUIRE(incomplete);
+    REQUIRE(*incomplete);
+    CHECK_FALSE((**incomplete).packetBytes);
+    CHECK_FALSE((**incomplete).complete);
+}
