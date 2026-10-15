@@ -15,6 +15,7 @@
 #include <basalt/wire/multiversion/java/Link755.hpp>
 #include <basalt/wire/multiversion/java/Link756.hpp>
 #include <basalt/wire/multiversion/java/Link757.hpp>
+#include <basalt/wire/multiversion/java/Link755Up.hpp>
 #include <basalt/wire/multiversion/java/Link756Up.hpp>
 #include <basalt/wire/multiversion/java/Link757Up.hpp>
 #include <basalt/wire/multiversion/java/Link758.hpp>
@@ -232,7 +233,7 @@ std::unique_ptr<ProtocolLink> climbing(const VersionTables& upward, std::int32_t
     }
 }
 
-constexpr std::array<UpEntry, 21> kUpLinks = {{
+constexpr std::array<UpEntry, 22> kUpLinks = {{
     {protocolVersions::kV26_2, &tables776, &climbing<Link776Up>},
     {protocolVersions::kV26_1, &tables775, &climbing<Link775Up>},
     {protocolVersions::kV1_21_11, &tables774, &climbing<Link774Up>},
@@ -254,6 +255,7 @@ constexpr std::array<UpEntry, 21> kUpLinks = {{
     {protocolVersions::kV1_18_2, &tables758, &climbing<Link758Up>},
     {protocolVersions::kV1_18, &tables757, &climbing<Link757Up>},
     {protocolVersions::kV1_17_1, &tables756, &climbing<Link756Up>},
+    {protocolVersions::kV1_17, &tables755, &climbing<Link755Up>},
 }};
 
 class UpChain final : public JavaChain {
