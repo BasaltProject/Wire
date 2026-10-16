@@ -73,7 +73,7 @@ TEST_CASE("the legacy handshake carries a profile, and its token is checked and 
     const basalt::wire::common::Uuid id = basalt::wire::common::Uuid::offlinePlayer("Steve");
     const std::vector<SessionProfileProperty> properties = {{"textures", "base64", std::string{"signature"}}};
 
-    ProxyForwarding plain{ForwardingMode::BungeeCord, "", {}, ""};
+    ProxyForwarding plain{ForwardingMode::BungeeCord, "", {}, "", {}, ""};
     const std::string host = legacy::encode("play.basaltmc.org", "203.0.113.5", id, properties);
     const ForwardingResult result = legacy::decode(host, plain);
     REQUIRE(accepted(result));
@@ -83,7 +83,7 @@ TEST_CASE("the legacy handshake carries a profile, and its token is checked and 
     CHECK(login.profileId == id);
     CHECK(login.properties == properties);
 
-    ProxyForwarding guarded{ForwardingMode::BungeeGuard, "", {"correct-token"}, ""};
+    ProxyForwarding guarded{ForwardingMode::BungeeGuard, "", {"correct-token"}, "", {}, ""};
     const std::string guardedHost = legacy::encode("play.basaltmc.org", "203.0.113.5", id, properties,
                                                    ProxyForwarding::kBungeeGuardProperty, "correct-token");
     const ForwardingResult guardedResult = legacy::decode(guardedHost, guarded);
@@ -100,7 +100,7 @@ TEST_CASE("velocity forwarding refuses anything it did not sign") {
     using namespace basalt::wire::auth;
     using namespace basalt::wire::auth::forwarding;
 
-    const ProxyForwarding forwarding{ForwardingMode::Velocity, "the-shared-secret", {}, ""};
+    const ProxyForwarding forwarding{ForwardingMode::Velocity, "the-shared-secret", {}, "", {}, ""};
     const basalt::wire::common::Uuid id = basalt::wire::common::Uuid::offlinePlayer("Steve");
     const std::vector<SessionProfileProperty> properties = {{"textures", "base64", std::nullopt}};
 
@@ -116,7 +116,7 @@ TEST_CASE("velocity forwarding refuses anything it did not sign") {
     payload.back() ^= 0x01;
     CHECK_FALSE(accepted(velocity::decode(payload, forwarding)));
 
-    const ProxyForwarding other{ForwardingMode::Velocity, "a-different-secret", {}, ""};
+    const ProxyForwarding other{ForwardingMode::Velocity, "a-different-secret", {}, "", {}, ""};
     CHECK_FALSE(accepted(velocity::decode(velocity::sign(forwarding.secret, "1.2.3.4", id, "Steve", {}), other)));
 
     CHECK(velocity::request() == std::vector<std::uint8_t>{velocity::kMaxSupportedVersion});
