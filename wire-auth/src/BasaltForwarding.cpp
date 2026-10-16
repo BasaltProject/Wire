@@ -181,8 +181,7 @@ std::optional<Request> decodeRequest(std::span<const std::uint8_t> data) {
     const std::span<const std::uint8_t> challenge = in.readSpan(kChallengeSize);
     request.backendId = protocol::readString(in, static_cast<std::int32_t>(kMaxIdLength));
     request.capabilities = static_cast<std::uint32_t>(protocol::varInt::read(in));
-    if (in.failed() || in.readableBytes() != 0 || request.versionMin > request.versionMax ||
-        request.backendId.empty())
+    if (in.failed() || in.readableBytes() != 0 || request.versionMin > request.versionMax || request.backendId.empty())
         return std::nullopt;
     request.capabilities &= kKnownCapabilities;
     std::copy(challenge.begin(), challenge.end(), request.challenge.begin());
@@ -192,8 +191,7 @@ std::optional<Request> decodeRequest(std::span<const std::uint8_t> data) {
 std::vector<std::uint8_t> sign(const SigningKey& key, const Request& request, std::uint8_t version,
                                const Identity& identity) {
     if (version < request.versionMin || version > request.versionMax || version != kVersion1 ||
-        request.backendId.empty() || !withinLimits(identity) ||
-        (identity.capabilities & ~request.capabilities) != 0)
+        request.backendId.empty() || !withinLimits(identity) || (identity.capabilities & ~request.capabilities) != 0)
         return {};
     const std::string id = keyId(key.publicKey());
     if (id.empty())

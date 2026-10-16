@@ -33,6 +33,7 @@ constexpr short kPeerClosedEvent = POLLRDHUP;
 constexpr short kPeerClosedEvent = 0;
 #endif
 } // namespace
+
 namespace {
 int lastError() {
 #if defined(_WIN32)

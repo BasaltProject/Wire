@@ -43,6 +43,7 @@ public:
     [[nodiscard]] static SigningKey fromSeed(std::span<const std::uint8_t, 32> seed);
 
     [[nodiscard]] std::span<const std::uint8_t, 32> seed() const noexcept;
+
     [[nodiscard]] const PublicKey& publicKey() const noexcept { return public_; }
 
     [[nodiscard]] std::array<std::uint8_t, kSignatureSize> signature(std::span<const std::uint8_t> message) const;
