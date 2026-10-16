@@ -1,5 +1,6 @@
 basalt_module(wire-auth
     SOURCES
+        src/BasaltForwarding.cpp
         src/Cfb8Cipher.cpp
         src/HttpsClient.cpp
         src/MojangSessionService.cpp
@@ -11,7 +12,7 @@ basalt_module(wire-auth
         src/SignatureValidator.cpp
         src/VelocityForwarding.cpp
     DEPENDS basalt::wire-common basalt::wire-io basalt::wire-protocol
-    PRIVATE_DEPENDS basalt::mbedtls
+    PRIVATE_DEPENDS basalt::mbedtls basalt::monocypher
 )
 
 if(BASALT_BUILD_TESTS)
@@ -31,6 +32,7 @@ endif()
 basalt_test(wire-auth-test
     SOURCES
         test/AuthTest.cpp
+        test/BasaltForwardingTest.cpp
         test/LoginAuthenticationTest.cpp
         test/HttpsResponseTest.cpp
         test/HttpsTransportTest.cpp
