@@ -473,6 +473,25 @@ TEST_CASE("a bedrock client gets from its first packet to the world") {
     CHECK(readVarUInt(reader) == 0);
 }
 
+TEST_CASE("a form with fields lists each control with its default") {
+    std::vector<FormControl> controls(3);
+    controls[0].kind = FormControl::Kind::Input;
+    controls[0].text = "Name";
+    controls[0].initialText = "Steve";
+    controls[1].kind = FormControl::Kind::Slider;
+    controls[1].text = "Volume";
+    controls[1].max = 10.0;
+    controls[1].step = 2.0;
+    controls[2].kind = FormControl::Kind::Dropdown;
+    controls[2].text = "Mode";
+    controls[2].options = {"a", "b"};
+    controls[2].initialIndex = 1;
+    CHECK(customFormJson("Title", controls) ==
+          R"({"type":"custom_form","title":"Title","content":[{"text":"Name","type":"input","placeholder":"",)"
+          R"("default":"Steve"},{"text":"Volume","type":"slider","min":0,"max":10,"step":2,"default":0},)"
+          R"({"text":"Mode","type":"dropdown","options":["a","b"],"default":1}]})");
+}
+
 TEST_CASE("a form goes out as json and its answer comes back as a number") {
     const std::vector<std::string> buttons{"First button", "Second button"};
     const std::string json = simpleFormJson("Test Menu", "", buttons);

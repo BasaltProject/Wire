@@ -12,6 +12,7 @@
 #include <string_view>
 #include <utility>
 #include <vector>
+#include <vector>
 
 namespace basalt::wire::bedrock {
 
@@ -209,6 +210,26 @@ struct ModalFormResponse {
 
 [[nodiscard]] std::string simpleFormJson(std::string_view title, std::string_view content,
                                          std::span<const std::string> buttons);
+
+/// One line of a form with fields; what `kind` uses of the rest is named in `customFormJson`.
+struct FormControl {
+    enum class Kind : std::uint8_t { Label, Input, Toggle, Slider, Dropdown };
+    Kind kind = Kind::Label;
+    std::string text;
+    std::string placeholder;
+    std::string initialText;
+    bool initialToggle = false;
+    double min = 0.0;
+    double max = 1.0;
+    double step = 0.0;
+    double initialNumber = 0.0;
+    std::vector<std::string> options;
+    std::int32_t initialIndex = 0;
+};
+
+/// A form with fields and a single submit; a label answers null, an input a string, a toggle a boolean, a slider a
+/// number and a dropdown the index of the option.
+[[nodiscard]] std::string customFormJson(std::string_view title, std::span<const FormControl> controls);
 
 /// Only the five that carry a position are worth naming here; the rest arrive as their number and are ignored.
 enum class BedrockBlockActionType : std::int32_t {
