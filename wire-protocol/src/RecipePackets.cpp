@@ -232,6 +232,36 @@ std::optional<RecipeBookRemovePacket> RecipeBookRemovePacket::read(io::ByteBuffe
     return buffer.failed() ? std::nullopt : std::optional{std::move(packet)};
 }
 
+void PlaceRecipePacket::write(io::ByteBuffer& buffer) const {
+    varInt::write(buffer, containerId);
+    varInt::write(buffer, recipeId);
+    buffer.writeByte(useMaxItems ? 1 : 0);
+}
+
+std::optional<PlaceRecipePacket> PlaceRecipePacket::read(io::ByteBuffer& buffer) {
+    PlaceRecipePacket packet;
+    packet.containerId = varInt::read(buffer);
+    packet.recipeId = varInt::read(buffer);
+    packet.useMaxItems = readBoolean(buffer);
+    return buffer.failed() ? std::nullopt : std::optional{packet};
+}
+
+void PlaceGhostRecipePacket::write(io::ByteBuffer& buffer) const {
+    varInt::write(buffer, containerId);
+    display.write(buffer);
+}
+
+std::optional<PlaceGhostRecipePacket> PlaceGhostRecipePacket::read(io::ByteBuffer& buffer) {
+    PlaceGhostRecipePacket packet;
+    packet.containerId = varInt::read(buffer);
+    std::optional<RecipeDisplay> display = RecipeDisplay::read(buffer);
+    if (!display.has_value() || buffer.failed()) {
+        return std::nullopt;
+    }
+    packet.display = std::move(*display);
+    return packet;
+}
+
 void UpdateRecipesPacket::write(io::ByteBuffer& buffer) const {
     varInt::write(buffer, static_cast<std::int32_t>(propertySets.size()));
     for (const ItemPropertySet& set : propertySets) {

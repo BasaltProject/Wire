@@ -108,6 +108,28 @@ struct TagsPacket {
     friend bool operator==(const TagsPacket&, const TagsPacket&) = default;
 };
 
+/// parity: `ServerLinks.KnownLinkType`, by id.
+inline constexpr std::int32_t kBugReportLinkType = 0;
+
+struct ServerLink {
+    std::int32_t knownType = kBugReportLinkType;
+    std::string link;
+
+    friend bool operator==(const ServerLink&, const ServerLink&) = default;
+};
+
+/// Clientbound, id 0x11: links the client lists in its pause menu, each by a known type.
+struct ServerLinksPacket {
+    static constexpr std::int32_t kId = 0x11;
+
+    std::vector<ServerLink> links;
+
+    void write(io::ByteBuffer& buffer) const;
+    [[nodiscard]] static std::optional<ServerLinksPacket> read(io::ByteBuffer& buffer);
+
+    friend bool operator==(const ServerLinksPacket&, const ServerLinksPacket&) = default;
+};
+
 inline constexpr std::int32_t kFinishConfigurationId = 3;
 
 struct KeepAlivePacket {

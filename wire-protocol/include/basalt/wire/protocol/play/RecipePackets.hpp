@@ -119,6 +119,33 @@ struct RecipeBookAddPacket {
     friend bool operator==(const RecipeBookAddPacket&, const RecipeBookAddPacket&) = default;
 };
 
+/// Serverbound, id 0x27: the recipe book asking to fill the open crafting grid.
+struct PlaceRecipePacket {
+    static constexpr std::int32_t kId = 0x27;
+
+    std::int32_t containerId = 0;
+    std::int32_t recipeId = 0;
+    bool useMaxItems = false;
+
+    void write(io::ByteBuffer& buffer) const;
+    [[nodiscard]] static std::optional<PlaceRecipePacket> read(io::ByteBuffer& buffer);
+
+    friend bool operator==(const PlaceRecipePacket&, const PlaceRecipePacket&) = default;
+};
+
+/// Clientbound, id 0x40: shows the recipe as ghost items when the ingredients are missing.
+struct PlaceGhostRecipePacket {
+    static constexpr std::int32_t kId = 0x40;
+
+    std::int32_t containerId = 0;
+    RecipeDisplay display;
+
+    void write(io::ByteBuffer& buffer) const;
+    [[nodiscard]] static std::optional<PlaceGhostRecipePacket> read(io::ByteBuffer& buffer);
+
+    friend bool operator==(const PlaceGhostRecipePacket&, const PlaceGhostRecipePacket&) = default;
+};
+
 struct RecipeBookRemovePacket {
     static constexpr std::int32_t kId = 0x4c;
 
