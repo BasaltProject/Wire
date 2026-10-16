@@ -310,11 +310,27 @@ struct ShowDialogPacket {
     static constexpr std::int32_t kId = 0x8f;
 
     std::int32_t dialogId = 0;
+    /// Sent instead of a registry id when set: the dialog written out in full, as a plugin builds one.
+    std::optional<nbt::NbtCompound> inlineDialog;
 
     void write(io::ByteBuffer& buffer) const;
     [[nodiscard]] static std::optional<ShowDialogPacket> read(io::ByteBuffer& buffer);
 
     friend bool operator==(const ShowDialogPacket&, const ShowDialogPacket&) = default;
+};
+
+/// What a `dynamic/custom` dialog button sends back: the id it was given and the inputs it held.
+struct ServerboundCustomClickActionPacket {
+    static constexpr std::int32_t kId = 0x44;
+
+    std::string id;
+    std::optional<nbt::NbtTag> payload;
+
+    void write(io::ByteBuffer& buffer) const;
+    [[nodiscard]] static std::optional<ServerboundCustomClickActionPacket> read(io::ByteBuffer& buffer);
+
+    friend bool operator==(const ServerboundCustomClickActionPacket&,
+                           const ServerboundCustomClickActionPacket&) = default;
 };
 
 inline constexpr std::int32_t kClearDialogId = 0x8e;
