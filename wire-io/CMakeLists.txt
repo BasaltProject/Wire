@@ -16,6 +16,7 @@ basalt_module(wire-io
         src/WorkerPool.cpp
         src/UdpSocket.cpp
         src/ZipReader.cpp
+        src/ZipWriter.cpp
         src/Zstd.cpp
     DEPENDS basalt::wire-common
     PRIVATE_DEPENDS basalt::zlib basalt::zstd basalt::cares
