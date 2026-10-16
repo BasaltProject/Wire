@@ -97,6 +97,7 @@ basalt_module(wire-multiversion
         src/java/Link776.cpp
         src/java/LongMaskLight.cpp
         src/java/LoginFields.cpp
+        src/java/LoginRewriter.cpp
         src/java/EntityDataIndexes.cpp
         src/java/EntityDataRewriter.cpp
         src/java/EntityDataTypes.cpp

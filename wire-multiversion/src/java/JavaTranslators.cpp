@@ -2,6 +2,7 @@
 #include <basalt/wire/multiversion/java/ContentRewriter.hpp>
 #include <basalt/wire/multiversion/java/JavaTranslators.hpp>
 #include <basalt/wire/multiversion/java/Link107.hpp>
+#include <basalt/wire/multiversion/java/LoginRewriter.hpp>
 #include <basalt/wire/multiversion/java/Link109.hpp>
 #include <basalt/wire/multiversion/java/Link110.hpp>
 #include <basalt/wire/multiversion/java/Link210.hpp>
@@ -173,6 +174,7 @@ public:
         }
         composed_ = std::make_unique<ComposedTables>(tables);
         content_ = std::make_unique<ContentRewriter>(*composed_, labels, protocol, std::move(versions));
+        login_ = std::make_unique<LoginRewriter>(protocol);
         links_.reserve(used.size());
         std::vector<std::reference_wrapper<ProtocolLink>> refs;
         refs.reserve(used.size());
@@ -180,7 +182,7 @@ public:
             links_.push_back(entry.make(entry.tables(), *composed_));
             refs.emplace_back(*links_.back());
         }
-        chain_ = std::make_unique<ProtocolChain>(std::move(refs), content_.get());
+        chain_ = std::make_unique<ProtocolChain>(std::move(refs), content_.get(), login_.get());
     }
 
     [[nodiscard]] const ProtocolChain& chain() const override { return *chain_; }
@@ -188,6 +190,7 @@ public:
 private:
     std::unique_ptr<ComposedTables> composed_;
     std::unique_ptr<ContentRewriter> content_;
+    std::unique_ptr<LoginRewriter> login_;
     std::vector<std::unique_ptr<ProtocolLink>> links_;
     std::unique_ptr<ProtocolChain> chain_;
 };

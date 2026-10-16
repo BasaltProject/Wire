@@ -86,9 +86,11 @@ class ProtocolChain {
 public:
     using Emit = std::function<void(std::int32_t, std::span<const std::uint8_t>)>;
 
+    /// `content` works on the server's side of the links; `tail` on the client's, after them going out and before them
+    /// coming in.
     explicit ProtocolChain(std::vector<std::reference_wrapper<ProtocolLink>> links,
-                           PacketContentRewriter* content = nullptr)
-        : links_(std::move(links)), content_(content) {}
+                           PacketContentRewriter* content = nullptr, PacketContentRewriter* tail = nullptr)
+        : links_(std::move(links)), content_(content), tail_(tail) {}
 
     [[nodiscard]] bool empty() const noexcept { return links_.empty(); }
 
@@ -113,6 +115,7 @@ public:
 private:
     std::vector<std::reference_wrapper<ProtocolLink>> links_;
     PacketContentRewriter* content_;
+    PacketContentRewriter* tail_;
 };
 
 } // namespace basalt::wire::multiversion
