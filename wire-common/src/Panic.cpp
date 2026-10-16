@@ -131,8 +131,10 @@ void sayThread() {
     switch (number) {
     case SIGSEGV:
         return "SIGSEGV: a read or write through a pointer that does not point anywhere";
+#if defined(SIGBUS)
     case SIGBUS:
         return "SIGBUS: a read or write the machine cannot do at that address";
+#endif
     case SIGILL:
         return "SIGILL: an instruction the machine does not have";
     case SIGFPE:
@@ -213,7 +215,12 @@ void install(std::string name, std::string version, std::string reportUrl) {
     productName = std::move(name);
     productVersion = std::move(version);
     reportAt = std::move(reportUrl);
-    for (const int number : {SIGSEGV, SIGBUS, SIGILL, SIGFPE, SIGABRT}) {
+    constexpr int kFatalSignals[] = {SIGSEGV,
+#if defined(SIGBUS)
+                                     SIGBUS,
+#endif
+                                     SIGILL, SIGFPE, SIGABRT};
+    for (const int number : kFatalSignals) {
 #if defined(__APPLE__) || defined(__linux__)
         struct sigaction action{};
         action.sa_sigaction = onSignal;

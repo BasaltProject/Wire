@@ -286,4 +286,56 @@ void ProtocolChain::serverbound(protocol::ProtocolState state, std::int32_t id, 
     }
 }
 
+std::int32_t ProtocolChain::clientboundIdToNative(protocol::ProtocolState state, std::int32_t id) const {
+    std::int32_t current = id;
+    for (auto link = links_.rbegin(); link != links_.rend(); ++link) {
+        const std::int32_t mapped = link->get().packets().clientboundToNative(state, current);
+        if (mapped == PacketIdMap::kDropped) {
+            return kOpaqueBase + id;
+        }
+        current = mapped;
+    }
+    return current;
+}
+
+std::int32_t ProtocolChain::clientboundIdFromNative(protocol::ProtocolState state, std::int32_t id) const {
+    if (id >= kOpaqueBase) {
+        return id - kOpaqueBase;
+    }
+    std::int32_t current = id;
+    for (const ProtocolLink& link : links_) {
+        current = link.packets().toOlder(state, current);
+        if (current == PacketIdMap::kDropped) {
+            return PacketIdMap::kDropped;
+        }
+    }
+    return current;
+}
+
+std::int32_t ProtocolChain::serverboundIdToNative(protocol::ProtocolState state, std::int32_t id) const {
+    std::int32_t current = id;
+    for (auto link = links_.rbegin(); link != links_.rend(); ++link) {
+        const std::int32_t mapped = link->get().packets().toNative(state, current);
+        if (mapped == PacketIdMap::kDropped) {
+            return kOpaqueBase + id;
+        }
+        current = mapped;
+    }
+    return current;
+}
+
+std::int32_t ProtocolChain::serverboundIdFromNative(protocol::ProtocolState state, std::int32_t id) const {
+    if (id >= kOpaqueBase) {
+        return id - kOpaqueBase;
+    }
+    std::int32_t current = id;
+    for (const ProtocolLink& link : links_) {
+        current = link.packets().serverboundToOlder(state, current);
+        if (current == PacketIdMap::kDropped) {
+            return PacketIdMap::kDropped;
+        }
+    }
+    return current;
+}
+
 } // namespace basalt::wire::multiversion

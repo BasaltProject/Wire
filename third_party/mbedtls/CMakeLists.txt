@@ -23,6 +23,8 @@ target_include_directories(basalt_mbedtls SYSTEM PUBLIC ${CMAKE_CURRENT_SOURCE_D
 target_compile_definitions(basalt_mbedtls PUBLIC MBEDTLS_THREADING_C)
 if(WIN32)
     target_compile_definitions(basalt_mbedtls PUBLIC MBEDTLS_THREADING_ALT WIN32_LEAN_AND_MEAN NOMINMAX)
+    # The platform entropy source is BCryptGenRandom.
+    target_link_libraries(basalt_mbedtls PUBLIC bcrypt)
 else()
     find_package(Threads REQUIRED)
     target_compile_definitions(basalt_mbedtls PUBLIC MBEDTLS_THREADING_PTHREAD)

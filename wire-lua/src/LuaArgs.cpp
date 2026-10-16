@@ -129,6 +129,13 @@ void LuaArgs::raise(std::string_view message) const {
     std::abort();
 }
 
+std::int32_t LuaArgs::fail(std::string_view message) const {
+    luaL_where(state_, 1);
+    lua_pushlstring(state_, message.data(), message.size());
+    lua_concat(state_, 2);
+    return kFailed;
+}
+
 void LuaArgs::setMetatable(std::int32_t index) { lua_setmetatable(state_, index); }
 
 void LuaArgs::setGlobal(std::string_view name) { lua_setglobal(state_, std::string{name}.c_str()); }

@@ -23,6 +23,7 @@ basalt_module(wire-protocol
         src/ParticleOptions.cpp
         src/AdvancementPackets.cpp
         src/RecipePackets.cpp
+        src/SessionEnvelope.cpp
         src/SimplePackets.cpp
         src/StatusPackets.cpp
         src/UiPackets.cpp

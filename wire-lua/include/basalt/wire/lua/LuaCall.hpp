@@ -24,6 +24,9 @@ public:
 
     using Arrange = std::function<void(Resume)>;
 
+    /// Like Arrange, but sees the arguments the script waited with.
+    using ArrangeWith = std::function<void(LuaArgs&, Resume)>;
+
     LuaCall(const LuaCall&) = delete;
     LuaCall& operator=(const LuaCall&) = delete;
     ~LuaCall();
@@ -53,6 +56,8 @@ private:
 void installHostFunction(LuaSandbox& sandbox, const std::string& name, std::function<std::int32_t(LuaArgs&)> body);
 
 void installWaitingFunction(LuaSandbox& sandbox, const std::string& name, LuaCall::Arrange arrange);
+
+void installWaitingFunction(LuaSandbox& sandbox, const std::string& name, LuaCall::ArrangeWith arrange);
 
 void pushHostFunction(LuaArgs& lua, const std::string& name, std::function<std::int32_t(LuaArgs&)> body);
 

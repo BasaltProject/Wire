@@ -69,6 +69,12 @@ public:
 
     [[noreturn]] void raise(std::string_view message) const;
 
+    /// Returned from a host function after pushing the message: the error is raised once the function's locals are
+    /// gone, so strings built for the message are not leaked by the long jump.
+    [[nodiscard]] std::int32_t fail(std::string_view message) const;
+
+    static constexpr std::int32_t kFailed = -1;
+
     [[nodiscard]] lua_State* state() const noexcept { return state_; }
 
 private:

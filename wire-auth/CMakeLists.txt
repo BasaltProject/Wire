@@ -15,6 +15,10 @@ basalt_module(wire-auth
     PRIVATE_DEPENDS basalt::mbedtls basalt::monocypher
 )
 
+if(WIN32)
+    target_link_libraries(wire-auth PRIVATE crypt32)
+endif()
+
 if(BASALT_BUILD_TESTS)
     add_library(wire-auth-test-support INTERFACE)
     add_library(basalt::wire-auth-test-support ALIAS wire-auth-test-support)

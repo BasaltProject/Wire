@@ -10,9 +10,11 @@
 #include <thread>
 
 #if defined(_WIN32)
+// clang-format off
+#include <windows.h>
 #include <io.h>
 #include <psapi.h>
-#include <windows.h>
+// clang-format on
 #elif defined(__APPLE__)
 #include <mach/mach.h>
 #include <poll.h>

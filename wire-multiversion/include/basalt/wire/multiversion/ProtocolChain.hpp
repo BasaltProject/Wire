@@ -100,6 +100,16 @@ public:
     void serverbound(protocol::ProtocolState state, std::int32_t id, std::span<const std::uint8_t> body,
                      const Emit& emit) const;
 
+    /// Ids at or above this stand for a packet the native version has no counterpart for; the body is never touched.
+    static constexpr std::int32_t kOpaqueBase = 0x40000000;
+
+    /// Id-only renumbering for a peer that speaks this chain's version natively: `ToNative` reads its ids, `FromNative`
+    /// writes them.
+    [[nodiscard]] std::int32_t clientboundIdToNative(protocol::ProtocolState state, std::int32_t id) const;
+    [[nodiscard]] std::int32_t clientboundIdFromNative(protocol::ProtocolState state, std::int32_t id) const;
+    [[nodiscard]] std::int32_t serverboundIdToNative(protocol::ProtocolState state, std::int32_t id) const;
+    [[nodiscard]] std::int32_t serverboundIdFromNative(protocol::ProtocolState state, std::int32_t id) const;
+
 private:
     std::vector<std::reference_wrapper<ProtocolLink>> links_;
     PacketContentRewriter* content_;
