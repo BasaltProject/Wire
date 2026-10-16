@@ -121,8 +121,11 @@ std::string LuaArgs::toText(std::int32_t index) const {
 }
 
 void LuaArgs::raise(std::string_view message) const {
-    luaL_error(state_, "%s", std::string{message}.c_str());
-    // `luaL_error` never returns; this is only here because the compiler cannot know that.
+    luaL_where(state_, 1);
+    lua_pushlstring(state_, message.data(), message.size());
+    lua_concat(state_, 2);
+    lua_error(state_);
+    // `lua_error` never returns; this is only here because the compiler cannot know that.
     std::abort();
 }
 

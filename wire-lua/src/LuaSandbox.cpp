@@ -55,12 +55,12 @@ struct SandboxAccess {
             return;
         }
         if (sandbox->interrupted_.load(std::memory_order_relaxed)) {
-            luaL_error(state, "%s", std::string{failureMessages::kInterrupted}.c_str());
+            luaL_error(state, "%s", failureMessages::kInterrupted.data());
             return;
         }
         const std::int64_t left = sandbox->budget_.fetch_sub(kHookStep, std::memory_order_relaxed) - kHookStep;
         if (left <= 0) {
-            luaL_error(state, "%s", std::string{failureMessages::kBudget}.c_str());
+            luaL_error(state, "%s", failureMessages::kBudget.data());
         }
     }
 
