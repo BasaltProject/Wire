@@ -262,6 +262,44 @@ std::optional<PlaceGhostRecipePacket> PlaceGhostRecipePacket::read(io::ByteBuffe
     return packet;
 }
 
+void RecipeBookSettingsPacket::write(io::ByteBuffer& buffer) const {
+    for (const Type& type : types) {
+        buffer.writeByte(type.open ? 1 : 0);
+        buffer.writeByte(type.filtering ? 1 : 0);
+    }
+}
+
+std::optional<RecipeBookSettingsPacket> RecipeBookSettingsPacket::read(io::ByteBuffer& buffer) {
+    RecipeBookSettingsPacket packet;
+    for (Type& type : packet.types) {
+        type.open = readBoolean(buffer);
+        type.filtering = readBoolean(buffer);
+    }
+    return buffer.failed() ? std::nullopt : std::optional{packet};
+}
+
+void RecipeBookChangeSettingsPacket::write(io::ByteBuffer& buffer) const {
+    varInt::write(buffer, bookType);
+    buffer.writeByte(open ? 1 : 0);
+    buffer.writeByte(filtering ? 1 : 0);
+}
+
+std::optional<RecipeBookChangeSettingsPacket> RecipeBookChangeSettingsPacket::read(io::ByteBuffer& buffer) {
+    RecipeBookChangeSettingsPacket packet;
+    packet.bookType = varInt::read(buffer);
+    packet.open = readBoolean(buffer);
+    packet.filtering = readBoolean(buffer);
+    return buffer.failed() ? std::nullopt : std::optional{packet};
+}
+
+void RecipeBookSeenPacket::write(io::ByteBuffer& buffer) const { varInt::write(buffer, recipeId); }
+
+std::optional<RecipeBookSeenPacket> RecipeBookSeenPacket::read(io::ByteBuffer& buffer) {
+    RecipeBookSeenPacket packet;
+    packet.recipeId = varInt::read(buffer);
+    return buffer.failed() ? std::nullopt : std::optional{packet};
+}
+
 void UpdateRecipesPacket::write(io::ByteBuffer& buffer) const {
     varInt::write(buffer, static_cast<std::int32_t>(propertySets.size()));
     for (const ItemPropertySet& set : propertySets) {

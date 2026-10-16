@@ -1,5 +1,6 @@
 #include <basalt/wire/protocol/ProtocolBuffer.hpp>
 #include <basalt/wire/protocol/configuration/ConfigurationPackets.hpp>
+#include <basalt/wire/text/ComponentNbt.hpp>
 
 #include <cstdint>
 
@@ -155,6 +156,50 @@ std::optional<BrandPacket> BrandPacket::read(io::ByteBuffer& buffer) {
     }
     BrandPacket packet{readString(buffer)};
     return buffer.failed() ? std::nullopt : std::optional{std::move(packet)};
+}
+
+void ConfigurationDisconnectPacket::write(io::ByteBuffer& buffer) const {
+    writeAnonymousNbt(buffer, text::componentNbt::serialize(reason));
+}
+
+std::optional<ConfigurationDisconnectPacket> ConfigurationDisconnectPacket::read(io::ByteBuffer& buffer) {
+    ConfigurationDisconnectPacket packet{text::componentNbt::deserialize(readAnonymousNbt(buffer))};
+    return buffer.failed() ? std::nullopt : std::optional{std::move(packet)};
+}
+
+void ResourcePackPushPacket::write(io::ByteBuffer& buffer) const {
+    writeUuid(buffer, id);
+    writeString(buffer, url);
+    writeString(buffer, hash);
+    writeBoolean(buffer, required);
+    writeBoolean(buffer, prompt.has_value());
+    if (prompt.has_value()) {
+        writeAnonymousNbt(buffer, text::componentNbt::serialize(*prompt));
+    }
+}
+
+std::optional<ResourcePackPushPacket> ResourcePackPushPacket::read(io::ByteBuffer& buffer) {
+    ResourcePackPushPacket packet;
+    packet.id = readUuid(buffer);
+    packet.url = readString(buffer);
+    packet.hash = readString(buffer);
+    packet.required = readBoolean(buffer);
+    if (readBoolean(buffer)) {
+        packet.prompt = text::componentNbt::deserialize(readAnonymousNbt(buffer));
+    }
+    return buffer.failed() ? std::nullopt : std::optional{std::move(packet)};
+}
+
+void ResourcePackResponsePacket::write(io::ByteBuffer& buffer) const {
+    writeUuid(buffer, id);
+    varInt::write(buffer, action);
+}
+
+std::optional<ResourcePackResponsePacket> ResourcePackResponsePacket::read(io::ByteBuffer& buffer) {
+    ResourcePackResponsePacket packet;
+    packet.id = readUuid(buffer);
+    packet.action = varInt::read(buffer);
+    return buffer.failed() ? std::nullopt : std::optional{packet};
 }
 
 void PostEffectsPacket::write(io::ByteBuffer& buffer) const {

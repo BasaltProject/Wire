@@ -1,7 +1,9 @@
 #pragma once
 
+#include <basalt/wire/common/Uuid.hpp>
 #include <basalt/wire/io/ByteBuffer.hpp>
 #include <basalt/wire/nbt/NbtTag.hpp>
+#include <basalt/wire/text/Component.hpp>
 
 #include <cstdint>
 #include <optional>
@@ -158,6 +160,47 @@ struct BrandPacket {
     [[nodiscard]] static std::optional<BrandPacket> read(io::ByteBuffer& buffer);
 
     friend bool operator==(const BrandPacket&, const BrandPacket&) = default;
+};
+
+/// parity: `ClientboundDisconnectPacket`, the configuration-phase one.
+struct ConfigurationDisconnectPacket {
+    static constexpr std::int32_t kId = 0x02;
+
+    text::Component reason;
+
+    void write(io::ByteBuffer& buffer) const;
+    [[nodiscard]] static std::optional<ConfigurationDisconnectPacket> read(io::ByteBuffer& buffer);
+};
+
+/// parity: `ClientboundResourcePackPushPacket`.
+struct ResourcePackPushPacket {
+    static constexpr std::int32_t kConfigurationId = 0x09;
+    static constexpr std::int32_t kPlayId = 0x52;
+
+    common::Uuid id;
+    std::string url;
+    std::string hash;
+    bool required = false;
+    std::optional<text::Component> prompt;
+
+    void write(io::ByteBuffer& buffer) const;
+    [[nodiscard]] static std::optional<ResourcePackPushPacket> read(io::ByteBuffer& buffer);
+};
+
+/// parity: `ServerboundResourcePackPacket`, with `Action` in declaration order.
+struct ResourcePackResponsePacket {
+    static constexpr std::int32_t kConfigurationId = 0x06;
+    static constexpr std::int32_t kPlayId = 0x32;
+    static constexpr std::int32_t kDeclined = 1;
+
+    common::Uuid id;
+    std::int32_t action = 0;
+
+    /// parity: `Action.isTerminal`, everything but ACCEPTED (3) and DOWNLOADED (4).
+    [[nodiscard]] bool terminal() const noexcept { return action != 3 && action != 4; }
+
+    void write(io::ByteBuffer& buffer) const;
+    [[nodiscard]] static std::optional<ResourcePackResponsePacket> read(io::ByteBuffer& buffer);
 };
 
 /// parity: `ClientboundPostEffectsPacket`.

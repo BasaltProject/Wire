@@ -2,6 +2,7 @@
 
 #include <basalt/wire/io/ByteBuffer.hpp>
 
+#include <array>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -144,6 +145,54 @@ struct PlaceGhostRecipePacket {
     [[nodiscard]] static std::optional<PlaceGhostRecipePacket> read(io::ByteBuffer& buffer);
 
     friend bool operator==(const PlaceGhostRecipePacket&, const PlaceGhostRecipePacket&) = default;
+};
+
+/// parity: `RecipeBookType`, in wire order.
+inline constexpr std::int32_t kRecipeBookTypes = 4;
+
+/// Clientbound, id 0x4d: open and filtering flags for crafting, furnace, blast furnace and smoker.
+struct RecipeBookSettingsPacket {
+    static constexpr std::int32_t kId = 0x4d;
+
+    struct Type {
+        bool open = false;
+        bool filtering = false;
+
+        friend bool operator==(const Type&, const Type&) = default;
+    };
+
+    std::array<Type, kRecipeBookTypes> types{};
+
+    void write(io::ByteBuffer& buffer) const;
+    [[nodiscard]] static std::optional<RecipeBookSettingsPacket> read(io::ByteBuffer& buffer);
+
+    friend bool operator==(const RecipeBookSettingsPacket&, const RecipeBookSettingsPacket&) = default;
+};
+
+/// Serverbound, id 0x2f: the client changed one book's flags.
+struct RecipeBookChangeSettingsPacket {
+    static constexpr std::int32_t kId = 0x2f;
+
+    std::int32_t bookType = 0;
+    bool open = false;
+    bool filtering = false;
+
+    void write(io::ByteBuffer& buffer) const;
+    [[nodiscard]] static std::optional<RecipeBookChangeSettingsPacket> read(io::ByteBuffer& buffer);
+
+    friend bool operator==(const RecipeBookChangeSettingsPacket&, const RecipeBookChangeSettingsPacket&) = default;
+};
+
+/// Serverbound, id 0x30: the player looked at a recipe flagged as new.
+struct RecipeBookSeenPacket {
+    static constexpr std::int32_t kId = 0x30;
+
+    std::int32_t recipeId = 0;
+
+    void write(io::ByteBuffer& buffer) const;
+    [[nodiscard]] static std::optional<RecipeBookSeenPacket> read(io::ByteBuffer& buffer);
+
+    friend bool operator==(const RecipeBookSeenPacket&, const RecipeBookSeenPacket&) = default;
 };
 
 struct RecipeBookRemovePacket {
