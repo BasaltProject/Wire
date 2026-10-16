@@ -56,6 +56,7 @@ struct ProxyForwarding {
     std::vector<std::string> tokens;
     std::string propertyName{kSafeNetProperty};
     std::vector<native::PublicKey> trustedKeys;
+    std::string backendId;
 
     [[nodiscard]] bool enabled() const noexcept { return mode != ForwardingMode::None; }
 
