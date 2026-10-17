@@ -24,8 +24,7 @@ inline constexpr std::size_t kPublicKeySize = 32;
 inline constexpr std::size_t kSignatureSize = 64;
 inline constexpr std::size_t kMaxResponseSize = 128 * 1024;
 
-/// Bit 0: the backend can run the session envelope (docs/specs/session-envelope-v1.md). Offered by a backend, selected
-/// only by a proxy that implements the envelope; the field is signed and subset-checked so a bit cannot be forged.
+/// Bit 0: the backend can run the session envelope; signed and subset-checked, so a proxy cannot forge it.
 inline constexpr std::uint32_t kCapabilitySessionEnvelope = 1U << 0;
 inline constexpr std::uint32_t kKnownCapabilities = kCapabilitySessionEnvelope;
 

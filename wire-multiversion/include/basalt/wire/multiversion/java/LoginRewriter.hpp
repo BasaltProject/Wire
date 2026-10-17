@@ -6,8 +6,7 @@
 
 namespace basalt::wire::multiversion::java {
 
-/// The login packets a client older than 1.20.2 sends and reads, which no link touches: this end of the chain
-/// writes them the way that client's version shapes them and reads them back into the server's own.
+/// The login packets of a client older than 1.20.2, which no link touches: written in its shape, read into ours.
 class LoginRewriter final : public PacketContentRewriter {
 public:
     explicit LoginRewriter(std::int32_t protocol) : protocol_(protocol) {}
