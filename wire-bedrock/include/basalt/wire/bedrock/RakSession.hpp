@@ -119,6 +119,7 @@ private:
     std::uint32_t highestReliable_ = 0;
     std::array<OrderChannel, kOrderChannels> channels_;
     std::unordered_map<std::uint16_t, SplitBuffer> splits_;
+    std::size_t splitBytes_ = 0;
 
     std::uint32_t nextDatagramSequence_ = 0;
     std::uint32_t nextReliableIndex_ = 0;

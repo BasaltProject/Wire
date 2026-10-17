@@ -13,6 +13,16 @@ constexpr std::uint32_t kMaxGap = 4096;
 
 constexpr std::size_t kReliableWindow = 2048;
 
+constexpr std::size_t kMaxSplitBuffers = 16;
+
+constexpr std::size_t kMaxSplitBytes = 4U * 1024U * 1024U;
+
+constexpr std::uint64_t kSplitLifetimeMs = 10000;
+
+constexpr std::size_t kMaxHeldFrames = 256;
+
+constexpr std::size_t kMaxUnacknowledged = 8192;
+
 constexpr std::uint32_t kLoopback = 0x0100007fU;
 
 } // namespace
@@ -95,14 +105,25 @@ void RakSession::handleFrame(RakFrame& frame, std::uint64_t nowMs, std::vector<s
         if (frame.partCount == 0 || frame.partCount > kMaxSplitParts || frame.partIndex >= frame.partCount) {
             return;
         }
+        if (!splits_.contains(frame.partId) && splits_.size() >= kMaxSplitBuffers) {
+            closed_ = true;
+            return;
+        }
         SplitBuffer& buffer = splits_[frame.partId];
         if (buffer.partCount != frame.partCount) {
+            for (const std::vector<std::uint8_t>& part : buffer.parts)
+                splitBytes_ -= part.size();
             buffer = SplitBuffer{};
             buffer.partCount = frame.partCount;
             buffer.startedMs = nowMs;
             buffer.parts.resize(frame.partCount);
         }
         if (!buffer.parts[frame.partIndex].empty()) {
+            return;
+        }
+        splitBytes_ += frame.body.size();
+        if (splitBytes_ > kMaxSplitBytes) {
+            closed_ = true;
             return;
         }
         buffer.parts[frame.partIndex] = std::move(frame.body);
@@ -120,6 +141,7 @@ void RakSession::handleFrame(RakFrame& frame, std::uint64_t nowMs, std::vector<s
         for (std::vector<std::uint8_t>& part : buffer.parts) {
             whole.insert(whole.end(), part.begin(), part.end());
         }
+        splitBytes_ -= total;
         splits_.erase(frame.partId);
         frame.body = std::move(whole);
         frame.split = false;
@@ -142,6 +164,10 @@ void RakSession::handleFrame(RakFrame& frame, std::uint64_t nowMs, std::vector<s
             return;
         }
         if (frame.orderIndex > channel.expectedIndex) {
+            if (channel.held.size() >= kMaxHeldFrames) {
+                closed_ = true;
+                return;
+            }
             channel.held.emplace(frame.orderIndex, std::move(frame.body));
             return;
         }
@@ -335,6 +361,20 @@ void RakSession::flush(std::uint64_t nowMs, const DatagramSink& sink) {
     }
     if (!nakQueue_.empty()) {
         sendRanges(kFlagValid | kFlagNak, nakQueue_, sink);
+    }
+
+    for (auto split = splits_.begin(); split != splits_.end();) {
+        if (nowMs - split->second.startedMs < kSplitLifetimeMs) {
+            ++split;
+            continue;
+        }
+        for (const std::vector<std::uint8_t>& part : split->second.parts)
+            splitBytes_ -= part.size();
+        split = splits_.erase(split);
+    }
+    if (unacknowledged_.size() > kMaxUnacknowledged) {
+        closed_ = true;
+        return;
     }
 
     for (auto entry = unacknowledged_.begin(); entry != unacknowledged_.end();) {
