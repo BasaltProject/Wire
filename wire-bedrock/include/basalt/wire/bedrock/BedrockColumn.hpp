@@ -2,6 +2,7 @@
 
 #include <basalt/wire/bedrock/BedrockBiomes.hpp>
 #include <basalt/wire/bedrock/BedrockPackets.hpp>
+#include <basalt/wire/io/ByteBuffer.hpp>
 
 #include <cstdint>
 #include <functional>
@@ -29,9 +30,12 @@ using FillBlocks = std::function<void(std::int32_t section, std::span<std::int32
 /// Fills one section's biomes as Bedrock ids.
 using FillBiomes = std::function<void(std::int32_t section, BiomeQuarts& quarts)>;
 
+/// Writes the block entity tags of a column, asked for once its blocks have been read so they can be noted on the way.
+using FillBlockEntities = std::function<void(io::ByteBuffer& tags)>;
+
 /// One `LevelChunk` packet body for a column; the caller says where the blocks and biomes come from.
 [[nodiscard]] std::vector<std::uint8_t> encodeColumn(const ColumnShape& shape, const FillBlocks& blocks,
                                                      const FillBiomes& biomes,
-                                                     std::span<const std::uint8_t> blockEntities = {});
+                                                     const FillBlockEntities& blockEntities = {});
 
 } // namespace basalt::wire::bedrock
