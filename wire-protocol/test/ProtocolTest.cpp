@@ -1,5 +1,6 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <basalt/wire/common/Base64.hpp>
+#include <basalt/wire/protocol/EnvelopeEndpoint.hpp>
 #include <basalt/wire/protocol/PacketFraming.hpp>
 #include <basalt/wire/protocol/ProtocolBuffer.hpp>
 #include <basalt/wire/protocol/SessionEnvelope.hpp>
@@ -961,4 +962,30 @@ TEST_CASE("session envelope frames round trip and malformed ones are refused") {
     std::vector<std::uint8_t> oversized(envelope::kMaxControlBytes + 1, 0);
     oversized[0] = 1;
     CHECK(envelope::decode(oversized).error() == envelope::DecodeError::kTooLarge);
+}
+
+TEST_CASE("the envelope exchange opens once, carries data only after Opened and ends on anything out of order") {
+    namespace envelope = basalt::wire::protocol::sessionEnvelope;
+    envelope::EnvelopeEndpoint proxy;
+    envelope::EnvelopeEndpoint server;
+    CHECK(proxy.data(std::vector<std::uint8_t>{1}).empty());
+
+    const auto open = proxy.open(envelope::Edition::Bedrock, 924);
+    REQUIRE_FALSE(open.empty());
+    CHECK(proxy.open(envelope::Edition::Java, 1).empty());
+    CHECK(server.receive(envelope::encodeData(std::vector<std::uint8_t>{1})).closed);
+
+    envelope::EnvelopeEndpoint fresh;
+    const auto answer = fresh.receive(open);
+    REQUIRE_FALSE(answer.reply.empty());
+    CHECK(fresh.agreed()->protocol == 924);
+    CHECK(fresh.agreed()->edition == envelope::Edition::Bedrock);
+    CHECK_FALSE(proxy.receive(answer.reply).closed);
+    CHECK(proxy.state() == envelope::EnvelopeEndpoint::State::kActive);
+
+    const std::vector<std::uint8_t> packet{0x21, 0x00, 0x7f};
+    const auto frame = proxy.data(packet);
+    const auto received = fresh.receive(frame);
+    CHECK(std::ranges::equal(received.packet, packet));
+    CHECK(fresh.receive(open).closed);
 }
