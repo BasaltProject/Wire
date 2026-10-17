@@ -6,6 +6,7 @@ basalt_module(wire-protocol
         src/BorderPackets.cpp
         src/ChatPackets.cpp
         src/ItemIds.cpp
+        src/EntityDimensions.cpp
         src/EntityTypeIds.cpp
         src/CommandPackets.cpp
         src/ConfigurationPackets.cpp
