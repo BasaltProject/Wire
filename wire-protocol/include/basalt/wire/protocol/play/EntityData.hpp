@@ -23,9 +23,9 @@ namespace basalt::wire::protocol::play {
 
 struct SpawnEntityPacket {
     static constexpr std::int32_t kId = 0x01;
-    /// The protocol id of `minecraft:item` in the real 26.2 entity type registry.
-    static constexpr std::int32_t kItemEntityType = 71;
-    static constexpr std::int32_t kPlayerEntityType = 156;
+    /// The protocol id of `minecraft:item` in the real 26.3 entity type registry.
+    static constexpr std::int32_t kItemEntityType = 72;
+    static constexpr std::int32_t kPlayerEntityType = 159;
 
     std::int32_t entityId = 0;
     common::Uuid uuid;
