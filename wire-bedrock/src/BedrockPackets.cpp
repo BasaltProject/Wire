@@ -958,6 +958,18 @@ void readResultItem(io::ByteBuffer& buffer, const int protocol) {
 
 } // namespace
 
+std::vector<BedrockStackRequest> readItemStackRequests(io::ByteBuffer& buffer, const int protocol) {
+    std::vector<BedrockStackRequest> requests;
+    const std::uint32_t count = readVarUInt(buffer);
+    for (std::uint32_t at = 0; at < count && !buffer.failed(); ++at) {
+        auto request = readItemStackRequest(buffer, protocol);
+        if (!request)
+            break;
+        requests.push_back(std::move(*request));
+    }
+    return requests;
+}
+
 std::optional<PlayerAuthInput> readPlayerAuthInput(io::ByteBuffer& buffer, const int protocol) {
     PlayerAuthInput input;
     input.pitch = readFloatLE(buffer);

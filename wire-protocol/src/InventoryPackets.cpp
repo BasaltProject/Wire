@@ -195,6 +195,16 @@ std::optional<ServerboundSetCarriedItemPacket> ServerboundSetCarriedItemPacket::
     return buffer.failed() ? std::nullopt : std::optional{packet};
 }
 
+void ServerboundContainerClickPacket::write(io::ByteBuffer& buffer) const {
+    varInt::write(buffer, containerId);
+    varInt::write(buffer, stateId);
+    buffer.writeShort(slot);
+    buffer.writeByte(static_cast<std::uint8_t>(button));
+    varInt::write(buffer, static_cast<std::int32_t>(mode));
+    varInt::write(buffer, 0);
+    buffer.writeByte(0);
+}
+
 std::optional<ServerboundContainerClickPacket> ServerboundContainerClickPacket::read(io::ByteBuffer& buffer) {
     ServerboundContainerClickPacket packet;
     packet.containerId = varInt::read(buffer);

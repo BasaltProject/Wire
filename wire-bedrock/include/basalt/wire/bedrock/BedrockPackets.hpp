@@ -418,6 +418,8 @@ struct BedrockResponseContainer {
     std::vector<BedrockResponseSlot> slots;
 };
 
+[[nodiscard]] std::vector<BedrockStackRequest> readItemStackRequests(io::ByteBuffer& buffer, int protocol);
+
 void writeItemStackResponse(io::ByteBuffer& buffer, std::int32_t requestId, bool accepted,
                             std::span<const BedrockResponseContainer> containers, int protocol);
 

@@ -47,7 +47,7 @@ void LuaRef::push(LuaArgs& lua) const {
         lua.pushNil();
         return;
     }
-    push();
+    lua_rawgeti(lua.state(), LUA_REGISTRYINDEX, ref_);
 }
 
 void LuaRef::release() {
