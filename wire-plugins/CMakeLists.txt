@@ -5,8 +5,10 @@ basalt_module(wire-plugins
         src/PluginManifest.cpp
         src/PluginOrder.cpp
         src/PluginPackage.cpp
+        src/PluginSignature.cpp
         src/PluginText.cpp
     DEPENDS basalt::wire-common basalt::wire-io basalt::wire-lua
+    PRIVATE_DEPENDS basalt::monocypher
 )
 
 basalt_test(wire-plugins-package-test
@@ -16,6 +18,16 @@ basalt_test(wire-plugins-package-test
 )
 
 target_compile_definitions(wire-plugins-package-test
+    PRIVATE BASALT_TEST_SCRATCH_DIR="${CMAKE_CURRENT_BINARY_DIR}/test-data"
+)
+
+basalt_test(wire-plugins-signature-test
+    SOURCES
+        test/PluginSignatureTest.cpp
+    DEPENDS basalt::wire-plugins
+)
+
+target_compile_definitions(wire-plugins-signature-test
     PRIVATE BASALT_TEST_SCRATCH_DIR="${CMAKE_CURRENT_BINARY_DIR}/test-data"
 )
 

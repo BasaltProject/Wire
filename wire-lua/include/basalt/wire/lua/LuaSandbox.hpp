@@ -66,6 +66,9 @@ public:
 
     [[nodiscard]] LuaFailure failureFromStack();
 
+    /// Lets `require` load precompiled chunks; only for code the host has already verified.
+    void allowBytecode(bool allowed) noexcept { bytecodeAllowed_ = allowed; }
+
 private:
     LuaSandbox(std::string name, LuaLimits limits, SourceFinder sources, PrintSink printLine);
 
@@ -78,6 +81,7 @@ private:
     LuaLimits limits_;
     SourceFinder sources_;
     PrintSink printLine_;
+    bool bytecodeAllowed_ = false;
     lua_State* state_ = nullptr;
 
     std::atomic<std::int64_t> budget_{0};

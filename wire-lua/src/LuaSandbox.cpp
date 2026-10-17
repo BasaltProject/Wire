@@ -121,7 +121,7 @@ struct SandboxAccess {
         }
         const std::string chunkName = std::string{"@"} + name;
         if (luaL_loadbufferx(state, reinterpret_cast<const char*>(source->data()), source->size(), chunkName.c_str(),
-                             "t") != LUA_OK) {
+                             sandbox->bytecodeAllowed_ ? "bt" : "t") != LUA_OK) {
             return lua_error(state);
         }
         lua_pushstring(state, name);
