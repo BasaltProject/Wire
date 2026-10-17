@@ -36,6 +36,8 @@ struct ForwardedLogin {
     common::Uuid profileId;
     std::optional<std::string> name;
     std::vector<SessionProfileProperty> properties;
+    /// What the proxy selected out of the capabilities this backend offered; zero for every mode but basalt.
+    std::uint32_t capabilities = 0;
 
     friend bool operator==(const ForwardedLogin&, const ForwardedLogin&) = default;
 };
@@ -57,6 +59,8 @@ struct ProxyForwarding {
     std::string propertyName{kSafeNetProperty};
     std::vector<native::PublicKey> trustedKeys;
     std::string backendId;
+    /// Offers the session envelope to the proxy in the signed request of mode basalt.
+    bool offerSessionEnvelope = false;
 
     [[nodiscard]] bool enabled() const noexcept { return mode != ForwardingMode::None; }
 
