@@ -247,7 +247,10 @@ bool Link776Up::clientbound(ProtocolState state, MutablePacket& packet) {
             if (!node.parser.has_value()) {
                 continue;
             }
-            if (node.parser->registryId() == kOlderDialogParser) {
+            if (const auto* registry = node.parser->as<play::ArgumentParser::RegistryProperties>();
+                registry != nullptr && registry->registry == "minecraft:worldgen/configured_feature") {
+                node.parser = play::ArgumentParser{play::argumentType::kFeature, play::ArgumentParser::None{}};
+            } else if (node.parser->registryId() == kOlderDialogParser) {
                 node.parser = play::ArgumentParser{play::argumentType::kDialog, node.parser->properties()};
             } else if (node.parser->registryId() == kOlderUuidParser) {
                 node.parser = play::ArgumentParser{play::argumentType::kUuid, node.parser->properties()};
