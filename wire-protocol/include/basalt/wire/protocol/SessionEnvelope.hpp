@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <expected>
 #include <span>
+#include <string>
 #include <variant>
 #include <vector>
 
@@ -40,7 +41,30 @@ struct Close {
     friend bool operator==(const Close&, const Close&) = default;
 };
 
-using Control = std::variant<Open, Opened, Close>;
+/// Who a Bedrock player is, sent once after `Open`: the backend needs it to build the player the way it does for a
+/// client it serves itself.
+struct BedrockIdentity {
+    std::string gamertag;
+    std::string xuid;
+    bool authenticated = false;
+    std::string address;
+    std::string skinId;
+    std::string resourcePatch;
+    std::int32_t skinWidth = 0;
+    std::int32_t skinHeight = 0;
+    /// Raw RGBA, width times height times four bytes.
+    std::vector<std::uint8_t> skinPixels;
+
+    friend bool operator==(const BedrockIdentity&, const BedrockIdentity&) = default;
+};
+
+struct Disconnect {
+    std::string message;
+
+    friend bool operator==(const Disconnect&, const Disconnect&) = default;
+};
+
+using Control = std::variant<Open, Opened, Close, BedrockIdentity, Disconnect>;
 
 enum class DecodeError { kEmpty, kUnknownKind, kUnknownControl, kMalformed, kTooLarge };
 

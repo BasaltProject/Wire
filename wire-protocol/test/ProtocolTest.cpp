@@ -964,13 +964,61 @@ TEST_CASE("session envelope frames round trip and malformed ones are refused") {
     CHECK(envelope::decode(oversized).error() == envelope::DecodeError::kTooLarge);
 }
 
+TEST_CASE("a Bedrock envelope carries the identity before Opened and refuses an inconsistent skin") {
+    namespace envelope = basalt::wire::protocol::sessionEnvelope;
+    envelope::BedrockIdentity identity;
+    identity.gamertag = "Steve";
+    identity.xuid = "2535";
+    identity.authenticated = true;
+    identity.address = "127.0.0.1";
+    identity.skinId = "skin";
+    identity.resourcePatch = "{}";
+    identity.skinWidth = 2;
+    identity.skinHeight = 1;
+    identity.skinPixels = {1, 2, 3, 4, 5, 6, 7, 8};
+
+    envelope::EnvelopeEndpoint proxy;
+    envelope::EnvelopeEndpoint server;
+    const auto open = proxy.open(envelope::Edition::Bedrock, 2193);
+    CHECK(proxy.receive(envelope::encodeControl(envelope::Opened{envelope::kVersion1})).closed);
+
+    envelope::EnvelopeEndpoint fresh;
+    const auto opened = fresh.open(envelope::Edition::Bedrock, 2193);
+    REQUIRE_FALSE(opened.empty());
+    CHECK(server.receive(open).reply.empty());
+    CHECK(server.state() == envelope::EnvelopeEndpoint::State::kIdentifying);
+    CHECK(server.receive(envelope::encodeData(std::vector<std::uint8_t>{1})).closed);
+
+    envelope::EnvelopeEndpoint backend;
+    REQUIRE(backend.receive(open).reply.empty());
+    const auto identify = fresh.identify(identity);
+    REQUIRE_FALSE(identify.empty());
+    CHECK(fresh.identify(identity).empty());
+    const auto answer = backend.receive(identify);
+    REQUIRE_FALSE(answer.reply.empty());
+    REQUIRE(backend.identity().has_value());
+    CHECK(*backend.identity() == identity);
+    CHECK(backend.state() == envelope::EnvelopeEndpoint::State::kActive);
+    CHECK_FALSE(fresh.receive(answer.reply).closed);
+    CHECK(fresh.state() == envelope::EnvelopeEndpoint::State::kActive);
+
+    identity.skinPixels.pop_back();
+    CHECK(envelope::decode(envelope::encodeControl(identity)).error() == envelope::DecodeError::kMalformed);
+
+    const auto goodbye = backend.disconnect("Kicked: flying");
+    REQUIRE_FALSE(goodbye.empty());
+    const auto heard = fresh.receive(goodbye);
+    CHECK(heard.closed);
+    CHECK(heard.message == "Kicked: flying");
+}
+
 TEST_CASE("the envelope exchange opens once, carries data only after Opened and ends on anything out of order") {
     namespace envelope = basalt::wire::protocol::sessionEnvelope;
     envelope::EnvelopeEndpoint proxy;
     envelope::EnvelopeEndpoint server;
     CHECK(proxy.data(std::vector<std::uint8_t>{1}).empty());
 
-    const auto open = proxy.open(envelope::Edition::Bedrock, 924);
+    const auto open = proxy.open(envelope::Edition::Java, 924);
     REQUIRE_FALSE(open.empty());
     CHECK(proxy.open(envelope::Edition::Java, 1).empty());
     CHECK(server.receive(envelope::encodeData(std::vector<std::uint8_t>{1})).closed);
@@ -979,7 +1027,7 @@ TEST_CASE("the envelope exchange opens once, carries data only after Opened and 
     const auto answer = fresh.receive(open);
     REQUIRE_FALSE(answer.reply.empty());
     CHECK(fresh.agreed()->protocol == 924);
-    CHECK(fresh.agreed()->edition == envelope::Edition::Bedrock);
+    CHECK(fresh.agreed()->edition == envelope::Edition::Java);
     CHECK_FALSE(proxy.receive(answer.reply).closed);
     CHECK(proxy.state() == envelope::EnvelopeEndpoint::State::kActive);
 

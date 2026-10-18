@@ -10,10 +10,24 @@ std::vector<std::uint8_t> EnvelopeEndpoint::open(Edition edition, std::int32_t p
     return encodeControl(*pending_);
 }
 
+std::vector<std::uint8_t> EnvelopeEndpoint::identify(const BedrockIdentity& identity) {
+    if (state_ != State::kOpening || !pending_ || pending_->edition != Edition::Bedrock || identified_)
+        return {};
+    identified_ = true;
+    return encodeControl(identity);
+}
+
 std::vector<std::uint8_t> EnvelopeEndpoint::data(std::span<const std::uint8_t> packet) const {
     if (state_ != State::kActive || packet.size() > kMaxDataBytes)
         return {};
     return encodeData(packet);
+}
+
+std::vector<std::uint8_t> EnvelopeEndpoint::disconnect(std::string message) {
+    if (state_ != State::kActive)
+        return {};
+    state_ = State::kClosed;
+    return encodeControl(Disconnect{std::move(message)});
 }
 
 std::vector<std::uint8_t> EnvelopeEndpoint::close(CloseReason reason) {
@@ -47,8 +61,14 @@ EnvelopeEndpoint::Outcome EnvelopeEndpoint::receive(std::span<const std::uint8_t
         state_ = State::kClosed;
         return {.closed = true, .reason = closing->reason};
     }
+    if (const auto* disconnect = std::get_if<Disconnect>(&control)) {
+        if (state_ != State::kActive)
+            return fail(CloseReason::Malformed);
+        state_ = State::kClosed;
+        return {.closed = true, .reason = CloseReason::Normal, .message = disconnect->message};
+    }
     if (const auto* opened = std::get_if<Opened>(&control)) {
-        if (state_ != State::kOpening)
+        if (state_ != State::kOpening || (pending_ && pending_->edition == Edition::Bedrock && !identified_))
             return fail(CloseReason::Malformed);
         if (opened->version != kVersion1)
             return fail(CloseReason::Unsupported);
@@ -56,12 +76,25 @@ EnvelopeEndpoint::Outcome EnvelopeEndpoint::receive(std::span<const std::uint8_t
         state_ = State::kActive;
         return {};
     }
+    if (const auto* identity = std::get_if<BedrockIdentity>(&control)) {
+        if (state_ != State::kIdentifying)
+            return fail(CloseReason::Malformed);
+        identity_ = *identity;
+        state_ = State::kActive;
+        Outcome outcome;
+        outcome.reply = encodeControl(Opened{kVersion1});
+        return outcome;
+    }
     const auto& request = std::get<Open>(control);
     if (state_ != State::kIdle)
         return fail(CloseReason::Malformed);
     if (request.version != kVersion1)
         return fail(CloseReason::Unsupported);
     agreed_ = request;
+    if (request.edition == Edition::Bedrock) {
+        state_ = State::kIdentifying;
+        return {};
+    }
     state_ = State::kActive;
     Outcome outcome;
     outcome.reply = encodeControl(Opened{kVersion1});
