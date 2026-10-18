@@ -38,6 +38,8 @@ public:
 
     [[nodiscard]] static const IdMap& identity();
 
+    [[nodiscard]] IdMap inverted() const;
+
 private:
     void parse() const;
 

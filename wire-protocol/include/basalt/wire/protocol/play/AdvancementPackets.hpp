@@ -61,7 +61,9 @@ struct UpdateAdvancementsPacket {
     bool showAdvancements = true;
 
     void write(io::ByteBuffer& buffer) const;
-    [[nodiscard]] static std::optional<UpdateAdvancementsPacket> read(io::ByteBuffer& buffer);
+    /// `positionInDisplay` reads the layout before 26.3, where an entry's position sat inside its display.
+    [[nodiscard]] static std::optional<UpdateAdvancementsPacket> read(io::ByteBuffer& buffer,
+                                                                      bool positionInDisplay = false);
 
     friend bool operator==(const UpdateAdvancementsPacket&, const UpdateAdvancementsPacket&) = default;
 };

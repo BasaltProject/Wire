@@ -95,6 +95,8 @@ basalt_module(wire-multiversion
         src/java/Link774.cpp
         src/java/Link775.cpp
         src/java/Link776.cpp
+        src/java/Link776Up.cpp
+        src/java/NewRegistries776.cpp
         src/java/LongMaskLight.cpp
         src/java/LoginFields.cpp
         src/java/LoginRewriter.cpp

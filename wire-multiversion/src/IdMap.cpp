@@ -97,6 +97,32 @@ std::int32_t IdMap::unmap(std::int32_t id) const {
     return kNone;
 }
 
+IdMap IdMap::inverted() const {
+    if (!parsed_) {
+        parse();
+    }
+    struct Run {
+        std::int32_t start;
+        std::int32_t length;
+        std::int32_t delta;
+    };
+    std::vector<Run> runs;
+    runs.reserve(starts_.size());
+    for (std::size_t i = 0; i < starts_.size(); ++i) {
+        runs.push_back(Run{starts_[i] + deltas_[i], lengths_[i], -deltas_[i]});
+    }
+    std::ranges::sort(runs, {}, &Run::start);
+    std::string encoded;
+    for (const Run& run : runs) {
+        if (!encoded.empty()) {
+            encoded += ';';
+        }
+        encoded += std::to_string(run.start) + ':' + std::to_string(run.length) + ':' + std::to_string(run.delta);
+    }
+    encoded += '|';
+    return IdMap{std::move(encoded)};
+}
+
 const IdMap& IdMap::identity() {
     static const IdMap instance{"0:2147483647:0|"};
     return instance;

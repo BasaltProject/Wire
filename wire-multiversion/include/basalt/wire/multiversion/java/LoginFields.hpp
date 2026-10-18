@@ -25,7 +25,7 @@ struct LoginFields {
         std::int32_t portalCooldown = 0;
         std::int32_t seaLevel = 0;
 
-        void write(io::ByteBuffer& output, bool withSeaLevel) const;
+        void write(io::ByteBuffer& output, bool withSeaLevel, bool varIntGamemodes = false) const;
 
         [[nodiscard]] static SpawnFields read(io::ByteBuffer& input, bool withSeaLevel, bool varIntGamemodes = false);
     };
@@ -43,7 +43,7 @@ struct LoginFields {
     bool onlineMode = false;
     bool enforcesSecureChat = false;
 
-    void write(io::ByteBuffer& output, bool withOnlineMode, bool withSeaLevel) const;
+    void write(io::ByteBuffer& output, bool withOnlineMode, bool withSeaLevel, bool varIntGamemodes = false) const;
 
     [[nodiscard]] static LoginFields read(io::ByteBuffer& input, bool withOnlineMode, bool withSeaLevel,
                                           bool varIntGamemodes = false);

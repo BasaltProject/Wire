@@ -23,10 +23,20 @@ public:
 
     [[nodiscard]] static const PacketIdMap& identity();
 
+    [[nodiscard]] PacketIdMap inverted() const {
+        PacketIdMap other{encoded_};
+        other.inverted_ = !inverted_;
+        return other;
+    }
+
 private:
     void parse() const;
 
+    [[nodiscard]] std::int32_t lookupForward(std::int32_t id) const;
+    [[nodiscard]] std::int32_t lookupBackward(std::int32_t id) const;
+
     std::string encoded_;
+    bool inverted_ = false;
     mutable std::vector<std::int32_t> forward_;
     mutable std::vector<std::int32_t> backward_;
     mutable bool parsed_ = false;
@@ -52,10 +62,16 @@ public:
 
     [[nodiscard]] bool hasServerbound(protocol::ProtocolState state) const;
 
+    [[nodiscard]] PacketIdTables inverted() const;
+
 private:
     std::map<protocol::ProtocolState, PacketIdMap> clientbound_;
     std::map<protocol::ProtocolState, PacketIdMap> serverbound_;
 };
+
+struct VersionTables;
+
+[[nodiscard]] VersionTables invertedTables(const VersionTables& down, std::int32_t newer);
 
 struct VersionTables {
     std::int32_t older = 0;

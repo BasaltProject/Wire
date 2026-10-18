@@ -33,6 +33,7 @@
 #include <basalt/wire/multiversion/java/Link774.hpp>
 #include <basalt/wire/multiversion/java/Link775.hpp>
 #include <basalt/wire/multiversion/java/Link776.hpp>
+#include <basalt/wire/multiversion/java/Link776Up.hpp>
 #include <basalt/wire/multiversion/java/RenumberingLink.hpp>
 #include <basalt/wire/multiversion/java/Tables107.hpp>
 #include <basalt/wire/multiversion/java/Tables108.hpp>
@@ -195,9 +196,63 @@ private:
     std::unique_ptr<ProtocolChain> chain_;
 };
 
+class NumberedTail final : public PacketContentRewriter {
+public:
+    explicit NumberedTail(PacketContentRewriter& inner) : inner_(&inner) {}
+
+    [[nodiscard]] bool clientbound(protocol::ProtocolState state, MutablePacket& packet) override {
+        packet.becomes(packet.id);
+        return inner_->clientbound(state, packet);
+    }
+
+    [[nodiscard]] bool serverbound(protocol::ProtocolState state, MutablePacket& packet) override {
+        return inner_->serverbound(state, packet);
+    }
+
+private:
+    PacketContentRewriter* inner_;
+};
+
+class UpChain final : public JavaChain {
+public:
+    explicit UpChain(const VersionTables& down) : upward_(invertedTables(down, protocolVersions::kNative)) {
+        const std::vector<std::reference_wrapper<const VersionTables>> tables{upward_};
+        composed_ = std::make_unique<ComposedTables>(tables);
+        content_ = std::make_unique<ContentRewriter>(*composed_, nullptr, protocolVersions::kNative,
+                                                     std::vector<std::int32_t>{});
+        tail_ = std::make_unique<NumberedTail>(*content_);
+        link_ = std::make_unique<Link776Up>(upward_);
+        std::vector<std::reference_wrapper<ProtocolLink>> refs;
+        refs.emplace_back(*link_);
+        chain_ = std::make_unique<ProtocolChain>(std::move(refs), nullptr, tail_.get());
+    }
+
+    [[nodiscard]] const ProtocolChain& chain() const override { return *chain_; }
+
+private:
+    VersionTables upward_;
+    std::unique_ptr<ComposedTables> composed_;
+    std::unique_ptr<ContentRewriter> content_;
+    std::unique_ptr<NumberedTail> tail_;
+    std::unique_ptr<Link776Up> link_;
+    std::unique_ptr<ProtocolChain> chain_;
+};
+
 } // namespace
 
 namespace javaTranslators {
+
+const std::set<std::int32_t>& upSupported() {
+    static const std::set<std::int32_t> versions{protocolVersions::kV26_2};
+    return versions;
+}
+
+std::unique_ptr<JavaChain> upChainFor(std::int32_t backendProtocol) {
+    if (backendProtocol != protocolVersions::kV26_2) {
+        return nullptr;
+    }
+    return std::make_unique<UpChain>(tables776());
+}
 
 const std::set<std::int32_t>& supported() {
     static const std::set<std::int32_t> versions = [] {
