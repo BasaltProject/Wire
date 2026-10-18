@@ -10,6 +10,7 @@
 #include <cstdint>
 #include <functional>
 #include <optional>
+#include <span>
 #include <string>
 #include <variant>
 #include <vector>
@@ -215,7 +216,8 @@ struct SetEntityDataPacket {
 
     void write(io::ByteBuffer& buffer) const;
     [[nodiscard]] static std::optional<SetEntityDataPacket> read(io::ByteBuffer& buffer,
-                                                                 const ParticleShapeOf& shapeOf = {});
+                                                                 const ParticleShapeOf& shapeOf = {},
+                                                                 std::span<const std::int32_t> serializerToNative = {});
 
     [[nodiscard]] static SetEntityDataPacket item(std::int32_t entityId, std::optional<WireItemStack> stack);
 

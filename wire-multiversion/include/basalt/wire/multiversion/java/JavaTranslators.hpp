@@ -2,6 +2,7 @@
 
 #include <basalt/wire/multiversion/ComposedTables.hpp>
 #include <basalt/wire/multiversion/ProtocolChain.hpp>
+#include <basalt/wire/multiversion/ProtocolVersions.hpp>
 #include <basalt/wire/multiversion/SubstitutionLabels.hpp>
 
 #include <cstdint>
@@ -34,7 +35,11 @@ namespace javaTranslators {
 [[nodiscard]] std::unique_ptr<JavaChain> chainFor(std::int32_t protocol, const SubstitutionLabels* labels = nullptr);
 
 /// The chain for a client of this build whose server speaks an older protocol, or null where there is none.
-[[nodiscard]] std::unique_ptr<JavaChain> upChainFor(std::int32_t backendProtocol);
+[[nodiscard]] std::unique_ptr<JavaChain> upChainFor(std::int32_t backendProtocol,
+                                                    std::int32_t clientProtocol = protocolVersions::kNative);
+
+[[nodiscard]] std::int32_t packetIdAt(std::int32_t version, protocol::ProtocolState state, bool clientbound,
+                                      std::int32_t nativeId);
 
 [[nodiscard]] const std::set<std::int32_t>& upSupported();
 

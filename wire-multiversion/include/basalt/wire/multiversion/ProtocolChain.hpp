@@ -79,6 +79,10 @@ public:
     [[nodiscard]] virtual bool clientbound(protocol::ProtocolState state, MutablePacket& packet) = 0;
 
     [[nodiscard]] virtual bool serverbound(protocol::ProtocolState state, MutablePacket& packet) = 0;
+
+    /// Only in a chain that climbs: a packet the client has that the server has no id for, before ids are renumbered.
+    /// True when the link rewrote it as one of the server's, id included.
+    [[nodiscard]] virtual bool serverboundForeign(protocol::ProtocolState, MutablePacket&) { return false; }
 };
 
 /// The links between what the server speaks and what one client speaks, in order.

@@ -17,7 +17,7 @@ namespace basalt::wire::multiversion::java {
 class ContentRewriter final : public PacketContentRewriter {
 public:
     ContentRewriter(const ComposedTables& tables, const SubstitutionLabels* labels, std::int32_t farEnd,
-                    std::vector<std::int32_t> links);
+                    std::vector<std::int32_t> links, bool backendCountsFluids = true);
 
     [[nodiscard]] bool clientbound(protocol::ProtocolState state, MutablePacket& packet) override;
 
