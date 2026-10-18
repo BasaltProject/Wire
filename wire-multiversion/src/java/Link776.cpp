@@ -30,6 +30,11 @@ namespace configuration = protocol::configuration;
 using protocol::ProtocolState;
 using Shape = play::ParticleOptionShape;
 
+/// parity: the three move packets of 26.3, which have no struct here because the server never sends them.
+constexpr std::int32_t kMoveEntityPos = 54;
+constexpr std::int32_t kMoveEntityPosRot = 55;
+constexpr std::int32_t kMoveEntityRot = 57;
+
 constexpr std::int32_t kAnimate776 = 0x02;
 constexpr std::uint8_t kSwingMainHand776 = 0;
 constexpr std::uint8_t kSwingOffHand776 = 3;
@@ -82,6 +87,40 @@ play::ArgumentParser olderArgument(const play::ArgumentParser& parser) {
 Shape shapeOf(std::int32_t nativeType) {
     const auto found = std::ranges::find(kParticleShapes, nativeType, &std::pair<std::int32_t, Shape>::first);
     return found == kParticleShapes.end() ? Shape::None : found->second;
+}
+
+void moveEntityDown(MutablePacket& packet, std::int32_t kind) {
+    io::ByteBuffer input = io::ByteBuffer::wrap(packet.body);
+    io::ByteBuffer output;
+    protocol::varInt::write(output, protocol::varInt::read(input));
+    if (kind == 2) {
+        const bool onGround = input.readByte() != 0;
+        output.writeBytes(input.readSpan(2));
+        protocol::writeBoolean(output, onGround);
+    } else {
+        const std::int32_t properties = protocol::varInt::read(input);
+        const bool onGround = (properties & 1) != 0;
+        const std::int32_t steps = properties >> 1;
+        std::array<std::int32_t, 3> total{};
+        for (std::int32_t step = 0; step < std::max(steps, 1) && !input.failed(); ++step) {
+            if (steps > 0) {
+                static_cast<void>(protocol::varInt::read(input));
+            }
+            for (std::int32_t& axis : total) {
+                axis += input.readShort();
+            }
+        }
+        for (const std::int32_t axis : total) {
+            output.writeShort(static_cast<std::int16_t>(std::clamp(axis, -32768, 32767)));
+        }
+        if (kind == 1) {
+            output.writeBytes(input.readSpan(2));
+        }
+        protocol::writeBoolean(output, onGround);
+    }
+    if (!input.failed()) {
+        packet.body = output.toVector();
+    }
 }
 
 void downgradeTrimMaterial(nbt::NbtCompound& material) {
@@ -180,6 +219,15 @@ bool Link776::clientbound(ProtocolState state, MutablePacket& packet) {
             }
             output.writeBytes(input.readable());
         });
+        break;
+    case kMoveEntityPos:
+        moveEntityDown(packet, 0);
+        break;
+    case kMoveEntityPosRot:
+        moveEntityDown(packet, 1);
+        break;
+    case kMoveEntityRot:
+        moveEntityDown(packet, 2);
         break;
     case play::LevelParticlesPacket::kId:
         particles(packet);
