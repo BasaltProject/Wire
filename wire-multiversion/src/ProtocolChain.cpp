@@ -277,6 +277,10 @@ void ProtocolChain::serverbound(protocol::ProtocolState state, std::int32_t id, 
         id = first.id;
         body = shaped;
     }
+    if (stepwise_) {
+        serverboundStepwise(state, links_.size(), id, body, emit);
+        return;
+    }
     std::int32_t current = id;
     for (auto link = links_.rbegin(); link != links_.rend(); ++link) {
         const std::int32_t mapped = link->get().packets().toNative(state, current);
@@ -300,6 +304,28 @@ void ProtocolChain::serverbound(protocol::ProtocolState state, std::int32_t id, 
     emit(packet.id, packet.body);
     for (const auto& [extraId, extraBody] : packet.extras) {
         emit(extraId, extraBody);
+    }
+}
+
+void ProtocolChain::serverboundStepwise(protocol::ProtocolState state, std::size_t remaining, std::int32_t id,
+                                        std::span<const std::uint8_t> body, const Emit& emit) const {
+    if (remaining == 0) {
+        emit(id, body);
+        return;
+    }
+    ProtocolLink& link = links_[remaining - 1];
+    const std::int32_t mapped = link.packets().toNative(state, id);
+    if (mapped == PacketIdMap::kDropped) {
+        return;
+    }
+    MutablePacket packet;
+    packet.reset(mapped, mapped, std::vector<std::uint8_t>{body.begin(), body.end()});
+    if (!link.serverbound(state, packet)) {
+        return;
+    }
+    serverboundStepwise(state, remaining - 1, packet.id, packet.body, emit);
+    for (const auto& [extraId, extraBody] : packet.extras) {
+        serverboundStepwise(state, remaining - 1, extraId, extraBody, emit);
     }
 }
 

@@ -88,8 +88,9 @@ public:
 
     /// `content` works on the server's side of the links; `tail` on the client's, outside them.
     explicit ProtocolChain(std::vector<std::reference_wrapper<ProtocolLink>> links,
-                           PacketContentRewriter* content = nullptr, PacketContentRewriter* tail = nullptr)
-        : links_(std::move(links)), content_(content), tail_(tail) {}
+                           PacketContentRewriter* content = nullptr, PacketContentRewriter* tail = nullptr,
+                           bool stepwise = false)
+        : links_(std::move(links)), content_(content), tail_(tail), stepwise_(stepwise) {}
 
     [[nodiscard]] bool empty() const noexcept { return links_.empty(); }
 
@@ -112,8 +113,12 @@ public:
 
 private:
     std::vector<std::reference_wrapper<ProtocolLink>> links_;
+    void serverboundStepwise(protocol::ProtocolState state, std::size_t remaining, std::int32_t id,
+                             std::span<const std::uint8_t> body, const Emit& emit) const;
+
     PacketContentRewriter* content_;
     PacketContentRewriter* tail_;
+    bool stepwise_;
 };
 
 } // namespace basalt::wire::multiversion
