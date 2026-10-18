@@ -200,8 +200,10 @@ bool Link774Up::serverboundForeign(ProtocolState state, MutablePacket& packet) {
 }
 
 bool Link774Up::configuration(MutablePacket& packet) const {
-    static const std::int32_t registryData = inStep(ProtocolState::Configuration, true, configuration::RegistryDataPacket::kId);
-    static const std::int32_t finish = inStep(ProtocolState::Configuration, true, configuration::kFinishConfigurationId);
+    static const std::int32_t registryData =
+        inStep(ProtocolState::Configuration, true, configuration::RegistryDataPacket::kId);
+    static const std::int32_t finish =
+        inStep(ProtocolState::Configuration, true, configuration::kFinishConfigurationId);
     if (packet.id == registryData) {
         auto data = decode(packet, [](io::ByteBuffer& in) { return configuration::RegistryDataPacket::read(in); });
         if (!data.has_value()) {
@@ -257,10 +259,8 @@ bool Link774Up::clientbound(ProtocolState state, MutablePacket& packet) {
         play::SetTimePacket upgraded;
         upgraded.gameTime = gameTime;
         for (const std::int32_t clock : {play::SetTimePacket::kOverworldClock, play::SetTimePacket::kEndClock}) {
-            upgraded.clocks.push_back(play::ClockUpdate{.clockId = clock,
-                                                        .totalTicks = dayTime,
-                                                        .partialTick = 0.0F,
-                                                        .rate = ticking ? 1.0F : 0.0F});
+            upgraded.clocks.push_back(play::ClockUpdate{
+                .clockId = clock, .totalTicks = dayTime, .partialTick = 0.0F, .rate = ticking ? 1.0F : 0.0F});
         }
         encode(packet, [&](io::ByteBuffer& out) { upgraded.write(out); });
     } else if (state == ProtocolState::Play && packet.id == respawn) {

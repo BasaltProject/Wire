@@ -2,7 +2,6 @@
 #include <basalt/wire/multiversion/java/ContentRewriter.hpp>
 #include <basalt/wire/multiversion/java/JavaTranslators.hpp>
 #include <basalt/wire/multiversion/java/Link107.hpp>
-#include <basalt/wire/multiversion/java/LoginRewriter.hpp>
 #include <basalt/wire/multiversion/java/Link109.hpp>
 #include <basalt/wire/multiversion/java/Link110.hpp>
 #include <basalt/wire/multiversion/java/Link210.hpp>
@@ -31,12 +30,12 @@
 #include <basalt/wire/multiversion/java/Link772.hpp>
 #include <basalt/wire/multiversion/java/Link773.hpp>
 #include <basalt/wire/multiversion/java/Link774.hpp>
-#include <basalt/wire/multiversion/java/Link775.hpp>
-#include <basalt/wire/multiversion/java/Link776.hpp>
 #include <basalt/wire/multiversion/java/Link774Up.hpp>
+#include <basalt/wire/multiversion/java/Link775.hpp>
 #include <basalt/wire/multiversion/java/Link775Up.hpp>
+#include <basalt/wire/multiversion/java/Link776.hpp>
 #include <basalt/wire/multiversion/java/Link776Up.hpp>
-#include <basalt/wire/multiversion/java/UpEntityData.hpp>
+#include <basalt/wire/multiversion/java/LoginRewriter.hpp>
 #include <basalt/wire/multiversion/java/RenumberingLink.hpp>
 #include <basalt/wire/multiversion/java/Tables107.hpp>
 #include <basalt/wire/multiversion/java/Tables108.hpp>
@@ -87,6 +86,7 @@
 #include <basalt/wire/multiversion/java/Tables774.hpp>
 #include <basalt/wire/multiversion/java/Tables775.hpp>
 #include <basalt/wire/multiversion/java/Tables776.hpp>
+#include <basalt/wire/multiversion/java/UpEntityData.hpp>
 
 #include <algorithm>
 #include <array>
@@ -199,23 +199,6 @@ private:
     std::unique_ptr<ProtocolChain> chain_;
 };
 
-class NumberedTail final : public PacketContentRewriter {
-public:
-    explicit NumberedTail(PacketContentRewriter& inner) : inner_(&inner) {}
-
-    [[nodiscard]] bool clientbound(protocol::ProtocolState state, MutablePacket& packet) override {
-        packet.becomes(packet.id);
-        return inner_->clientbound(state, packet);
-    }
-
-    [[nodiscard]] bool serverbound(protocol::ProtocolState state, MutablePacket& packet) override {
-        return inner_->serverbound(state, packet);
-    }
-
-private:
-    PacketContentRewriter* inner_;
-};
-
 struct UpEntry {
     std::int32_t version;
     const VersionTables& (*tables)();
@@ -245,9 +228,9 @@ public:
         std::ranges::reverse(upward_);
         std::vector<std::reference_wrapper<const VersionTables>> tables(upward_.begin(), upward_.end());
         composed_ = std::make_unique<ComposedTables>(tables);
-        content_ = std::make_unique<ContentRewriter>(*composed_, nullptr, protocolVersions::kNative,
-                                                     std::vector<std::int32_t>{},
-                                                     backendVersion >= protocolVersions::kV26_1);
+        content_ =
+            std::make_unique<ContentRewriter>(*composed_, nullptr, protocolVersions::kNative,
+                                              std::vector<std::int32_t>{}, backendVersion >= protocolVersions::kV26_1);
         tail_ = std::make_unique<UpEntityData>(*content_, *composed_, backendVersion);
         std::vector<std::reference_wrapper<ProtocolLink>> refs;
         for (std::size_t index = 0; index < used.size(); ++index) {
@@ -272,8 +255,7 @@ private:
 
 namespace javaTranslators {
 
-std::int32_t packetIdAt(std::int32_t version, protocol::ProtocolState state, bool clientbound,
-                        std::int32_t nativeId) {
+std::int32_t packetIdAt(std::int32_t version, protocol::ProtocolState state, bool clientbound, std::int32_t nativeId) {
     std::int32_t id = nativeId;
     if (version == protocolVersions::kNative) {
         return id;

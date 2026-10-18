@@ -7,16 +7,16 @@
 #include <basalt/wire/protocol/VarInt.hpp>
 #include <basalt/wire/protocol/configuration/ConfigurationPackets.hpp>
 #include <basalt/wire/protocol/play/AdvancementPackets.hpp>
+#include <basalt/wire/protocol/play/BlockEntityPackets.hpp>
 #include <basalt/wire/protocol/play/CommandPackets.hpp>
 #include <basalt/wire/protocol/play/EntityPackets.hpp>
 #include <basalt/wire/protocol/play/InventoryPackets.hpp>
 #include <basalt/wire/protocol/play/ParticleOptions.hpp>
 #include <basalt/wire/protocol/play/PlayPackets.hpp>
-#include <basalt/wire/protocol/play/WorldPackets.hpp>
-#include <basalt/wire/protocol/play/BlockEntityPackets.hpp>
 #include <basalt/wire/protocol/play/PlayerStatePackets.hpp>
 #include <basalt/wire/protocol/play/RecipePackets.hpp>
 #include <basalt/wire/protocol/play/SimplePackets.hpp>
+#include <basalt/wire/protocol/play/WorldPackets.hpp>
 
 #include <algorithm>
 #include <array>
@@ -168,7 +168,8 @@ bool Link776Up::clientbound(ProtocolState state, MutablePacket& packet) {
         if (action == 0 || action == 3) {
             packet.overrideId(play::SwingAnimationPacket::kId);
             encode(packet, [&](io::ByteBuffer& out) {
-                play::SwingAnimationPacket{.entityId = entityId, .hand = action == 0 ? 0 : 1, .animation = {}}.write(out);
+                play::SwingAnimationPacket{.entityId = entityId, .hand = action == 0 ? 0 : 1, .animation = {}}.write(
+                    out);
             });
         } else if (action == 2 || action == 4 || action == 5) {
             encode(packet, [&](io::ByteBuffer& out) {
@@ -303,7 +304,8 @@ bool Link776Up::configuration(MutablePacket& packet) const {
         packet.overrideId(configuration::RegistryDataPacket::kId);
         packet.body.assign(added[0].begin(), added[0].end());
         for (std::size_t index = 1; index < added.size(); ++index) {
-            packet.extras.emplace_back(ids_->registryData, std::vector<std::uint8_t>{added[index].begin(), added[index].end()});
+            packet.extras.emplace_back(ids_->registryData,
+                                       std::vector<std::uint8_t>{added[index].begin(), added[index].end()});
         }
         packet.extras.emplace_back(ids_->finishConfiguration, finish);
     }
