@@ -2,8 +2,11 @@
 
 #include <expected>
 #include <string>
+#include <string_view>
 
 namespace basalt::wire::remote {
+
+inline constexpr std::string_view kDefaultApiTokenPath = ".basalt/api.token";
 
 struct StoredToken {
     std::string token;
