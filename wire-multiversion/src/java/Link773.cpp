@@ -1,5 +1,5 @@
 #include <basalt/wire/multiversion/java/Link773.hpp>
-#include <basalt/wire/multiversion/java/SafeInt.hpp>
+#include <basalt/wire/common/SafeInt.hpp>
 #include <basalt/wire/nbt/Snbt.hpp>
 #include <basalt/wire/protocol/configuration/ConfigurationPackets.hpp>
 #include <basalt/wire/protocol/play/BorderPackets.hpp>
@@ -71,7 +71,7 @@ constexpr std::int64_t kMillisPerTick = 50;
 }
 
 [[nodiscard]] std::int32_t hsvToRgb(float hue, float saturation, float value) {
-    const int sector = static_cast<int>(safeInt(hue * 6.0F) % 6);
+    const int sector = static_cast<int>(common::safeInt(hue * 6.0F) % 6);
     const float fraction = hue * 6.0F - static_cast<float>(sector);
     const float p = value * (1.0F - saturation);
     const float q = value * (1.0F - fraction * saturation);
@@ -108,9 +108,9 @@ constexpr std::int64_t kMillisPerTick = 50;
     default:
         break;
     }
-    return (static_cast<std::int32_t>(safeInt(red * 255.0F) & 255) << 16) |
-           (static_cast<std::int32_t>(safeInt(green * 255.0F) & 255) << 8) |
-           static_cast<std::int32_t>(safeInt(blue * 255.0F) & 255);
+    return (static_cast<std::int32_t>(common::safeInt(red * 255.0F) & 255) << 16) |
+           (static_cast<std::int32_t>(common::safeInt(green * 255.0F) & 255) << 8) |
+           static_cast<std::int32_t>(common::safeInt(blue * 255.0F) & 255);
 }
 
 /// parity: `OverworldBiomeBuilder.calculateSkyColor`.

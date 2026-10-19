@@ -1,4 +1,4 @@
-#include <basalt/wire/multiversion/java/SafeInt.hpp>
+#include <basalt/wire/common/SafeInt.hpp>
 #include <basalt/wire/multiversion/java/Link774Up.hpp>
 #include <basalt/wire/multiversion/java/NewRegistries775.hpp>
 #include <basalt/wire/multiversion/java/Tables774.hpp>
@@ -74,7 +74,7 @@ void addBabyAsset(nbt::NbtCompound& element) {
 
 int ambientLightColor(float ambientLight) {
     // Between the overworld (no ambient light) and full white.
-    const int value = std::clamp(static_cast<int>(std::clamp<std::int64_t>(safeInt(std::round(10.0F + ambientLight * 245.0F)), 10, 255)), 10, 255);
+    const int value = std::clamp(static_cast<int>(std::clamp<std::int64_t>(common::safeInt(std::round(10.0F + ambientLight * 245.0F)), 10, 255)), 10, 255);
     return static_cast<int>(0xFF000000U | static_cast<unsigned>(value) << 16U | static_cast<unsigned>(value) << 8U |
                             static_cast<unsigned>(value));
 }

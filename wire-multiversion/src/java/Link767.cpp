@@ -1,4 +1,4 @@
-#include <basalt/wire/multiversion/java/SafeInt.hpp>
+#include <basalt/wire/common/SafeInt.hpp>
 #include <basalt/wire/multiversion/java/Link767.hpp>
 #include <basalt/wire/multiversion/java/LoginFields.hpp>
 #include <basalt/wire/protocol/ProtocolBuffer.hpp>
@@ -27,7 +27,7 @@ constexpr std::int32_t kClientInformationConfiguration = 0x00;
 constexpr std::int32_t kParticlesAll = 0;
 
 [[nodiscard]] std::uint8_t angleOf(float degrees) {
-    return static_cast<std::uint8_t>(safeInt(std::round(degrees * 256.0F / 360.0F)));
+    return static_cast<std::uint8_t>(common::safeInt(std::round(degrees * 256.0F / 360.0F)));
 }
 
 } // namespace
