@@ -27,12 +27,12 @@
 #include <basalt/wire/multiversion/java/Link767.hpp>
 #include <basalt/wire/multiversion/java/Link768.hpp>
 #include <basalt/wire/multiversion/java/Link769.hpp>
-#include <basalt/wire/multiversion/java/Link772.hpp>
-#include <basalt/wire/multiversion/java/Link773.hpp>
-#include <basalt/wire/multiversion/java/Link774.hpp>
 #include <basalt/wire/multiversion/java/Link770Up.hpp>
+#include <basalt/wire/multiversion/java/Link772.hpp>
 #include <basalt/wire/multiversion/java/Link772Up.hpp>
+#include <basalt/wire/multiversion/java/Link773.hpp>
 #include <basalt/wire/multiversion/java/Link773Up.hpp>
+#include <basalt/wire/multiversion/java/Link774.hpp>
 #include <basalt/wire/multiversion/java/Link774Up.hpp>
 #include <basalt/wire/multiversion/java/Link775.hpp>
 #include <basalt/wire/multiversion/java/Link775Up.hpp>

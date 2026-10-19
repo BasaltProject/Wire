@@ -101,11 +101,13 @@ IdMap IdMap::inverted() const {
     if (!parsed_) {
         parse();
     }
+
     struct Run {
         std::int32_t start;
         std::int32_t length;
         std::int32_t delta;
     };
+
     std::vector<Run> runs;
     runs.reserve(starts_.size());
     for (std::size_t i = 0; i < starts_.size(); ++i) {
