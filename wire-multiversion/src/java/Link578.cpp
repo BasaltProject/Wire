@@ -99,7 +99,8 @@ void repackContainer(io::ByteBuffer& input, io::ByteBuffer& output) {
     for (std::size_t i = 0; i < kBlocksPerSection; ++i) {
         values.push_back(storage.get(i));
     }
-    const std::vector<std::int64_t> compact = compactBitStorage::pack(values, bits);
+    const std::vector<std::int64_t> compact =
+        bits == 0 ? std::vector<std::int64_t>{} : compactBitStorage::pack(values, bits);
     protocol::varInt::write(output, static_cast<std::int32_t>(compact.size()));
     for (const std::int64_t word : compact) {
         output.writeLong(word);

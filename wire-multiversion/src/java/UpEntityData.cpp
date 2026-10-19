@@ -2,6 +2,7 @@
 #include <basalt/wire/multiversion/java/EntityDataIndexes.hpp>
 #include <basalt/wire/multiversion/java/EntityDataTypes.hpp>
 #include <basalt/wire/multiversion/java/UpEntityData.hpp>
+#include <basalt/wire/nbt/NbtTag.hpp>
 #include <basalt/wire/protocol/ProtocolBuffer.hpp>
 #include <basalt/wire/protocol/VarInt.hpp>
 #include <basalt/wire/protocol/play/EntityData.hpp>
@@ -143,6 +144,15 @@ std::int32_t UpEntityData::nativeIndex(std::int32_t nativeType, std::int32_t ind
     }
     // The links drop an index and close the gap; climbing opens the gap again, newest rule first.
     for (std::int32_t step = backendVersion_; step < protocolVersions::kNative; ++step) {
+        if (step == protocolVersions::kV1_21_7 && nativeType == play::SpawnEntityPacket::kPlayerEntityType) {
+            // 1.21.9 moved the model parts and main hand to the avatar and pushed hearts and score after them.
+            constexpr std::array<std::pair<std::int32_t, std::int32_t>, 4> kMoves = {
+                {{17, 16}, {18, 15}, {15, 17}, {16, 18}}};
+            const auto moved = std::ranges::find(kMoves, index, &std::pair<std::int32_t, std::int32_t>::first);
+            if (moved != kMoves.end()) {
+                index = moved->second;
+            }
+        }
         const std::span<const EntityDataIndexRule> rules = entityDataIndexRules(step);
         for (auto rule = rules.rbegin(); rule != rules.rend(); ++rule) {
             if (std::ranges::find(rule->types, nativeType) == rule->types.end()) {
@@ -172,7 +182,22 @@ bool UpEntityData::entityData(MutablePacket& packet) const {
         const auto found = std::ranges::find(kParticleShapes, mapped, &std::pair<std::int32_t, Shape>::first);
         return found == kParticleShapes.end() ? Shape::None : found->second;
     };
-    auto data = play::SetEntityDataPacket::read(input, shapeOf, serializers_);
+    // 1.21.7 sent the shoulder parrots as compounds; 1.21.9 sends the variant alone.
+    constexpr std::int32_t kCompoundSerializer1_21_7 = 16;
+    const play::SetEntityDataPacket::ForeignValue foreign =
+        [this](std::int32_t serializer, io::ByteBuffer& in) -> std::optional<play::SetEntityDataPacket::Value> {
+        if (backendVersion_ > protocolVersions::kV1_21_7 || serializer != kCompoundSerializer1_21_7) {
+            return std::nullopt;
+        }
+        const nbt::NbtTag tag = protocol::readAnonymousNbt(in);
+        const nbt::NbtCompound* shoulder = tag.get<nbt::NbtCompound>();
+        std::optional<std::int32_t> variant;
+        if (shoulder != nullptr && shoulder->contains("Variant")) {
+            variant = shoulder->getInt("Variant", 0);
+        }
+        return play::SetEntityDataPacket::OptionalUnsignedIntValue{variant};
+    };
+    auto data = play::SetEntityDataPacket::read(input, shapeOf, serializers_, foreign);
     if (!data.has_value()) {
         return false;
     }

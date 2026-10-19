@@ -191,7 +191,8 @@ void SetEntityDataPacket::write(io::ByteBuffer& buffer) const {
 }
 
 std::optional<SetEntityDataPacket> SetEntityDataPacket::read(io::ByteBuffer& buffer, const ParticleShapeOf& shapeOf,
-                                                             std::span<const std::int32_t> serializerToNative) {
+                                                             std::span<const std::int32_t> serializerToNative,
+                                                             const ForeignValue& foreign) {
     SetEntityDataPacket packet;
     packet.entityId = varInt::read(buffer);
 
@@ -208,10 +209,17 @@ std::optional<SetEntityDataPacket> SetEntityDataPacket::read(io::ByteBuffer& buf
         entry.index = index;
         std::int32_t serializer = varInt::read(buffer);
         if (!serializerToNative.empty()) {
+            const std::int32_t other = serializer;
             serializer = serializer >= 0 && static_cast<std::size_t>(serializer) < serializerToNative.size()
                              ? serializerToNative[static_cast<std::size_t>(serializer)]
                              : -1;
             if (serializer < 0) {
+                std::optional<Value> value;
+                if (foreign && (value = foreign(other, buffer))) {
+                    entry.value = std::move(*value);
+                    packet.entries.push_back(std::move(entry));
+                    continue;
+                }
                 buffer.markFailed();
                 return std::nullopt;
             }
