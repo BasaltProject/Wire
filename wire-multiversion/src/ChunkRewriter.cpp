@@ -87,6 +87,10 @@ void ChunkRewriter::writeContainer(io::ByteBuffer& output, std::span<const std::
 void ChunkRewriter::copyContainer(io::ByteBuffer& input, io::ByteBuffer& output, std::size_t size,
                                   int maxIndirectBits) const {
     const std::uint8_t bits = input.readByte();
+    if (bits > 64) {
+        input.markFailed();
+        return;
+    }
     output.writeByte(bits);
     if (bits == 0) {
         varInt::write(output, varInt::read(input));

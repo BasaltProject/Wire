@@ -30,8 +30,7 @@ constexpr std::array<std::pair<std::int32_t, Shape>, 22> kParticleShapes = {{
     {121, Shape::BlockState},    {125, Shape::BlockState},
 }};
 
-/// parity: the items a 26.3 server's brewing stand takes as a bottle and as an ingredient, which older servers never
-/// sent because their clients had the lists built in.
+/// parity: the brewing stand's bottle and ingredient items, which servers before 26.3 never sent.
 constexpr std::array<std::int32_t, 3> kBrewingInputs = {1442, 1271, 1445};
 constexpr std::array<std::int32_t, 21> kBrewingReagents = {1001, 237,  1274, 1272, 831,  1441, 1403,
                                                            1269, 1279, 1,    1373, 1275, 824,  1064,

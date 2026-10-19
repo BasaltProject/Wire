@@ -59,7 +59,7 @@ constexpr std::size_t kBitsPerWord = 64;
 [[nodiscard]] std::vector<std::int64_t> readMask(io::ByteBuffer& input) {
     const std::int32_t count = protocol::varInt::read(input);
     std::vector<std::int64_t> mask;
-    mask.reserve(static_cast<std::size_t>(count < 0 ? 0 : count));
+    mask.reserve(std::min(static_cast<std::size_t>(count < 0 ? 0 : count), input.readableBytes()));
     for (std::int32_t i = 0; i < count && !input.failed(); ++i) {
         mask.push_back(input.readLong());
     }
@@ -97,6 +97,9 @@ void copyContainer(io::ByteBuffer& input, io::ByteBuffer& output, int maxIndirec
     for (std::size_t i = 0; i < root->size(); ++i) {
         const auto* data = root->values()[i].get<std::vector<std::int64_t>>();
         if (data == nullptr) {
+            continue;
+        }
+        if (data->size() != play::bitStorageLongCount(kHeightmapBits, kHeightmapEntries)) {
             continue;
         }
         std::vector<std::uint64_t> words;
@@ -256,7 +259,7 @@ bool Link754::cutChunk(MutablePacket& packet) {
     const nbt::NbtTag heightmaps = protocol::readAnonymousNbt(input);
     const std::int32_t biomeCount = protocol::varInt::read(input);
     std::vector<std::int32_t> biomes;
-    biomes.reserve(static_cast<std::size_t>(biomeCount < 0 ? 0 : biomeCount));
+    biomes.reserve(std::min(static_cast<std::size_t>(biomeCount < 0 ? 0 : biomeCount), input.readableBytes()));
     for (std::int32_t i = 0; i < biomeCount && !input.failed(); ++i) {
         biomes.push_back(protocol::varInt::read(input));
     }
@@ -316,7 +319,7 @@ bool Link754::cutLight(MutablePacket& packet) {
     const auto readArrays = [&input] {
         const std::int32_t count = protocol::varInt::read(input);
         std::vector<std::vector<std::uint8_t>> arrays;
-        arrays.reserve(static_cast<std::size_t>(count < 0 ? 0 : count));
+        arrays.reserve(std::min(static_cast<std::size_t>(count < 0 ? 0 : count), input.readableBytes()));
         for (std::int32_t i = 0; i < count && !input.failed(); ++i) {
             const std::int32_t length = protocol::varInt::read(input);
             arrays.push_back(input.readBytes(static_cast<std::size_t>(length < 0 ? 0 : length)));

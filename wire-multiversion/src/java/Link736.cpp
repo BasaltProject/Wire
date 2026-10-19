@@ -165,7 +165,7 @@ void Link736::rewriteChunk(MutablePacket& packet) const {
     const nbt::NbtTag heightmaps = protocol::readAnonymousNbt(input);
     const std::int32_t count = protocol::varInt::read(input);
     std::vector<std::int32_t> biomeIds;
-    biomeIds.reserve(static_cast<std::size_t>(count < 0 ? 0 : count));
+    biomeIds.reserve(std::min(static_cast<std::size_t>(count < 0 ? 0 : count), input.readableBytes()));
     for (std::int32_t i = 0; i < count && !input.failed(); ++i) {
         biomeIds.push_back(protocol::varInt::read(input));
     }
@@ -189,7 +189,7 @@ void Link736::rewriteSectionUpdate(MutablePacket& packet) {
     static_cast<void>(input.readByte());
     const std::int32_t count = protocol::varInt::read(input);
     std::vector<std::int64_t> changes;
-    changes.reserve(static_cast<std::size_t>(count < 0 ? 0 : count));
+    changes.reserve(std::min(static_cast<std::size_t>(count < 0 ? 0 : count), input.readableBytes()));
     for (std::int32_t i = 0; i < count && !input.failed(); ++i) {
         changes.push_back(protocol::varLong::read(input));
     }
