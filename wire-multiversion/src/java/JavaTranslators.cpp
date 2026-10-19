@@ -212,12 +212,13 @@ std::unique_ptr<ProtocolLink> climbing(const VersionTables& upward) {
     return std::make_unique<T>(upward);
 }
 
-constexpr std::array<UpEntry, 5> kUpLinks = {{
+constexpr std::array<UpEntry, 6> kUpLinks = {{
     {protocolVersions::kV26_2, &tables776, &climbing<Link776Up>},
     {protocolVersions::kV26_1, &tables775, &climbing<Link775Up>},
     {protocolVersions::kV1_21_11, &tables774, &climbing<Link774Up>},
     {protocolVersions::kV1_21_9, &tables773, &climbing<Link773Up>},
     {protocolVersions::kV1_21_7, &tables772, &climbing<Link772Up>},
+    {protocolVersions::kV1_21_6, &tables771, &climbing<RenumberingLink>},
 }};
 
 class UpChain final : public JavaChain {
