@@ -1,6 +1,7 @@
 #include <basalt/wire/protocol/ProtocolBuffer.hpp>
 #include <basalt/wire/protocol/VarInt.hpp>
 #include <basalt/wire/protocol/play/BlockEntityPackets.hpp>
+#include <basalt/wire/text/ComponentNbt.hpp>
 
 #include <algorithm>
 
@@ -167,6 +168,87 @@ std::optional<SetStructureBlockPacket> SetStructureBlockPacket::read(io::ByteBuf
     packet.strict = (flags & kStrictFlag) != 0;
     packet.showAir = (flags & kShowAirFlag) != 0;
     packet.showBoundingBox = (flags & kShowBoundingBoxFlag) != 0;
+    return buffer.failed() ? std::nullopt : std::optional{std::move(packet)};
+}
+
+void SetTestBlockPacket::write(io::ByteBuffer& buffer) const {
+    buffer.writeLong(pos.pack());
+    varInt::write(buffer, static_cast<std::int32_t>(mode));
+    writeString(buffer, message);
+}
+
+std::optional<SetTestBlockPacket> SetTestBlockPacket::read(io::ByteBuffer& buffer) {
+    SetTestBlockPacket packet;
+    packet.pos = BlockPos::unpack(buffer.readLong());
+    const std::int32_t mode = varInt::read(buffer);
+    // parity: `ByIdMap.continuous` with a zero fallback.
+    packet.mode = mode >= 0 && mode <= static_cast<std::int32_t>(Mode::Accept) ? static_cast<Mode>(mode) : Mode::Start;
+    packet.message = readString(buffer);
+    return buffer.failed() ? std::nullopt : std::optional{std::move(packet)};
+}
+
+void TestInstanceBlockActionPacket::write(io::ByteBuffer& buffer) const {
+    buffer.writeLong(pos.pack());
+    varInt::write(buffer, static_cast<std::int32_t>(action));
+    writeBoolean(buffer, test.has_value());
+    if (test.has_value()) {
+        writeString(buffer, *test);
+    }
+    for (const std::int32_t axis : size) {
+        varInt::write(buffer, axis);
+    }
+    varInt::write(buffer, rotation);
+    writeBoolean(buffer, ignoreEntities);
+    varInt::write(buffer, static_cast<std::int32_t>(status));
+    writeBoolean(buffer, errorMessage.has_value());
+    if (errorMessage.has_value()) {
+        writeAnonymousNbt(buffer, text::componentNbt::serialize(*errorMessage));
+    }
+}
+
+std::optional<TestInstanceBlockActionPacket> TestInstanceBlockActionPacket::read(io::ByteBuffer& buffer) {
+    TestInstanceBlockActionPacket packet;
+    packet.pos = BlockPos::unpack(buffer.readLong());
+    const std::int32_t action = varInt::read(buffer);
+    packet.action =
+        action >= 0 && action <= static_cast<std::int32_t>(Action::Run) ? static_cast<Action>(action) : Action::Init;
+    if (readBoolean(buffer)) {
+        packet.test = readString(buffer);
+    }
+    for (std::int32_t& axis : packet.size) {
+        axis = varInt::read(buffer);
+    }
+    packet.rotation = std::clamp(varInt::read(buffer), 0, 3);
+    packet.ignoreEntities = readBoolean(buffer);
+    const std::int32_t status = varInt::read(buffer);
+    packet.status = status >= 0 && status <= static_cast<std::int32_t>(Status::Finished) ? static_cast<Status>(status)
+                                                                                         : Status::Cleared;
+    if (readBoolean(buffer)) {
+        packet.errorMessage = text::componentNbt::deserialize(readAnonymousNbt(buffer));
+    }
+    return buffer.failed() ? std::nullopt : std::optional{std::move(packet)};
+}
+
+void TestInstanceBlockStatusPacket::write(io::ByteBuffer& buffer) const {
+    writeAnonymousNbt(buffer, text::componentNbt::serialize(status));
+    writeBoolean(buffer, size.has_value());
+    if (size.has_value()) {
+        for (const std::int32_t axis : *size) {
+            varInt::write(buffer, axis);
+        }
+    }
+}
+
+std::optional<TestInstanceBlockStatusPacket> TestInstanceBlockStatusPacket::read(io::ByteBuffer& buffer) {
+    TestInstanceBlockStatusPacket packet;
+    packet.status = text::componentNbt::deserialize(readAnonymousNbt(buffer));
+    if (readBoolean(buffer)) {
+        std::array<std::int32_t, 3> size{};
+        for (std::int32_t& axis : size) {
+            axis = varInt::read(buffer);
+        }
+        packet.size = size;
+    }
     return buffer.failed() ? std::nullopt : std::optional{std::move(packet)};
 }
 
