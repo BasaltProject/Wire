@@ -202,8 +202,8 @@ std::expected<std::int32_t, LuaFailure> callSync(LuaSandbox& sandbox, const LuaR
         return std::unexpected(LuaFailure{.plugin = sandbox.name(), .message = "there is no function to call"});
     }
     const int before = lua_gettop(state);
-    function.push();
     LuaArgs lua{state};
+    function.push(lua);
     const std::int32_t argumentCount = pushArguments ? pushArguments(lua) : 0;
     if (lua_pcall(state, argumentCount, resultCount, 0) != LUA_OK) {
         const LuaFailure failure = sandbox.failureFromStack();
