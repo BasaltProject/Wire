@@ -23,6 +23,8 @@ struct WireItemStack {
 
     [[nodiscard]] std::int32_t damage() const;
 
+    [[nodiscard]] std::optional<std::int32_t> mapId() const;
+
     void write(io::ByteBuffer& buffer) const;
 
     static void writeOptional(io::ByteBuffer& buffer, const std::optional<WireItemStack>& stack);

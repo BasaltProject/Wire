@@ -60,6 +60,17 @@ std::int32_t WireItemStack::damage() const {
     return 0;
 }
 
+std::optional<std::int32_t> WireItemStack::mapId() const {
+    for (const ItemComponent& component : components) {
+        if (component.id() == dataComponent::kMapId) {
+            if (const auto* number = component.as<ItemComponent::Number>()) {
+                return number->value;
+            }
+        }
+    }
+    return std::nullopt;
+}
+
 void WireItemStack::write(io::ByteBuffer& buffer) const {
     varInt::write(buffer, count);
     if (count <= 0) {
