@@ -6,6 +6,7 @@
 #include <basalt/wire/protocol/play/EntityPackets.hpp>
 #include <basalt/wire/protocol/play/InventoryPackets.hpp>
 
+#include <algorithm>
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -55,7 +56,7 @@ bool Link765::clientbound(ProtocolState state, MutablePacket& packet) {
         const std::int32_t stateId = protocol::varInt::read(input);
         const std::int32_t count = protocol::varInt::read(input);
         std::vector<std::optional<play::WireItemStack>> items;
-        items.reserve(static_cast<std::size_t>(count < 0 ? 0 : count));
+        items.reserve(std::min(static_cast<std::size_t>(count < 0 ? 0 : count), input.readableBytes()));
         for (std::int32_t i = 0; i < count && !input.failed(); ++i) {
             items.push_back(play::WireItemStack::read(input));
         }
