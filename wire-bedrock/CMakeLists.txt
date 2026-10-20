@@ -23,6 +23,7 @@ basalt_module(wire-bedrock
         src/BedrockItemNames.cpp
         src/BedrockItems.cpp
         src/BedrockMaps.cpp
+        src/BedrockMapConversion.cpp
         src/BedrockParticleNames.cpp
         src/BedrockParticles.cpp
         src/BedrockSoundEvents.cpp
@@ -34,7 +35,7 @@ basalt_module(wire-bedrock
         src/RakNet.cpp
         src/RakServer.cpp
         src/RakSession.cpp
-    DEPENDS basalt::wire-common basalt::wire-io basalt::wire-nbt basalt::wire-text
+    DEPENDS basalt::wire-common basalt::wire-io basalt::wire-nbt basalt::wire-text basalt::wire-protocol
     PRIVATE_DEPENDS basalt::mbedtls
 )
 
