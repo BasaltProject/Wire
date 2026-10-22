@@ -1,4 +1,5 @@
 #include <basalt/wire/common/placeholder/PlaceholderText.hpp>
+#include <basalt/wire/config/DefaultIcon.hpp>
 #include <basalt/wire/config/ServerListStatus.hpp>
 #include <basalt/wire/io/FileIO.hpp>
 #include <basalt/wire/text/MiniMessage.hpp>
@@ -50,7 +51,12 @@ ServerListStatus::ServerListStatus(std::function<std::shared_ptr<const ServerLis
                                    std::function<std::vector<ListedPlayer>()> onlinePlayers, Options options,
                                    Hooks hooks, wire::common::Logger logger)
     : config_(std::move(config)), placeholders_(&placeholders), onlinePlayers_(std::move(onlinePlayers)),
-      options_(std::move(options)), hooks_(std::move(hooks)), logger_(std::move(logger)) {}
+      options_(std::move(options)), hooks_(std::move(hooks)), logger_(std::move(logger)) {
+    if (options_.builtInIcon.empty()) {
+        const std::span<const std::uint8_t> icon = defaultIcon::bytes();
+        options_.builtInIcon.assign(icon.begin(), icon.end());
+    }
+}
 
 ServerStatusPayload ServerListStatus::statusFor(std::int32_t protocolVersion, const std::string& host,
                                                 const std::optional<std::string>& address) {
@@ -160,9 +166,13 @@ std::vector<std::uint8_t> ServerListStatus::iconFor(const ServerListProfile& pro
     const std::optional<std::vector<std::uint8_t>> bytes = wire::io::fileIO::readBytes(path);
     std::vector<std::uint8_t> usable;
     if (!bytes.has_value()) {
-        logger_.warn([&path] { return "Server list icon " + path + " not found; using the built-in one."; });
+        logger_.warn([&path, &name] {
+            return "server_list.toml icon \"" + name + "\": " + path + " not found; using the built-in one.";
+        });
     } else if (!isPng64(*bytes)) {
-        logger_.warn([&path] { return "Server list icon " + path + " is not a 64x64 PNG; using the built-in one."; });
+        logger_.warn([&path, &name] {
+            return "server_list.toml icon \"" + name + "\": " + path + " is not a 64x64 PNG; using the built-in one.";
+        });
     } else {
         usable = *bytes;
     }

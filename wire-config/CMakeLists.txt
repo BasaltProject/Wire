@@ -6,6 +6,7 @@ basalt_module(wire-config
         src/CommandsConfig.cpp
         src/ConfigDirectory.cpp
         src/ConfigUpgrade.cpp
+        src/DefaultIcon.cpp
         src/MessageCatalog.cpp
         src/Permissions.cpp
         src/PlayerUi.cpp
