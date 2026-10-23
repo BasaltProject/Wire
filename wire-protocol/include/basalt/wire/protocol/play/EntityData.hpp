@@ -198,9 +198,17 @@ struct SetEntityDataPacket {
         friend bool operator==(const OptionalUnsignedIntValue&, const OptionalUnsignedIntValue&) = default;
     };
 
+    /// An entry the sender encoded itself: the serializer's id and the bytes that follow it.
+    struct RawValue {
+        std::int32_t serializer = 0;
+        std::vector<std::uint8_t> bytes;
+        friend bool operator==(const RawValue&, const RawValue&) = default;
+    };
+
     using Value = std::variant<ByteValue, IntValue, FloatValue, TextValue, OptionalTextValue, ItemValue, BoolValue,
                                RotationsValue, VillagerDataValue, OptionalBlockPosValue, PoseValue, RegistryIdValue,
-                               ParticleValue, ParticlesValue, OptionalUnsignedIntValue, LongValue, StringValue>;
+                               ParticleValue, ParticlesValue, OptionalUnsignedIntValue, LongValue, StringValue,
+                               RawValue>;
 
     using ParticleShapeOf = std::function<std::optional<ParticleOptionShape>(std::int32_t particleId)>;
 
