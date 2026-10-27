@@ -82,22 +82,22 @@ play::RemoteChatSessionData chatSession() {
 TEST_CASE("a chat session is only taken with Mojang's signature over the player's own key") {
     const basalt::wire::auth::ServicesKeySet keys = services();
     SecureChat stranger{Uuid{1, 2}, true, &keys};
-    CHECK(stranger.updateSession(chatSession()) == SecureChat::SessionResult::InvalidSignature);
+    CHECK(stranger.updateSession(chatSession()) == SecureChat::SessionResult::kInvalidSignature);
     SecureChat keyless{kProfile, true, nullptr};
-    CHECK(keyless.updateSession(chatSession()) == SecureChat::SessionResult::Ignored);
+    CHECK(keyless.updateSession(chatSession()) == SecureChat::SessionResult::kIgnored);
 
     SecureChat chat{kProfile, true, &keys};
-    CHECK(chat.updateSession(chatSession()) == SecureChat::SessionResult::Accepted);
-    CHECK(chat.updateSession(chatSession()) == SecureChat::SessionResult::Unchanged);
+    CHECK(chat.updateSession(chatSession()) == SecureChat::SessionResult::kAccepted);
+    CHECK(chat.updateSession(chatSession()) == SecureChat::SessionResult::kUnchanged);
     play::RemoteChatSessionData older = chatSession();
     older.expiresAt -= 1;
-    CHECK(chat.updateSession(older) == SecureChat::SessionResult::ExpiredKey);
+    CHECK(chat.updateSession(older) == SecureChat::SessionResult::kExpiredKey);
 }
 
 TEST_CASE("signed messages chain, acknowledge each other and break on the first bad link") {
     const basalt::wire::auth::ServicesKeySet keys = services();
     SecureChat chat{kProfile, true, &keys};
-    REQUIRE(chat.updateSession(chatSession()) == SecureChat::SessionResult::Accepted);
+    REQUIRE(chat.updateSession(chatSession()) == SecureChat::SessionResult::kAccepted);
     const std::int64_t now = 1700000002000;
 
     const auto first = chat.unpack(signatureOf(kFirstSignature),

@@ -15,26 +15,26 @@ SecureChat::SessionResult SecureChat::updateSession(const protocol::play::Remote
     const bool sameKey = session_.has_value() && session_->expiresAt == data.expiresAt &&
                          session_->publicKey == data.publicKey && session_->keySignature == data.keySignature;
     if (sameKey) {
-        return SessionResult::Unchanged;
+        return SessionResult::kUnchanged;
     }
     if (session_.has_value() && data.expiresAt < session_->expiresAt) {
-        return SessionResult::ExpiredKey;
+        return SessionResult::kExpiredKey;
     }
     if (services_ == nullptr || !services_->canValidateProfileKeys()) {
-        return SessionResult::Ignored;
+        return SessionResult::kIgnored;
     }
     // parity: a key that does not parse fails the packet in vanilla; either way the player goes.
     std::optional<auth::RsaPublicKey> key = auth::RsaPublicKey::parseDer(data.publicKey);
     if (!key.has_value() ||
         !services_->verifyProfileKey(auth::profileKeyPayload(profileId_, data.expiresAt, data.publicKey),
                                      data.keySignature)) {
-        return SessionResult::InvalidSignature;
+        return SessionResult::kInvalidSignature;
     }
     session_ = data;
     key_ = std::move(key);
     nextIndex_ = 0;
     lastTimestamp_ = 0;
-    return SessionResult::Accepted;
+    return SessionResult::kAccepted;
 }
 
 std::expected<std::vector<MessageSignature>, std::string>
@@ -133,9 +133,9 @@ bool SecureChat::send(const PlayerChatMessage& message, const BoundChatType& cha
 
 std::optional<std::string> disconnectKeyOf(SecureChat::SessionResult result) {
     switch (result) {
-    case SecureChat::SessionResult::ExpiredKey:
+    case SecureChat::SessionResult::kExpiredKey:
         return std::string{"multiplayer.disconnect.expired_public_key"};
-    case SecureChat::SessionResult::InvalidSignature:
+    case SecureChat::SessionResult::kInvalidSignature:
         return std::string{"multiplayer.disconnect.invalid_public_key_signature"};
     default:
         return std::nullopt;

@@ -22,14 +22,14 @@ public:
     static constexpr std::size_t kMaxPendingChats = 4096;
 
     enum class SessionResult : std::uint8_t {
-        Accepted,
-        Unchanged,
+        kAccepted,
+        kUnchanged,
         /// parity: "Ignoring chat session ... due to missing Services public key".
-        Ignored,
+        kIgnored,
         /// parity: `EXPIRED_PROFILE_PUBLIC_KEY`, a key older than the one already in use.
-        ExpiredKey,
+        kExpiredKey,
         /// parity: `ProfilePublicKey.INVALID_SIGNATURE`.
-        InvalidSignature,
+        kInvalidSignature,
     };
 
     SecureChat(common::Uuid profileId, bool enforceSecureProfile, const auth::ServicesKeySet* services);
