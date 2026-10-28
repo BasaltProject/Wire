@@ -23,6 +23,8 @@ add_library(basalt::zlib ALIAS basalt_zlib)
 target_include_directories(basalt_zlib SYSTEM PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 # NO_GZIP must stay undefined: zlib turns gzip support off on the mere presence of the name, and
 # gzip is what saved structure files and rotated logs use.
-target_compile_definitions(basalt_zlib PRIVATE HAVE_UNISTD_H)
+if(NOT WIN32 OR MINGW)
+    target_compile_definitions(basalt_zlib PRIVATE HAVE_UNISTD_H)
+endif()
 set_target_properties(basalt_zlib PROPERTIES POSITION_INDEPENDENT_CODE ON)
 target_compile_options(basalt_zlib PRIVATE -w)
