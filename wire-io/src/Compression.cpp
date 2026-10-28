@@ -102,7 +102,7 @@ std::expected<void, CompressionError> decompressInto(std::span<const std::uint8_
     }
 
     const std::span<std::uint8_t> tail = destination.writableTail(uncompressedSize);
-    uLongf written = uncompressedSize;
+    uLongf written = static_cast<uLongf>(uncompressedSize);
     const int result = uncompress(tail.data(), &written, source.data(), static_cast<uLong>(source.size()));
     if (result != Z_OK) {
         destination.trimTail(uncompressedSize);

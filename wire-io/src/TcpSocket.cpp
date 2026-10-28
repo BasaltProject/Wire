@@ -81,7 +81,7 @@ bool retryableAcceptError(int error) noexcept {
 std::expected<void, SocketError> nonBlocking(std::int64_t handle, bool enabled) {
 #if defined(_WIN32)
     u_long mode = enabled ? 1 : 0;
-    const int result = ::ioctlsocket(static_cast<SOCKET>(handle), FIONBIO, &mode);
+    const int result = ::ioctlsocket(static_cast<SOCKET>(handle), static_cast<long>(FIONBIO), &mode);
 #else
     const int flags = ::fcntl(static_cast<int>(handle), F_GETFL, 0);
     const int result =
