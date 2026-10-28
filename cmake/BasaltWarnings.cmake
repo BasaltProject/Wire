@@ -42,3 +42,9 @@ add_library(basalt::test_warnings ALIAS basalt_test_warnings)
 # doctest::Approx takes a double, so every Approx(1.0F) in a test promotes a float. That is the
 # shape of doctest's API, not ours, and -Wdouble-promotion still guards the code that generates.
 target_compile_options(basalt_test_warnings INTERFACE -Wno-double-promotion)
+
+# doctest's TEST_CASE expands __COUNTER__, which newer clang flags as a C2y extension under -Wpedantic.
+check_cxx_compiler_flag(-Wc2y-extensions BASALT_HAS_C2Y_EXTENSIONS)
+if(BASALT_HAS_C2Y_EXTENSIONS)
+    target_compile_options(basalt_test_warnings INTERFACE -Wno-c2y-extensions)
+endif()
