@@ -205,10 +205,10 @@ struct SetEntityDataPacket {
         friend bool operator==(const RawValue&, const RawValue&) = default;
     };
 
-    using Value = std::variant<ByteValue, IntValue, FloatValue, TextValue, OptionalTextValue, ItemValue, BoolValue,
-                               RotationsValue, VillagerDataValue, OptionalBlockPosValue, PoseValue, RegistryIdValue,
-                               ParticleValue, ParticlesValue, OptionalUnsignedIntValue, LongValue, StringValue,
-                               RawValue>;
+    using Value =
+        std::variant<ByteValue, IntValue, FloatValue, TextValue, OptionalTextValue, ItemValue, BoolValue,
+                     RotationsValue, VillagerDataValue, OptionalBlockPosValue, PoseValue, RegistryIdValue,
+                     ParticleValue, ParticlesValue, OptionalUnsignedIntValue, LongValue, StringValue, RawValue>;
 
     using ParticleShapeOf = std::function<std::optional<ParticleOptionShape>(std::int32_t particleId)>;
 

@@ -55,18 +55,25 @@ Component joinSiblings(std::vector<Component> parts) {
     if (parts.empty()) {
         return Component::empty();
     }
-    if (parts.size() == 1) return std::move(parts.front());
+    if (parts.size() == 1)
+        return std::move(parts.front());
     // A styled first span is not the parent of subsequent sibling spans.
     return Component::empty().withChildren(std::move(parts));
 }
 
 std::string decorationName(std::string name) {
-    if (name.starts_with('!')) name.erase(0, 1);
-    if (name == "b") return "bold";
-    if (name == "i" || name == "em") return "italic";
-    if (name == "u") return "underlined";
-    if (name == "st") return "strikethrough";
-    if (name == "obf") return "obfuscated";
+    if (name.starts_with('!'))
+        name.erase(0, 1);
+    if (name == "b")
+        return "bold";
+    if (name == "i" || name == "em")
+        return "italic";
+    if (name == "u")
+        return "underlined";
+    if (name == "st")
+        return "strikethrough";
+    if (name == "obf")
+        return "obfuscated";
     return name;
 }
 
@@ -130,7 +137,8 @@ void Parser::applyTag(std::string_view rawTag) {
 
     Style style;
     bool enabled = !negated;
-    if (const std::string* value = argument(0); value != nullptr && toLower(*value) == "false") enabled = false;
+    if (const std::string* value = argument(0); value != nullptr && toLower(*value) == "false")
+        enabled = false;
     if (name == "bold") {
         style.bold = enabled;
     } else if (name == "italic") {
