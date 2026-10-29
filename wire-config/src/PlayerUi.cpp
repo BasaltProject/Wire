@@ -57,12 +57,12 @@ PlayerUi::PlayerUi(std::function<std::shared_ptr<const UiConfigs>()> configs,
 void PlayerUi::tick(std::int64_t tick, const PlaceholderContext& context) {
     const std::shared_ptr<const UiConfigs> configs = configs_();
     const bool redraw = std::exchange(redrawPending_, false);
-    const bool tabOn = configs->tabList.enabled && !yielded(UiElement::TabList);
+    const bool tabOn = configs->tabList.enabled && !yielded(UiElement::kTabList);
     if (due(tick, tabOn, configs->tabList.updateIntervalTicks) || (redraw && tabOn)) {
         updateTabList(context);
     }
     // A plugin holding the sidebar turns it on even where the operator's file left it off.
-    const bool boardOn = (configs->scoreboard.enabled && !yielded(UiElement::Scoreboard)) ||
+    const bool boardOn = (configs->scoreboard.enabled && !yielded(UiElement::kScoreboard)) ||
                          (overrides_.holdsSidebar && overrides_.holdsSidebar());
     const std::int32_t boardEvery =
         configs->scoreboard.enabled ? configs->scoreboard.updateIntervalTicks : kPluginSidebarInterval;
@@ -71,7 +71,7 @@ void PlayerUi::tick(std::int64_t tick, const PlaceholderContext& context) {
     } else if (due(tick, boardOn, boardEvery) || redraw) {
         updateScoreboard(context);
     }
-    const bool barOn = (configs->bossBar.enabled && !yielded(UiElement::BossBar)) ||
+    const bool barOn = (configs->bossBar.enabled && !yielded(UiElement::kBossBar)) ||
                        (overrides_.holdsBossBar && overrides_.holdsBossBar());
     const std::int32_t barEvery =
         configs->bossBar.enabled ? configs->bossBar.updateIntervalTicks : kPluginSidebarInterval;
@@ -128,9 +128,9 @@ void PlayerUi::forget() {
 
 void PlayerUi::yield(UiElement element) {
     yielded_[static_cast<std::size_t>(element)] = true;
-    if (element == UiElement::Scoreboard)
+    if (element == UiElement::kScoreboard)
         clearScoreboard();
-    else if (element == UiElement::BossBar)
+    else if (element == UiElement::kBossBar)
         clearBossBar();
     else
         lastTabList_.reset();

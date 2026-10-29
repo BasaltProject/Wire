@@ -19,7 +19,7 @@
 
 namespace basalt::wire::config {
 
-enum class UiElement : std::uint8_t { TabList, Scoreboard, BossBar };
+enum class UiElement : std::uint8_t { kTabList, kScoreboard, kBossBar };
 
 struct SurfaceContent {
     std::string title;

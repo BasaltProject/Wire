@@ -39,10 +39,10 @@ constexpr std::array<BossBarOverlay, 5> kOverlays{BossBarOverlay::Progress, Boss
     }
     const std::string lowercase = lowercaseAscii(*written);
     if (lowercase == "proxy") {
-        return UiPriority::Proxy;
+        return UiPriority::kProxy;
     }
     if (lowercase == "backend") {
-        return UiPriority::Backend;
+        return UiPriority::kBackend;
     }
     logger.warn([&path, lowercase] {
         return path + " has [ui] priority = '" + lowercase + "'; it must be proxy or backend, using the default.";
@@ -53,7 +53,7 @@ constexpr std::array<BossBarOverlay, 5> kOverlays{BossBarOverlay::Progress, Boss
 } // namespace
 
 std::string_view uiPriorityName(UiPriority priority) noexcept {
-    return priority == UiPriority::Proxy ? "proxy" : "backend";
+    return priority == UiPriority::kProxy ? "proxy" : "backend";
 }
 
 std::string_view bossBarColorName(BossBarColor color) noexcept {

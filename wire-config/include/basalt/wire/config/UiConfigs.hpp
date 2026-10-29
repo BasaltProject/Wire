@@ -15,7 +15,7 @@
 namespace basalt::wire::config {
 
 /// Who owns the element when a backend sends its own: the proxy, or the backend that is in charge of the player.
-enum class UiPriority : std::uint8_t { Proxy, Backend };
+enum class UiPriority : std::uint8_t { kProxy, kBackend };
 
 [[nodiscard]] std::string_view uiPriorityName(UiPriority priority) noexcept;
 
@@ -31,7 +31,7 @@ struct TabListConfig {
     static constexpr std::string_view kFileName = "tab_list.toml";
 
     bool enabled = false;
-    UiPriority priority = UiPriority::Proxy;
+    UiPriority priority = UiPriority::kProxy;
     std::int32_t updateIntervalTicks = 0;
     std::vector<TabListProfile> profiles;
     std::size_t defaultIndex = 0;
@@ -40,7 +40,7 @@ struct TabListConfig {
 
     [[nodiscard]] static std::expected<TabListConfig, std::string>
     load(const ConfigDirectory& directory, std::string_view defaultContents,
-         UiPriority fallbackPriority = UiPriority::Proxy,
+         UiPriority fallbackPriority = UiPriority::kProxy,
          const wire::common::Logger& logger = wire::common::Logger{"Config"});
 
     [[nodiscard]] const TabListProfile& defaultProfile() const { return profiles[defaultIndex]; }
@@ -61,7 +61,7 @@ struct ScoreboardConfig {
     static constexpr std::int32_t kMaxLines = 15;
 
     bool enabled = false;
-    UiPriority priority = UiPriority::Proxy;
+    UiPriority priority = UiPriority::kProxy;
     std::int32_t updateIntervalTicks = 0;
     std::vector<ScoreboardProfile> profiles;
     std::size_t defaultIndex = 0;
@@ -70,7 +70,7 @@ struct ScoreboardConfig {
 
     [[nodiscard]] static std::expected<ScoreboardConfig, std::string>
     load(const ConfigDirectory& directory, std::string_view defaultContents,
-         UiPriority fallbackPriority = UiPriority::Proxy,
+         UiPriority fallbackPriority = UiPriority::kProxy,
          const wire::common::Logger& logger = wire::common::Logger{"Config"});
 
     [[nodiscard]] const ScoreboardProfile& defaultProfile() const { return profiles[defaultIndex]; }
@@ -90,7 +90,7 @@ struct BossBarConfig {
     static constexpr std::string_view kFileName = "boss_bar.toml";
 
     bool enabled = false;
-    UiPriority priority = UiPriority::Proxy;
+    UiPriority priority = UiPriority::kProxy;
     std::int32_t updateIntervalTicks = 0;
     std::vector<BossBarProfile> profiles;
     std::size_t defaultIndex = 0;
@@ -99,7 +99,7 @@ struct BossBarConfig {
 
     [[nodiscard]] static std::expected<BossBarConfig, std::string>
     load(const ConfigDirectory& directory, std::string_view defaultContents,
-         UiPriority fallbackPriority = UiPriority::Proxy,
+         UiPriority fallbackPriority = UiPriority::kProxy,
          const wire::common::Logger& logger = wire::common::Logger{"Config"});
 
     [[nodiscard]] const BossBarProfile& defaultProfile() const { return profiles[defaultIndex]; }
