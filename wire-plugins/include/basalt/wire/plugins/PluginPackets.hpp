@@ -32,12 +32,12 @@ private:
 };
 
 /// Same order as the wire protocol states, so a cast between the two is exact.
-enum class PacketPhase : std::uint8_t { Handshake, Status, Login, Configuration, Play };
+enum class PacketPhase : std::uint8_t { kHandshake, kStatus, kLogin, kConfiguration, kPlay };
 
 inline constexpr std::int32_t kPacketPhaseCount = 5;
 
 struct PacketAddress {
-    PacketPhase phase = PacketPhase::Play;
+    PacketPhase phase = PacketPhase::kPlay;
     bool serverbound = false;
     std::int32_t id = 0;
 };

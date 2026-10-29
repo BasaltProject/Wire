@@ -10,14 +10,14 @@ using namespace basalt::wire::plugins;
 
 TEST_CASE("the registry costs nothing without a listener and honours scope, order, cancel and frozen packets") {
     PacketRegistry registry{{}, {}};
-    const PacketAddress chat{PacketPhase::Play, true, 7};
+    const PacketAddress chat{PacketPhase::kPlay, true, 7};
     CHECK_FALSE(registry.listening(chat));
 
     std::string order;
-    PluginHandle late = registry.addNative({static_cast<std::int32_t>(PacketPhase::Play), 1, 7}, 3, false,
+    PluginHandle late = registry.addNative({static_cast<std::int32_t>(PacketPhase::kPlay), 1, 7}, 3, false,
                                            [&](PluginPacket&) { order += 'b'; });
     PluginHandle early =
-        registry.addNative({static_cast<std::int32_t>(PacketPhase::Play), 1, 7}, 1, false, [&](PluginPacket& packet) {
+        registry.addNative({static_cast<std::int32_t>(PacketPhase::kPlay), 1, 7}, 1, false, [&](PluginPacket& packet) {
             order += 'a';
             packet.cancelled = true;
         });
@@ -26,7 +26,7 @@ TEST_CASE("the registry costs nothing without a listener and honours scope, orde
         packet.cancelled = false;
     });
     CHECK(registry.listening(chat));
-    CHECK(registry.listening({PacketPhase::Login, false, 0}));
+    CHECK(registry.listening({PacketPhase::kLogin, false, 0}));
 
     PluginPacket packet;
     packet.address = chat;

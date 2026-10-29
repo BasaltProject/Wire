@@ -36,15 +36,15 @@ using Bytes = std::expected<std::vector<std::uint8_t>, std::string>;
 
 [[nodiscard]] std::string_view phaseName(PacketPhase phase) {
     switch (phase) {
-    case PacketPhase::Handshake:
+    case PacketPhase::kHandshake:
         return "handshake";
-    case PacketPhase::Status:
+    case PacketPhase::kStatus:
         return "status";
-    case PacketPhase::Login:
+    case PacketPhase::kLogin:
         return "login";
-    case PacketPhase::Configuration:
+    case PacketPhase::kConfiguration:
         return "configuration";
-    case PacketPhase::Play:
+    case PacketPhase::kPlay:
         return "play";
     }
     return "play";
