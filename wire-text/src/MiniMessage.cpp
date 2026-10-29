@@ -55,11 +55,19 @@ Component joinSiblings(std::vector<Component> parts) {
     if (parts.empty()) {
         return Component::empty();
     }
-    Component result = std::move(parts.front());
-    for (std::size_t i = 1; i < parts.size(); ++i) {
-        result = result.append(std::move(parts[i]));
-    }
-    return result;
+    if (parts.size() == 1) return std::move(parts.front());
+    // A styled first span is not the parent of subsequent sibling spans.
+    return Component::empty().withChildren(std::move(parts));
+}
+
+std::string decorationName(std::string name) {
+    if (name.starts_with('!')) name.erase(0, 1);
+    if (name == "b") return "bold";
+    if (name == "i" || name == "em") return "italic";
+    if (name == "u") return "underlined";
+    if (name == "st") return "strikethrough";
+    if (name == "obf") return "obfuscated";
+    return name;
 }
 
 struct OpenTag {
@@ -96,8 +104,9 @@ void Parser::popTag(std::string_view name) {
         }
         return;
     }
+    const std::string canonical = decorationName(std::string{name});
     for (std::size_t i = stack_.size(); i > 0; --i) {
-        if (stack_[i - 1].name == name) {
+        if (stack_[i - 1].name == canonical) {
             stack_.resize(i - 1);
             return;
         }
@@ -106,28 +115,34 @@ void Parser::popTag(std::string_view name) {
 
 void Parser::applyTag(std::string_view rawTag) {
     const std::vector<std::string> parts = splitTagArguments(rawTag);
-    const std::string name = toLower(parts.front());
+    const std::string rawName = toLower(parts.front());
+    const bool negated = rawName.starts_with('!');
+    const std::string name = decorationName(rawName);
 
     const auto argument = [&parts](std::size_t index) -> const std::string* {
         return index + 1 < parts.size() ? &parts[index + 1] : nullptr;
     };
 
-    if (name == "reset") {
+    if (name == "reset" && !negated) {
         stack_.clear();
         return;
     }
 
     Style style;
-    if (name == "bold" || name == "b") {
-        style.bold = true;
-    } else if (name == "italic" || name == "i" || name == "em") {
-        style.italic = true;
-    } else if (name == "underlined" || name == "u") {
-        style.underlined = true;
-    } else if (name == "strikethrough" || name == "st") {
-        style.strikethrough = true;
-    } else if (name == "obfuscated" || name == "obf") {
-        style.obfuscated = true;
+    bool enabled = !negated;
+    if (const std::string* value = argument(0); value != nullptr && toLower(*value) == "false") enabled = false;
+    if (name == "bold") {
+        style.bold = enabled;
+    } else if (name == "italic") {
+        style.italic = enabled;
+    } else if (name == "underlined") {
+        style.underlined = enabled;
+    } else if (name == "strikethrough") {
+        style.strikethrough = enabled;
+    } else if (name == "obfuscated") {
+        style.obfuscated = enabled;
+    } else if (negated) {
+        return;
     } else if (name == "color" || name == "colour" || name == "c") {
         if (const std::string* value = argument(0)) {
             style.color = TextColor::parse(*value);

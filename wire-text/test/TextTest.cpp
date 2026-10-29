@@ -3,6 +3,7 @@
 #include <basalt/wire/text/ComponentJson.hpp>
 #include <basalt/wire/text/ComponentNbt.hpp>
 #include <basalt/wire/text/LangTable.hpp>
+#include <basalt/wire/text/MiniMessage.hpp>
 #include <basalt/wire/text/Serializers.hpp>
 #include <basalt/wire/text/TranslationResolver.hpp>
 
@@ -25,7 +26,49 @@ Component roundTrip(const Component& component) {
     return componentNbt::deserialize(parsed->tag);
 }
 
+void collectStyles(const Component& component, const Style& inherited, std::vector<Style>& styles) {
+    const Style effective = inherited.merge(component.style());
+    if (const auto* text = component.as<Component::Text>(); text != nullptr && !text->content.empty()) {
+        styles.push_back(effective);
+    }
+    for (const Component& child : component.children()) collectStyles(child, effective, styles);
+}
+
 } // namespace
+
+TEST_CASE("MiniMessage sibling spans do not inherit an earlier span's formatting") {
+    for (const std::string input : {"<bold>prefix</bold> tail", "<bold>prefix<reset> tail",
+                                   "<bold>prefix<!bold> tail", "<bold>prefix<bold:false> tail",
+                                   "<b>prefix</bold> tail"}) {
+        CAPTURE(input);
+        std::vector<Style> styles;
+        const Component parsed = miniMessage::parse(input);
+        collectStyles(parsed, {}, styles);
+        REQUIRE(styles.size() == 2);
+        CHECK(styles[0].bold.value_or(false));
+        CHECK_FALSE(styles[1].bold.value_or(false));
+        CHECK(toPlainText(parsed) == "prefix tail");
+        CHECK(roundTrip(parsed) == parsed);
+    }
+}
+
+TEST_CASE("MiniMessage decoration scopes restore their parent style") {
+    std::vector<Style> styles;
+    collectStyles(miniMessage::parse("<bold><italic>a</italic>b</bold>c"), {}, styles);
+    REQUIRE(styles.size() == 3);
+    CHECK(styles[0].bold.value_or(false));
+    CHECK(styles[0].italic.value_or(false));
+    CHECK(styles[1].bold.value_or(false));
+    CHECK_FALSE(styles[1].italic.value_or(false));
+    CHECK_FALSE(styles[2].bold.value_or(false));
+    CHECK_FALSE(styles[2].italic.value_or(false));
+    styles.clear();
+    collectStyles(miniMessage::parse("<bold>a<bold:false>b</bold>c</bold>"), {}, styles);
+    REQUIRE(styles.size() == 3);
+    CHECK(styles[0].bold.value_or(false));
+    CHECK_FALSE(styles[1].bold.value_or(false));
+    CHECK(styles[2].bold.value_or(false));
+}
 
 TEST_CASE("components survive the NBT network form") {
     const Component simple = Component::text("hello", kRed).bold().underlined(false);
