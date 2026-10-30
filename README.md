@@ -22,14 +22,15 @@
   <img alt="License" src="https://img.shields.io/badge/license-GPL--3.0-green">
 </p>
 
-> ⚠️ **Early development.** Wire is consumed by two projects that are themselves
-> under construction. Its APIs change without notice.
+> **Pre-1.0.** Wire is consumed by Basalt Server and Basalt Proxy, which move together with it,
+> so its APIs change without notice.
 
 ## Overview
 
 Wire is everything Basalt needs to speak Minecraft over a socket, and nothing
 else. Sockets and buffers, packet framing and codecs, NBT, the component model,
-and the encrypted login handshake.
+the encrypted login handshake, translation for older Java and Bedrock clients, and the Lua and plugin-package
+plumbing both consumers share.
 
 It is not a standalone program. It is the foundation shared by the two Basalt
 components that talk to Minecraft clients:
@@ -56,7 +57,8 @@ runtime and no Java library in the build: no Netty, no Adventure, no Gson.
 ## Modules
 
 Dependencies point downwards only: `wire-protocol` knows about `wire-nbt`,
-never the other way round.
+never the other way round. `wire-lua`, `wire-plugins` and `wire-sqlite` are shared infrastructure that
+both consumers use and that holds no game state.
 
 | Module | What it holds |
 |---|---|
@@ -66,8 +68,11 @@ never the other way round.
 | `wire-io` | Sockets, event loop, byte buffers, zlib, gzip, zstd |
 | `wire-protocol` | Packet framing, varints, and the codecs for every protocol state |
 | `wire-auth` | Encrypted handshake, Mojang session lookup, profiles, offline UUIDs |
-| `wire-multiversion` | Translation for older Java clients |
-| `wire-bedrock` | RakNet and Bedrock protocol translation |
+| `wire-multiversion` | Translation chains for older Java clients |
+| `wire-bedrock` | RakNet, Bedrock sessions and codecs, and data shared with the Bedrock translation |
+| `wire-lua` | The sandboxed Lua 5.5 runtime bindings |
+| `wire-plugins` | Plugin manifests, packages, signatures and shared plugin types |
+| `wire-sqlite` | SQLite access and migrations, compiled into the binary |
 
 Everything above the network layer, worlds, entities, gameplay, plugins, lives
 in the consuming repository instead.
@@ -133,25 +138,14 @@ Minecraft file is committed here, extracted here, or distributed here.
 
 | Module | Status |
 |---|---|
-| `wire-common` | Working |
-| `wire-nbt` | Working |
-| `wire-text` | Working |
-| `wire-io` | Working |
-| `wire-protocol` | Handshake, status, login, configuration and play |
+| `wire-common`, `wire-nbt`, `wire-text`, `wire-io` | Working |
+| `wire-protocol` | Handshake, status, login, configuration and play, at protocol 777 |
 | `wire-auth` | Working: encryption, Mojang session, profiles |
-| `wire-multiversion` | Not started |
-| `wire-bedrock` | Not started |
+| `wire-multiversion` | In use by Server for older Java clients; still maturing, and a link existing does not certify every client and backend pairing |
+| `wire-bedrock` | RakNet, login, encryption, batching and codecs; part of the Java to Bedrock translation still lives in Server |
+| `wire-lua`, `wire-plugins`, `wire-sqlite` | Working, used by Server |
 
-Codecs are written against protocol 777 and are not yet parameterised by
-version. Making them so is the work `wire-multiversion` depends on.
-
-## Related repositories
-
-| Repository | What it is |
-|---|---|
-| [Server](https://github.com/BasaltProject/Server) | The Minecraft server itself, in C++23 |
-| [Proxy](https://github.com/BasaltProject/Proxy) | The proxy component |
-| [Website](https://github.com/BasaltProject/Website) | The project site, at [basaltmc.org](https://basaltmc.org) |
+Native codecs are written against protocol 777; older versions go through `wire-multiversion`.
 
 ## License
 
