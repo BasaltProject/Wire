@@ -939,7 +939,7 @@ TEST_CASE("session envelope frames round trip and malformed ones are refused") {
     REQUIRE(std::holds_alternative<envelope::Data>(*decodedData));
     CHECK(std::ranges::equal(std::get<envelope::Data>(*decodedData).packet, original));
 
-    for (const envelope::Control control :
+    for (const envelope::Control& control :
          {envelope::Control{envelope::Open{envelope::kVersion1, envelope::Edition::Bedrock, 2193}},
           envelope::Control{envelope::Opened{envelope::kVersion1}},
           envelope::Control{envelope::Close{envelope::CloseReason::Superseded}}}) {
