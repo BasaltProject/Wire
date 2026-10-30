@@ -73,10 +73,10 @@ bool tokenListContains(std::string_view list, std::string_view wanted) {
 ParseResult take(std::string& buffer, Request& into, std::size_t maxBody) {
     const std::size_t headEnd = buffer.find("\r\n\r\n");
     if (headEnd == std::string::npos) {
-        return buffer.size() > kMaxHeadBytes ? ParseResult::HeadTooLarge : ParseResult::NeedMore;
+        return buffer.size() > kMaxHeadBytes ? ParseResult::kHeadTooLarge : ParseResult::kNeedMore;
     }
     if (headEnd > kMaxHeadBytes) {
-        return ParseResult::HeadTooLarge;
+        return ParseResult::kHeadTooLarge;
     }
     const std::string_view head{buffer.data(), headEnd};
     const std::size_t lineEnd = head.find("\r\n");
@@ -84,10 +84,10 @@ ParseResult take(std::string& buffer, Request& into, std::size_t maxBody) {
     const std::size_t firstSpace = requestLine.find(' ');
     const std::size_t secondSpace = requestLine.rfind(' ');
     if (firstSpace == std::string_view::npos || secondSpace == firstSpace) {
-        return ParseResult::Malformed;
+        return ParseResult::kMalformed;
     }
     if (!requestLine.substr(secondSpace + 1).starts_with("HTTP/1.")) {
-        return ParseResult::Malformed;
+        return ParseResult::kMalformed;
     }
     Request request;
     request.method = std::string{requestLine.substr(0, firstSpace)};
@@ -98,7 +98,7 @@ ParseResult take(std::string& buffer, Request& into, std::size_t maxBody) {
         request.query = std::string{target.substr(question + 1)};
     }
     if (request.path.empty() || request.path.front() != '/') {
-        return ParseResult::Malformed;
+        return ParseResult::kMalformed;
     }
     std::string_view rest = lineEnd == std::string_view::npos ? std::string_view{} : head.substr(lineEnd + 2);
     while (!rest.empty()) {
@@ -106,7 +106,7 @@ ParseResult take(std::string& buffer, Request& into, std::size_t maxBody) {
         const std::string_view line = rest.substr(0, end);
         const std::size_t colon = line.find(':');
         if (colon == std::string_view::npos || colon == 0) {
-            return ParseResult::Malformed;
+            return ParseResult::kMalformed;
         }
         request.headers.emplace_back(lower(trim(line.substr(0, colon))), std::string{trim(line.substr(colon + 1))});
         if (end == std::string_view::npos) {
@@ -115,29 +115,29 @@ ParseResult take(std::string& buffer, Request& into, std::size_t maxBody) {
         rest.remove_prefix(end + 2);
     }
     if (request.header("transfer-encoding").has_value()) {
-        return ParseResult::Unsupported;
+        return ParseResult::kUnsupported;
     }
     std::size_t length = 0;
     if (std::ranges::count(request.headers, "content-length", &std::pair<std::string, std::string>::first) > 1) {
-        return ParseResult::Malformed;
+        return ParseResult::kMalformed;
     }
     if (const auto written = request.header("content-length"); written.has_value()) {
         const auto parsed = std::from_chars(written->data(), written->data() + written->size(), length);
         if (parsed.ec != std::errc{} || parsed.ptr != written->data() + written->size()) {
-            return ParseResult::Malformed;
+            return ParseResult::kMalformed;
         }
         if (length > maxBody) {
-            return ParseResult::BodyTooLarge;
+            return ParseResult::kBodyTooLarge;
         }
     }
     const std::size_t total = headEnd + 4 + length;
     if (buffer.size() < total) {
-        return ParseResult::NeedMore;
+        return ParseResult::kNeedMore;
     }
     request.body.assign(buffer, headEnd + 4, length);
     buffer.erase(0, total);
     into = std::move(request);
-    return ParseResult::Request;
+    return ParseResult::kRequest;
 }
 
 std::string_view reason(int status) noexcept {

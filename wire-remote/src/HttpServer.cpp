@@ -131,21 +131,21 @@ struct HttpServer::Impl {
         http::Request request;
         while (!connection.closeAfterFlush) {
             switch (http::take(connection.in, request, static_cast<std::size_t>(limits.maxBodyBytes))) {
-            case http::ParseResult::NeedMore:
+            case http::ParseResult::kNeedMore:
                 return;
-            case http::ParseResult::Request:
+            case http::ParseResult::kRequest:
                 handle(connection, request);
                 continue;
-            case http::ParseResult::HeadTooLarge:
+            case http::ParseResult::kHeadTooLarge:
                 reply(connection, 431, http::errorBody("request head too large"), kJson, false);
                 return;
-            case http::ParseResult::BodyTooLarge:
+            case http::ParseResult::kBodyTooLarge:
                 reply(connection, 413, http::errorBody("request body too large"), kJson, false);
                 return;
-            case http::ParseResult::Unsupported:
+            case http::ParseResult::kUnsupported:
                 reply(connection, 501, http::errorBody("chunked request bodies are not supported"), kJson, false);
                 return;
-            case http::ParseResult::Malformed:
+            case http::ParseResult::kMalformed:
                 reply(connection, 400, http::errorBody("malformed request"), kJson, false);
                 return;
             }

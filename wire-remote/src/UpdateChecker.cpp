@@ -177,7 +177,7 @@ bool ParsedVersion::sameMinecraftSeries(const ParsedVersion& other) const noexce
 }
 
 std::string UpdateNotice::message() const {
-    if (channel == Channel::Nightly) {
+    if (channel == Channel::kNightly) {
         std::string behind;
         if (releasesBehind > 0) {
             behind = std::to_string(releasesBehind) + (releasesBehind == 1 ? " release and " : " releases and ");
@@ -266,7 +266,7 @@ std::optional<UpdateNotice> evaluate(const Product& product, std::string_view cu
             behind = std::max(behind, latest.patch() - current->patch());
         }
         return UpdateNotice{
-            .channel = Channel::Release,
+            .channel = Channel::kRelease,
             .product = std::string{product.name},
             .currentVersion = current->raw,
             .latestVersion = latest.raw,
@@ -289,7 +289,7 @@ std::optional<UpdateNotice> evaluate(const Product& product, std::string_view cu
         }
         const std::int32_t behind = *latestNightly.nightly - *current->nightly;
         return UpdateNotice{
-            .channel = Channel::Nightly,
+            .channel = Channel::kNightly,
             .product = std::string{product.name},
             .currentVersion = current->raw,
             .latestVersion = latestNightly.raw,
@@ -311,7 +311,7 @@ std::optional<UpdateNotice> evaluate(const Product& product, std::string_view cu
         releasesBetween = std::max(releasesBetween, latestNightly.patch());
     }
     return UpdateNotice{
-        .channel = Channel::Nightly,
+        .channel = Channel::kNightly,
         .product = std::string{product.name},
         .currentVersion = current->raw,
         .latestVersion = latestNightly.raw,

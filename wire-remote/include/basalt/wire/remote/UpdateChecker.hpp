@@ -12,7 +12,7 @@
 
 namespace basalt::wire::remote::updateChecker {
 
-enum class Channel : std::uint8_t { Release, Nightly };
+enum class Channel : std::uint8_t { kRelease, kNightly };
 
 struct Product {
     std::string_view name;
@@ -35,7 +35,7 @@ struct ParsedVersion {
 };
 
 struct UpdateNotice {
-    Channel channel = Channel::Release;
+    Channel channel = Channel::kRelease;
     std::string product;
     std::string currentVersion;
     std::string latestVersion;

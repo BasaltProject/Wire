@@ -21,7 +21,7 @@ struct Request {
     [[nodiscard]] std::optional<std::string_view> header(std::string_view lowerName) const;
 };
 
-enum class ParseResult : std::uint8_t { NeedMore, Request, Malformed, HeadTooLarge, BodyTooLarge, Unsupported };
+enum class ParseResult : std::uint8_t { kNeedMore, kRequest, kMalformed, kHeadTooLarge, kBodyTooLarge, kUnsupported };
 
 inline constexpr std::size_t kMaxHeadBytes = 16384;
 
