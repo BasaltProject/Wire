@@ -31,15 +31,15 @@ void collectStyles(const Component& component, const Style& inherited, std::vect
     if (const auto* text = component.as<Component::Text>(); text != nullptr && !text->content.empty()) {
         styles.push_back(effective);
     }
-    for (const Component& child : component.children()) collectStyles(child, effective, styles);
+    for (const Component& child : component.children())
+        collectStyles(child, effective, styles);
 }
 
 } // namespace
 
 TEST_CASE("MiniMessage sibling spans do not inherit an earlier span's formatting") {
-    for (const std::string input : {"<bold>prefix</bold> tail", "<bold>prefix<reset> tail",
-                                   "<bold>prefix<!bold> tail", "<bold>prefix<bold:false> tail",
-                                   "<b>prefix</bold> tail"}) {
+    for (const std::string input : {"<bold>prefix</bold> tail", "<bold>prefix<reset> tail", "<bold>prefix<!bold> tail",
+                                    "<bold>prefix<bold:false> tail", "<b>prefix</bold> tail"}) {
         CAPTURE(input);
         std::vector<Style> styles;
         const Component parsed = miniMessage::parse(input);
