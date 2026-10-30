@@ -16,12 +16,8 @@ namespace basalt::wire::common {
     return static_cast<std::int32_t>(std::clamp<std::int64_t>(safeInt(value), INT32_MIN, INT32_MAX));
 }
 
-[[nodiscard]] inline std::int64_t safeInt(float value) noexcept {
-    return safeInt(static_cast<double>(value));
-}
+[[nodiscard]] inline std::int64_t safeInt(float value) noexcept { return safeInt(static_cast<double>(value)); }
 
-[[nodiscard]] inline std::int32_t safeInt32(float value) noexcept {
-    return safeInt32(static_cast<double>(value));
-}
+[[nodiscard]] inline std::int32_t safeInt32(float value) noexcept { return safeInt32(static_cast<double>(value)); }
 
 } // namespace basalt::wire::common
