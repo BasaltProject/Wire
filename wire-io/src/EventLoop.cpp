@@ -191,8 +191,12 @@ struct EventLoop::Impl {
 #elif (defined(__APPLE__) && !defined(BASALT_IO_FORCE_POLL))
         std::array<struct kevent, 2> changes{};
         const auto data = reinterpret_cast<void*>(static_cast<std::uintptr_t>(item.serial));
+        // A disabled read filter hides the peer's EOF, unlike epoll's RDHUP; an unreachable low-water mark keeps only
+        // EOF.
         EV_SET(&changes[0], static_cast<std::uintptr_t>(item.handle), EVFILT_READ,
-               EV_ADD | (item.interest.readable ? EV_ENABLE : EV_DISABLE), 0, 0, data);
+               item.interest.readable ? EV_ADD | EV_ENABLE : EV_ADD | EV_ENABLE | EV_CLEAR,
+               item.interest.readable ? 0 : NOTE_LOWAT, item.interest.readable ? 0 : std::numeric_limits<int>::max(),
+               data);
         EV_SET(&changes[1], static_cast<std::uintptr_t>(item.handle), EVFILT_WRITE,
                EV_ADD | (item.interest.writable ? EV_ENABLE : EV_DISABLE), 0, 0, data);
         if (::kevent(queue, changes.data(), 2, nullptr, 0, nullptr) < 0) {
@@ -233,6 +237,8 @@ struct EventLoop::Impl {
             return;
         }
         const Registration& item = watched.at(found->second);
+        readable = readable && item.interest.readable;
+        writable = writable && item.interest.writable;
         const auto existing =
             std::ranges::find_if(ready, [&](const IoReady& event) { return event.handle == item.handle; });
         if (existing != ready.end()) {
