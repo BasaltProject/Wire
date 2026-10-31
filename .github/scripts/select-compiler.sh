@@ -37,8 +37,8 @@ Darwin)
     fi
     cxx="$(find "$prefix" -name libc++.a | head -1)"
     cxxabi="$(find "$prefix" -name libc++abi.a | head -1)"
-    lipo -archs "$cxx" "$cxxabi"
     lipo -archs "$cxx" | grep -q "$arch"
+    lipo -archs "$cxxabi" | grep -q "$arch"
     echo "BASALT_CMAKE_ARGS=-DCMAKE_C_COMPILER=$llvm/bin/clang -DCMAKE_CXX_COMPILER=$llvm/bin/clang++ -DCMAKE_OSX_DEPLOYMENT_TARGET=$target -DCMAKE_EXE_LINKER_FLAGS=-nostdlib++ \"-DCMAKE_CXX_STANDARD_LIBRARIES=$cxx $cxxabi\" -DCMAKE_CXX_FLAGS=-D_LIBCPP_DISABLE_AVAILABILITY $cross" >>"$GITHUB_ENV"
     ;;
 *)
