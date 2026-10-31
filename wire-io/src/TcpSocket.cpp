@@ -218,6 +218,7 @@ std::expected<std::vector<TcpAddress>, SocketError> TcpAddress::resolve(std::str
 }
 
 std::expected<TcpAddress, SocketError> TcpAddress::literal(std::string_view host, std::uint16_t port) {
+    ensureSocketsInitialized();
     if (host.find(':') == std::string_view::npos) {
         const auto ipv4 = parseIpv4(host);
         if (!ipv4) {
@@ -242,6 +243,7 @@ std::expected<TcpAddress, SocketError> TcpAddress::literal(std::string_view host
 }
 
 std::string TcpAddress::host() const {
+    ensureSocketsInitialized();
     std::array<char, NI_MAXHOST> text{};
     if (size_ == 0 ||
         ::getnameinfo(reinterpret_cast<const sockaddr*>(storage_.data()), static_cast<socklen_type>(size_), text.data(),
