@@ -20,7 +20,7 @@ constexpr std::string_view kWhitelistColumns = "uuid, name, added_at";
 }
 } // namespace
 
-std::string_view storedNameOf(BanKind kind) { return kind == BanKind::Player ? "player" : "ip"; }
+std::string_view storedNameOf(BanKind kind) { return kind == BanKind::kPlayer ? "player" : "ip"; }
 
 std::optional<BanRecord> AccessRepository::banOf(std::string_view subject, BanKind kind) {
     wire::sql::Statement statement =
@@ -58,7 +58,7 @@ void AccessRepository::ban(const BanRecord& record) {
     statement.execute();
     if (observer_) {
         observer_(
-            AccessChange{AccessChange::Type::Banned, record.kind, record.subject, record.name.value_or(""), record});
+            AccessChange{AccessChange::Type::kBanned, record.kind, record.subject, record.name.value_or(""), record});
     }
 }
 
@@ -72,7 +72,7 @@ bool AccessRepository::pardon(std::string_view subject, BanKind kind) {
     statement.bind(2, storedNameOf(kind));
     const bool removed = statement.execute();
     if (removed && observer_) {
-        observer_(AccessChange{AccessChange::Type::Pardoned, kind, std::string{subject}, held->name.value_or(""),
+        observer_(AccessChange{AccessChange::Type::kPardoned, kind, std::string{subject}, held->name.value_or(""),
                                std::nullopt});
     }
     return removed;
@@ -113,7 +113,7 @@ void AccessRepository::addToWhitelist(const WhitelistEntry& entry) {
     statement.execute();
     if (observer_) {
         observer_(
-            AccessChange{AccessChange::Type::WhitelistAdded, BanKind::Player, entry.uuid, entry.name, std::nullopt});
+            AccessChange{AccessChange::Type::kWhitelistAdded, BanKind::kPlayer, entry.uuid, entry.name, std::nullopt});
     }
 }
 
@@ -131,8 +131,8 @@ bool AccessRepository::removeFromWhitelist(std::string_view uuid) {
     statement.bind(1, uuid);
     const bool removed = statement.execute();
     if (removed && observer_) {
-        observer_(
-            AccessChange{AccessChange::Type::WhitelistRemoved, BanKind::Player, std::string{uuid}, name, std::nullopt});
+        observer_(AccessChange{AccessChange::Type::kWhitelistRemoved, BanKind::kPlayer, std::string{uuid}, name,
+                               std::nullopt});
     }
     return removed;
 }

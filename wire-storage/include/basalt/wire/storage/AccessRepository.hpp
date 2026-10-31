@@ -10,13 +10,13 @@
 #include <vector>
 
 namespace basalt::wire::storage {
-enum class BanKind : std::uint8_t { Player, Ip };
+enum class BanKind : std::uint8_t { kPlayer, kIp };
 
 [[nodiscard]] std::string_view storedNameOf(BanKind kind);
 
 struct BanRecord {
     std::string subject;
-    BanKind kind = BanKind::Player;
+    BanKind kind = BanKind::kPlayer;
     std::optional<std::string> name;
     std::string reason;
     std::string source;
@@ -32,10 +32,10 @@ struct WhitelistEntry {
 };
 
 struct AccessChange {
-    enum class Type : std::uint8_t { WhitelistAdded, WhitelistRemoved, Banned, Pardoned };
+    enum class Type : std::uint8_t { kWhitelistAdded, kWhitelistRemoved, kBanned, kPardoned };
 
-    Type type = Type::Banned;
-    BanKind kind = BanKind::Player;
+    Type type = Type::kBanned;
+    BanKind kind = BanKind::kPlayer;
     std::string subject;
     std::string name;
     std::optional<BanRecord> ban;
