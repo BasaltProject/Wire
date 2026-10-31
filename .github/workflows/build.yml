@@ -30,6 +30,13 @@ jobs:
           max-size: 1200M
           key: ${{ matrix.os }}
 
+      - name: Restore the libc++
+        if: runner.os == 'macOS'
+        uses: actions/cache@v4
+        with:
+          path: ~/libcxx-*
+          key: libcxx-${{ matrix.os }}-${{ hashFiles('.github/scripts/select-compiler.sh') }}
+
       - name: Select the compiler
         shell: bash
         run: .github/scripts/select-compiler.sh
