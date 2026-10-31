@@ -397,6 +397,16 @@ std::expected<void, SocketError> TcpConnection::setNonBlocking(bool enabled) { r
 std::expected<bool, SocketError> TcpConnection::finishConnect() {
     int error = 0;
     auto size = static_cast<socklen_type>(sizeof(error));
+#if defined(_WIN32)
+    // getpeername succeeds on a connect still in flight on Windows, so ask the poller instead.
+    WSAPOLLFD pending{asSocket(handle_), POLLOUT, 0};
+    if (::WSAPoll(&pending, 1, 0) < 0) {
+        return std::unexpected{SocketError{SocketError::Kind::ConnectFailed, lastSocketError()}};
+    }
+    if (pending.revents == 0) {
+        return false;
+    }
+#endif
     if (::getsockopt(asSocket(handle_), SOL_SOCKET, SO_ERROR, reinterpret_cast<char*>(&error), &size) != 0) {
         return std::unexpected{SocketError{SocketError::Kind::ConnectFailed, lastSocketError()}};
     }
@@ -406,6 +416,11 @@ std::expected<bool, SocketError> TcpConnection::finishConnect() {
     if (error != 0) {
         return std::unexpected{SocketError{SocketError::Kind::ConnectFailed, error}};
     }
+#if defined(_WIN32)
+    if ((pending.revents & (POLLERR | POLLHUP)) != 0) {
+        return std::unexpected{SocketError{SocketError::Kind::ConnectFailed, WSAECONNREFUSED}};
+    }
+#endif
     sockaddr_storage peer{};
     size = static_cast<socklen_type>(sizeof(peer));
     if (::getpeername(asSocket(handle_), reinterpret_cast<sockaddr*>(&peer), &size) != 0) {
