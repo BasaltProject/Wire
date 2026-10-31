@@ -54,9 +54,8 @@ jobs:
         shell: bash
         run: |
           t=build/release/wire-common/wire-common-test
-          nm -m $t | grep -E 'St19__type_descriptor_t|Znw|Zna' | head -30 || true
-          nm -m $t | grep -c ' undefined ' || true
-          nm -m $t | grep -E 'undefined.*(Znwm|Zn)' | head || true
+          nm -m $t | grep 'from libSystem' | grep -E '_Z|__cxa|__gxx' | head -40 || true
+          nm -m $t | grep -c 'from libSystem' || true
           true
 
       - name: Test
