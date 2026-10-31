@@ -119,7 +119,7 @@ constexpr std::array<std::int32_t, 49> kVersions = {47,  107, 108, 109, 110, 210
 } // namespace
 
 std::span<const std::int32_t> entityDataTypes(std::int32_t version) {
-    const auto* found = std::lower_bound(kVersions.begin(), kVersions.end(), version);
+    const auto found = std::lower_bound(kVersions.begin(), kVersions.end(), version);
     if (found == kVersions.end() || *found != version) {
         return {};
     }

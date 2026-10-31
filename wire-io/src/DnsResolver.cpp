@@ -68,9 +68,11 @@ struct Query {
                 for (auto* node = result->nodes; node; node = node->ai_next) {
                     std::array<char, INET6_ADDRSTRLEN> text{};
                     const void* address = nullptr;
-                    if (node->ai_family == AF_INET && node->ai_addrlen >= sizeof(sockaddr_in)) {
+                    if (node->ai_family == AF_INET &&
+                        static_cast<std::size_t>(node->ai_addrlen) >= sizeof(sockaddr_in)) {
                         address = &reinterpret_cast<const sockaddr_in*>(node->ai_addr)->sin_addr;
-                    } else if (node->ai_family == AF_INET6 && node->ai_addrlen >= sizeof(sockaddr_in6)) {
+                    } else if (node->ai_family == AF_INET6 &&
+                               static_cast<std::size_t>(node->ai_addrlen) >= sizeof(sockaddr_in6)) {
                         address = &reinterpret_cast<const sockaddr_in6*>(node->ai_addr)->sin6_addr;
                     } else {
                         continue;

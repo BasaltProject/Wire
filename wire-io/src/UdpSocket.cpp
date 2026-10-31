@@ -8,6 +8,7 @@
 #include <ws2tcpip.h>
 using socklen_type = int;
 using iolen_type = int;
+using socket_type = SOCKET;
 #else
 #include <arpa/inet.h>
 #include <cerrno>
@@ -17,6 +18,7 @@ using iolen_type = int;
 #include <unistd.h>
 using socklen_type = socklen_t;
 using iolen_type = std::size_t;
+using socket_type = int;
 #endif
 
 namespace basalt::wire::io {
@@ -125,7 +127,7 @@ std::expected<UdpSocket, SocketError> UdpSocket::bind(std::uint16_t port) {
     address.sin_family = AF_INET;
     address.sin_addr.s_addr = INADDR_ANY;
     address.sin_port = htons(port);
-    if (::bind(static_cast<int>(handle), reinterpret_cast<const sockaddr*>(&address), sizeof(address)) != 0) {
+    if (::bind(static_cast<socket_type>(handle), reinterpret_cast<const sockaddr*>(&address), sizeof(address)) != 0) {
         const int error = lastSocketError();
         closeHandle(handle);
         return std::unexpected(SocketError{SocketError::Kind::BindFailed, error});
@@ -155,7 +157,7 @@ std::expected<std::optional<std::size_t>, SocketError> UdpSocket::receiveFrom(st
     sockaddr_in peer{};
     socklen_type peerLength = sizeof(peer);
     const auto received =
-        ::recvfrom(static_cast<int>(handle_), reinterpret_cast<char*>(into.data()),
+        ::recvfrom(static_cast<socket_type>(handle_), reinterpret_cast<char*>(into.data()),
                    static_cast<iolen_type>(into.size()), 0, reinterpret_cast<sockaddr*>(&peer), &peerLength);
     if (received < 0) {
         const int error = lastSocketError();
@@ -176,7 +178,7 @@ std::expected<void, SocketError> UdpSocket::sendTo(std::span<const std::uint8_t>
     }
 
     const sockaddr_in address = toSockaddr(to);
-    const auto sent = ::sendto(static_cast<int>(handle_), reinterpret_cast<const char*>(bytes.data()),
+    const auto sent = ::sendto(static_cast<socket_type>(handle_), reinterpret_cast<const char*>(bytes.data()),
                                static_cast<iolen_type>(bytes.size()), 0, reinterpret_cast<const sockaddr*>(&address),
                                sizeof(address));
     if (sent < 0) {
@@ -196,7 +198,7 @@ std::expected<std::uint16_t, SocketError> UdpSocket::localPort() const {
 
     sockaddr_in address{};
     socklen_type length = sizeof(address);
-    if (::getsockname(static_cast<int>(handle_), reinterpret_cast<sockaddr*>(&address), &length) != 0) {
+    if (::getsockname(static_cast<socket_type>(handle_), reinterpret_cast<sockaddr*>(&address), &length) != 0) {
         return std::unexpected(SocketError{SocketError::Kind::BindFailed, lastSocketError()});
     }
     return ntohs(address.sin_port);

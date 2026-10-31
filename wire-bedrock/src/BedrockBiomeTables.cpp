@@ -303,7 +303,7 @@ std::optional<std::int32_t> bedrockBiomeId(std::string_view javaBiome) {
     if (javaBiome.starts_with("minecraft:")) {
         javaBiome.remove_prefix(std::string_view{"minecraft:"}.size());
     }
-    const auto* found =
+    const auto found =
         std::ranges::lower_bound(kJavaToBedrock, javaBiome, {}, [](const auto& row) { return row.first; });
     if (found == kJavaToBedrock.end() || found->first != javaBiome) {
         return std::nullopt;
