@@ -7,8 +7,10 @@ add_library(basalt::platform ALIAS basalt_platform)
 
 # An atomic wider than a machine word is not lock free, so the compiler emits a call to the
 # generic __atomic_* helpers instead of an instruction. On Linux those live in libatomic and the
-# link fails unless it is named; macOS and the BSDs carry them in libc, so probe rather than
-# hardcode the platform.
+# link fails unless it is named; macOS carries them in libSystem, and elsewhere the probe decides.
+if(APPLE)
+    set(BASALT_WIDE_ATOMICS_IN_LIBC TRUE)
+else()
 check_cxx_source_compiles("
 #include <atomic>
 #include <cstdint>
@@ -24,6 +26,7 @@ int main() {
     return static_cast<int>(value.load().a);
 }
 " BASALT_WIDE_ATOMICS_IN_LIBC)
+endif()
 
 if(NOT BASALT_WIDE_ATOMICS_IN_LIBC)
     target_link_libraries(basalt_platform INTERFACE atomic)
