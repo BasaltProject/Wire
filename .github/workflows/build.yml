@@ -53,9 +53,9 @@ jobs:
         if: runner.os == 'macOS'
         shell: bash
         run: |
-          t=build/release/wire-common/wire-common-test
-          nm -m $t | grep 'from libSystem' | grep -E '_Z|__cxa|__gxx' | head -40 || true
-          nm -m $t | grep -c 'from libSystem' || true
+          t=build/release/wire-common/wire-common-placeholder-test
+          DYLD_PRINT_LIBRARIES=1 $t 2>&1 | head -20 || true
+          lldb -b -o run -o bt -o 'image lookup -r -s typed' -- $t 2>&1 | head -60 || true
           true
 
       - name: Test
