@@ -30,13 +30,6 @@ jobs:
           max-size: 1200M
           key: ${{ matrix.os }}
 
-      - name: Restore the libc++
-        if: runner.os == 'macOS'
-        uses: actions/cache@v4
-        with:
-          path: ~/libcxx-*
-          key: libcxx-${{ matrix.os }}-${{ hashFiles('.github/scripts/select-compiler.sh') }}
-
       - name: Select the compiler
         shell: bash
         run: .github/scripts/select-compiler.sh
@@ -48,15 +41,6 @@ jobs:
       - name: Build
         shell: bash
         run: cmake --build build/release -- -k 0
-
-      - name: Diagnose
-        if: runner.os == 'macOS'
-        shell: bash
-        run: |
-          t=build/release/wire-common/wire-common-placeholder-test
-          DYLD_PRINT_LIBRARIES=1 $t 2>&1 | head -20 || true
-          lldb -b -o run -o bt -o 'image lookup -r -s typed' -- $t 2>&1 | head -60 || true
-          true
 
       - name: Test
         shell: bash
