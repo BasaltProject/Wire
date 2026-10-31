@@ -49,6 +49,16 @@ jobs:
         shell: bash
         run: cmake --build build/release -- -k 0
 
+      - name: Diagnose
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          t=build/release/wire-common/wire-common-test
+          nm -m $t | grep -E 'St19__type_descriptor_t|Znw|Zna' | head -30 || true
+          nm -m $t | grep -c ' undefined ' || true
+          nm -m $t | grep -E 'undefined.*(Znwm|Zn)' | head || true
+          true
+
       - name: Test
         shell: bash
         run: ctest --test-dir build/release --output-on-failure
