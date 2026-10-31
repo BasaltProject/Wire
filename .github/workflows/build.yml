@@ -49,6 +49,16 @@ jobs:
         shell: bash
         run: cmake --build build/release -- -k 0
 
+      - name: Diagnose
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          t=build/release/wire-common/wire-common-test
+          otool -L $t
+          nm -m $t | grep -i 'operator new' | head -20
+          grep -o 'force_load[^ ]*' build/release/build.ninja | sort -u | head
+          grep -m3 'FLAGS = ' build/release/build.ninja | cut -c1-300
+
       - name: Test
         shell: bash
         run: ctest --test-dir build/release --output-on-failure
