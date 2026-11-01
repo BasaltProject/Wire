@@ -140,6 +140,85 @@ void downgradeTrimMaterial(nbt::NbtCompound& material) {
     material.putString("asset_name", std::move(palette));
 }
 
+void downgradeLootCondition(nbt::NbtTag& value) {
+    if (auto* list = value.get<nbt::NbtList>()) {
+        for (std::size_t i = 0; i < list->size(); ++i) {
+            downgradeLootCondition((*list)[i]);
+        }
+        return;
+    }
+    auto* condition = value.get<nbt::NbtCompound>();
+    if (condition == nullptr) {
+        return;
+    }
+    const std::string type{condition->getString("type")};
+    if (!type.empty()) {
+        condition->remove("type");
+        condition->putString("condition", type);
+    }
+    if (type == "minecraft:damage_source_properties" || type == "damage_source_properties") {
+        nbt::NbtTag* predicateTag = condition->find("predicate");
+        auto* predicate = predicateTag == nullptr ? nullptr : predicateTag->get<nbt::NbtCompound>();
+        nbt::NbtTag* tagsTag = predicate == nullptr ? nullptr : predicate->find("tags");
+        auto* tags = tagsTag == nullptr ? nullptr : tagsTag->get<nbt::NbtList>();
+        if (tags != nullptr) {
+            for (std::size_t i = 0; i < tags->size(); ++i) {
+                auto* tag = (*tags)[i].get<nbt::NbtCompound>();
+                if (tag != nullptr) {
+                    const std::string id{tag->getString("id")};
+                    if (id.starts_with('#')) {
+                        tag->putString("id", id.substr(1));
+                    }
+                }
+            }
+        }
+    }
+    for (const std::string_view key : {"term", "terms"}) {
+        if (nbt::NbtTag* child = condition->find(key)) {
+            downgradeLootCondition(*child);
+        }
+    }
+}
+
+void downgradeEnchantment(nbt::NbtTag& value) {
+    if (auto* list = value.get<nbt::NbtList>()) {
+        for (std::size_t i = 0; i < list->size(); ++i) {
+            downgradeEnchantment((*list)[i]);
+        }
+        return;
+    }
+    auto* compound = value.get<nbt::NbtCompound>();
+    if (compound == nullptr) {
+        return;
+    }
+    if (nbt::NbtTag* requirements = compound->find("requirements")) {
+        // Only loot conditions changed their discriminator; effect and block-predicate types did not.
+        downgradeLootCondition(*requirements);
+    }
+    const std::string type{compound->getString("type")};
+    if (type == "minecraft:replace_disk" || type == "replace_disk" || type == "minecraft:replace_block" ||
+        type == "replace_block") {
+        nbt::NbtTag* stateTag = compound->find("block_state");
+        const auto* state = stateTag == nullptr ? nullptr : stateTag->get<nbt::NbtCompound>();
+        if (state != nullptr && !state->getString("id").empty()) {
+            nbt::NbtCompound olderState;
+            olderState.putString("Name", std::string{state->getString("id")});
+            if (const nbt::NbtTag* properties = state->find("properties")) {
+                olderState.set("Properties", *properties);
+            }
+            nbt::NbtCompound provider;
+            provider.putString("type", "minecraft:simple_state_provider");
+            provider.set("state", nbt::NbtTag::ofCompound(std::move(olderState)));
+            *stateTag = nbt::NbtTag::ofCompound(std::move(provider));
+        }
+    }
+    for (const std::string& key : compound->names()) {
+        if (key != "requirements") {
+            downgradeEnchantment(*compound->find(key));
+        }
+    }
+}
+
 } // namespace
 
 bool Link776::clientbound(ProtocolState state, MutablePacket& packet) {
@@ -357,12 +436,14 @@ bool Link776::configuration(MutablePacket& packet) const {
         if (std::ranges::find(kNewRegistries, data->registryId) != kNewRegistries.end()) {
             return false;
         }
-        if (data->registryId != "minecraft:trim_material") {
+        if (data->registryId != "minecraft:trim_material" && data->registryId != "minecraft:enchantment") {
             return true;
         }
         for (configuration::RegistryEntry& entry : data->entries) {
             if (entry.value.has_value()) {
-                if (nbt::NbtCompound* material = entry.value->get<nbt::NbtCompound>()) {
+                if (data->registryId == "minecraft:enchantment") {
+                    downgradeEnchantment(*entry.value);
+                } else if (nbt::NbtCompound* material = entry.value->get<nbt::NbtCompound>()) {
                     downgradeTrimMaterial(*material);
                 }
             }
