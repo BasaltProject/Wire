@@ -1,8 +1,13 @@
 #include <basalt/wire/common/timings/Timings.hpp>
 
 #include <algorithm>
-#include <functional>
+#include <array>
 #include <cstdint>
+#include <functional>
+
+#if defined(__APPLE__) || defined(__linux__)
+#include <pthread.h>
+#endif
 
 namespace basalt::wire::common {
 namespace {
@@ -83,6 +88,7 @@ Timings::ThreadState& Timings::threadState() const {
         std::uint64_t instance = 0;
         ThreadState* state = nullptr;
     };
+
     thread_local Cache cache;
     if (cache.instance == instance_) {
         return *cache.state;
@@ -91,6 +97,12 @@ Timings::ThreadState& Timings::threadState() const {
     {
         const std::scoped_lock lock{threadsMutex_};
         created->name = "thread-" + std::to_string(threads_.size() + 1);
+#if defined(__APPLE__) || defined(__linux__)
+        std::array<char, 64> label{};
+        if (pthread_getname_np(pthread_self(), label.data(), label.size()) == 0 && label[0] != '\0') {
+            created->name = label.data();
+        }
+#endif
         threads_.push_back(created);
     }
     cache = Cache{instance_, created.get()};
@@ -157,8 +169,7 @@ std::vector<ThreadProfile> Timings::profiles() const {
         }
         out.push_back(std::move(profile));
     }
-    std::ranges::sort(out, std::greater<>{},
-                      [](const ThreadProfile& profile) { return profile.root.totalNanos; });
+    std::ranges::sort(out, std::greater<>{}, [](const ThreadProfile& profile) { return profile.root.totalNanos; });
     return out;
 }
 
