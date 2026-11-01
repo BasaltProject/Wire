@@ -4,6 +4,7 @@
 #include <basalt/wire/common/hash/Md5.hpp>
 #include <basalt/wire/common/hash/Sha256.hpp>
 #include <basalt/wire/common/json/Json.hpp>
+#include <basalt/wire/common/timings/Timings.hpp>
 #include <basalt/wire/common/toml/Toml.hpp>
 
 #include <doctest.h>
@@ -152,4 +153,44 @@ TEST_CASE("numbers print the way Java's toString prints them") {
     CHECK(javaToString(19.0F) == "19.0");
     CHECK(javaToString(0.00099F) == "9.9E-4");
     CHECK(javaToString(16777216.0F) == "1.6777216E7");
+}
+
+TEST_CASE("timings keep a call tree per thread and drop it on reset") {
+    Timings timings;
+    timings.setEnabled(true);
+    timings.nameThread("main-test");
+
+    Timing& outer = timings.of("outer");
+    Timing& inner = timings.of("inner");
+    outer.time([&] {
+        inner.time([] {});
+        inner.time([] {});
+    });
+    inner.record(5);
+
+    std::vector<ThreadProfile> profiles = timings.profiles();
+    REQUIRE(profiles.size() == 1);
+    CHECK(profiles[0].name == "main-test");
+    REQUIRE(profiles[0].root.children.size() == 2);
+    const ProfileNode* nested = nullptr;
+    for (const ProfileNode& node : profiles[0].root.children) {
+        if (node.name == "outer") {
+            nested = &node;
+        }
+    }
+    REQUIRE(nested != nullptr);
+    CHECK(nested->calls == 1);
+    REQUIRE(nested->children.size() == 1);
+    CHECK(nested->children[0].name == "inner");
+    CHECK(nested->children[0].calls == 2);
+    CHECK(nested->selfNanos() <= nested->totalNanos);
+
+    outer.time([&] {
+        timings.reset(0);
+        inner.time([] {});
+    });
+    profiles = timings.profiles();
+    CHECK(profiles.size() <= 1);
+    timings.reset(0);
+    CHECK(timings.profiles().empty());
 }
