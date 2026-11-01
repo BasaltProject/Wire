@@ -7,6 +7,38 @@
 namespace basalt::wire::protocol::play {
 namespace {
 
+// Native DataComponentType ids. These patches also occur without lengths in ItemStackTemplate.
+constexpr std::int32_t kTooltipDisplay = 18;
+constexpr std::int32_t kBannerPatterns = 74;
+constexpr std::int32_t kPotDecorations = 76;
+
+void skipPotDecorations(io::ByteBuffer& buffer, std::size_t depth = 0) {
+    if (depth >= 64) {
+        buffer.markFailed();
+        return;
+    }
+    for (std::size_t side = 0; side < 4 && !buffer.failed(); ++side) {
+        if (!readBoolean(buffer)) {
+            continue;
+        }
+        static_cast<void>(varInt::read(buffer)); // Item and count of the optional template.
+        static_cast<void>(varInt::read(buffer));
+        const std::int32_t added = readCollectionSize(buffer, 2);
+        const std::int32_t removed = readCollectionSize(buffer);
+        for (std::int32_t i = 0; i < added && !buffer.failed(); ++i) {
+            const std::int32_t id = varInt::read(buffer);
+            if (id == kPotDecorations) {
+                skipPotDecorations(buffer, depth + 1);
+            } else if (!ItemComponent::readPayload(buffer, id, std::nullopt).has_value()) {
+                buffer.markFailed();
+            }
+        }
+        for (std::int32_t i = 0; i < removed && !buffer.failed(); ++i) {
+            static_cast<void>(varInt::read(buffer));
+        }
+    }
+}
+
 std::vector<std::pair<std::int32_t, std::int32_t>> readLevels(io::ByteBuffer& buffer) {
     const std::int32_t count = readCollectionSize(buffer, 2);
     std::vector<std::pair<std::int32_t, std::int32_t>> levels;
@@ -86,6 +118,37 @@ std::optional<ItemComponent> ItemComponent::readPayload(io::ByteBuffer& buffer, 
         const nbt::NbtTag tag = readAnonymousNbt(buffer);
         const auto* compound = tag.get<nbt::NbtCompound>();
         return ItemComponent{id, CustomData{compound != nullptr ? *compound : nbt::NbtCompound{}}};
+    }
+    case kTooltipDisplay:
+    case kBannerPatterns:
+    case kPotDecorations: {
+        if (length.has_value()) {
+            return ItemComponent{id, Raw{buffer.readBytes(*length)}};
+        }
+        const auto payload = buffer.readable();
+        if (id == kPotDecorations) {
+            skipPotDecorations(buffer);
+        } else {
+            if (id == kTooltipDisplay) {
+                static_cast<void>(readBoolean(buffer));
+            }
+            const std::int32_t count = readCollectionSize(buffer, id == kBannerPatterns ? 2 : 1);
+            for (std::int32_t i = 0; i < count && !buffer.failed(); ++i) {
+                const std::int32_t entry = varInt::read(buffer);
+                if (id == kBannerPatterns) {
+                    if (entry == 0) { // Inline BannerPattern: asset id and translation key.
+                        static_cast<void>(readString(buffer));
+                        static_cast<void>(readString(buffer));
+                    }
+                    static_cast<void>(varInt::read(buffer)); // Dye color.
+                }
+            }
+        }
+        if (buffer.failed()) {
+            return std::nullopt;
+        }
+        const auto bytes = payload.first(payload.size() - buffer.readableBytes());
+        return ItemComponent{id, Raw{{bytes.begin(), bytes.end()}}};
     }
     default:
         break;
