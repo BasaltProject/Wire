@@ -18,6 +18,15 @@ struct DurationSummary {
     friend bool operator==(const DurationSummary&, const DurationSummary&) = default;
 };
 
+/// One second of ticks, for plotting how the server behaved rather than only how it averaged.
+struct TickBucket {
+    std::int32_t ticks = 0;
+    double meanMillis = 0.0;
+    double maxMillis = 0.0;
+
+    friend bool operator==(const TickBucket&, const TickBucket&) = default;
+};
+
 /// Lock-free ring written by the tick thread: a reader may see one torn sample, which beats locking every tick.
 class TickDurations {
 public:
@@ -32,6 +41,9 @@ public:
     [[nodiscard]] double ticksPerSecond(std::int64_t nowNanos, int windowSeconds) const;
 
     [[nodiscard]] DurationSummary summary(std::int64_t nowNanos, int windowSeconds) const;
+
+    /// One bucket per second, oldest first, ending at `nowNanos`.
+    [[nodiscard]] std::vector<TickBucket> timeline(std::int64_t nowNanos, int windowSeconds) const;
 
     void reset();
 
