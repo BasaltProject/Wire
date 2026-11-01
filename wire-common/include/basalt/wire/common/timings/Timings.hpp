@@ -89,6 +89,8 @@ public:
     }
 
 private:
+    friend class ScopedTiming;
+
     [[nodiscard]] ProfileScope enter() const noexcept;
 
     void leave(ProfileScope scope, std::int64_t nanos) noexcept;
@@ -150,6 +152,48 @@ private:
     std::uint64_t instance_;
     mutable std::mutex threadsMutex_;
     mutable std::vector<std::shared_ptr<ThreadState>> threads_;
+};
+
+/// Times the rest of the enclosing block, which `continue` and early returns leave without a lambda in the way.
+/// Costs one flag read when measuring is off, and builds no name then either.
+class ScopedTiming {
+public:
+    ScopedTiming(Timings& timings, std::string_view name) {
+        if (timings.enabled()) {
+            begin(timings.of(name));
+        }
+    }
+
+    ScopedTiming(Timings& timings, std::string_view prefix, std::string_view name) {
+        if (timings.enabled()) {
+            std::string joined;
+            joined.reserve(prefix.size() + name.size());
+            joined.append(prefix).append(name);
+            begin(timings.of(joined));
+        }
+    }
+
+    ScopedTiming(const ScopedTiming&) = delete;
+    ScopedTiming& operator=(const ScopedTiming&) = delete;
+
+    ~ScopedTiming() {
+        if (timing_ != nullptr) {
+            timing_->leave(scope_, std::chrono::duration_cast<std::chrono::nanoseconds>(
+                                       std::chrono::steady_clock::now() - started_)
+                                       .count());
+        }
+    }
+
+private:
+    void begin(Timing& timing) {
+        timing_ = &timing;
+        scope_ = timing.enter();
+        started_ = std::chrono::steady_clock::now();
+    }
+
+    Timing* timing_ = nullptr;
+    ProfileScope scope_;
+    std::chrono::steady_clock::time_point started_;
 };
 
 } // namespace basalt::wire::common
