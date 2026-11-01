@@ -19,6 +19,9 @@ struct ProfileNode {
     std::int64_t calls = 0;
     std::int64_t totalNanos = 0;
     std::int64_t maxNanos = 0;
+    /// Calls and time per window of `Timings::kWindowSeconds`, so a viewer can narrow a profile to part of the run.
+    std::vector<std::int64_t> windowCalls;
+    std::vector<std::int64_t> windowNanos;
     std::vector<ProfileNode> children;
 
     /// Time spent in the frame itself, without what it called.
@@ -105,6 +108,10 @@ private:
 
 class Timings {
 public:
+    static constexpr std::int32_t kWindowSeconds = 10;
+    /// Time past the last window is folded into it, which bounds what a long profile can grow to.
+    static constexpr std::int32_t kMaxWindows = 180;
+
     Timings();
     ~Timings();
     Timings(const Timings&) = delete;
@@ -141,11 +148,14 @@ private:
 
     void attribute(const Timing& timing, std::int64_t nanos) const;
 
+    [[nodiscard]] std::size_t currentWindow() const noexcept;
+
     // A lock, not a lock-free map: creation is rare and never on the hot path.
     mutable std::mutex mutex_;
     std::vector<std::unique_ptr<Timing>> timings_;
     std::atomic<bool> enabled_{false};
     std::atomic<std::int64_t> startedAtNanos_{0};
+    std::atomic<std::int64_t> windowOriginNanos_{0};
     // Bumped by `reset`; a thread discards its tree when it notices, so no thread's frames are freed under it.
     std::atomic<std::uint64_t> generation_{1};
     std::uint64_t instance_;

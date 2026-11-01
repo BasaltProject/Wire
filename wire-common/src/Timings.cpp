@@ -19,6 +19,8 @@ struct Frame {
     std::int64_t calls = 0;
     std::int64_t totalNanos = 0;
     std::int64_t maxNanos = 0;
+    std::vector<std::int64_t> windowCalls;
+    std::vector<std::int64_t> windowNanos;
     std::vector<std::unique_ptr<Frame>> children;
 
     [[nodiscard]] Frame& child(const Timing& which) {
@@ -30,6 +32,16 @@ struct Frame {
         children.push_back(std::make_unique<Frame>());
         children.back()->timing = &which;
         return *children.back();
+    }
+
+    void add(std::int64_t nanos, std::size_t window) {
+        if (windowCalls.size() <= window) {
+            windowCalls.resize(window + 1, 0);
+            windowNanos.resize(window + 1, 0);
+        }
+        windowCalls[window] += 1;
+        windowNanos[window] += nanos;
+        add(nanos);
     }
 
     void add(std::int64_t nanos) noexcept {
@@ -45,6 +57,8 @@ struct Frame {
     node.calls = frame.calls;
     node.totalNanos = frame.totalNanos;
     node.maxNanos = frame.maxNanos;
+    node.windowCalls = frame.windowCalls;
+    node.windowNanos = frame.windowNanos;
     node.children.reserve(frame.children.size());
     for (const std::unique_ptr<Frame>& child : frame.children) {
         node.children.push_back(convert(*child, child->timing->name()));
@@ -79,7 +93,16 @@ struct Timings::ThreadState {
     }
 };
 
-Timings::Timings() : instance_(nextInstance.fetch_add(1, std::memory_order_relaxed)) {}
+Timings::Timings() : instance_(nextInstance.fetch_add(1, std::memory_order_relaxed)) {
+    windowOriginNanos_.store(std::chrono::steady_clock::now().time_since_epoch().count(), std::memory_order_relaxed);
+}
+
+std::size_t Timings::currentWindow() const noexcept {
+    const std::int64_t elapsed = std::chrono::steady_clock::now().time_since_epoch().count() -
+                                 windowOriginNanos_.load(std::memory_order_relaxed);
+    const std::int64_t window = elapsed / (static_cast<std::int64_t>(kWindowSeconds) * 1'000'000'000);
+    return static_cast<std::size_t>(std::clamp<std::int64_t>(window, 0, kMaxWindows - 1));
+}
 
 Timings::~Timings() = default;
 
@@ -135,7 +158,7 @@ void Timings::leaveScope(ProfileScope scope, std::int64_t nanos) const {
     if (state.generation != scope.generation || state.stack.empty() || state.stack.back() != scope.node) {
         return;
     }
-    state.stack.back()->add(nanos);
+    state.stack.back()->add(nanos, currentWindow());
     state.stack.pop_back();
 }
 
@@ -144,7 +167,7 @@ void Timings::attribute(const Timing& timing, std::int64_t nanos) const {
     const std::uint64_t current = generation_.load(std::memory_order_relaxed);
     const std::scoped_lock lock{state.mutex};
     state.adopt(current);
-    (state.stack.empty() ? state.root : *state.stack.back()).child(timing).add(nanos);
+    (state.stack.empty() ? state.root : *state.stack.back()).child(timing).add(nanos, currentWindow());
 }
 
 std::vector<ThreadProfile> Timings::profiles() const {
@@ -166,6 +189,14 @@ std::vector<ThreadProfile> Timings::profiles() const {
         for (const ProfileNode& child : profile.root.children) {
             profile.root.totalNanos += child.totalNanos;
             profile.root.calls += child.calls;
+            if (profile.root.windowNanos.size() < child.windowNanos.size()) {
+                profile.root.windowCalls.resize(child.windowNanos.size(), 0);
+                profile.root.windowNanos.resize(child.windowNanos.size(), 0);
+            }
+            for (std::size_t window = 0; window < child.windowNanos.size(); ++window) {
+                profile.root.windowCalls[window] += child.windowCalls[window];
+                profile.root.windowNanos[window] += child.windowNanos[window];
+            }
         }
         out.push_back(std::move(profile));
     }
@@ -249,6 +280,7 @@ void Timings::reset(std::int64_t nowNanos) {
         timing->reset();
     }
     startedAtNanos_.store(nowNanos, std::memory_order_relaxed);
+    windowOriginNanos_.store(std::chrono::steady_clock::now().time_since_epoch().count(), std::memory_order_relaxed);
     generation_.fetch_add(1, std::memory_order_relaxed);
 }
 
