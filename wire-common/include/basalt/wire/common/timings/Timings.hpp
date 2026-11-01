@@ -78,10 +78,9 @@ public:
             std::chrono::steady_clock::time_point started;
 
             ~Recorder() {
-                timing.leave(scope,
-                             std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() -
-                                                                                  started)
-                                 .count());
+                timing.leave(scope, std::chrono::duration_cast<std::chrono::nanoseconds>(
+                                        std::chrono::steady_clock::now() - started)
+                                        .count());
             }
         } recorder{*this, scope, started};
 
