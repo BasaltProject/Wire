@@ -2,6 +2,8 @@
 
 #include <atomic>
 #include <cstdio>
+#include <memory>
+#include <mutex>
 #include <utility>
 #include <vector>
 
@@ -16,7 +18,9 @@ constexpr std::string_view kYellow = "\x1B[33m";
 constexpr std::string_view kCyan = "\x1B[36m";
 
 bool gUseColor = false;
-std::function<void(const std::function<void()>&)> gAroundConsoleLine;
+using AroundConsoleLine = std::function<void(const std::function<void()>&)>;
+std::mutex gAroundConsoleMutex;
+std::shared_ptr<const AroundConsoleLine> gAroundConsoleLine;
 
 /// Read by whichever thread logs next, so not a plain bool.
 std::atomic<bool> gInPlace{false};
@@ -62,7 +66,11 @@ void setUseColor(bool value) noexcept { gUseColor = value; }
 bool useColor() noexcept { return gUseColor; }
 
 void setAroundConsoleLine(std::function<void(const std::function<void()>&)> around) {
-    gAroundConsoleLine = std::move(around);
+    auto next = around ? std::make_shared<const AroundConsoleLine>(std::move(around)) : nullptr;
+    {
+        const std::lock_guard lock{gAroundConsoleMutex};
+        gAroundConsoleLine.swap(next);
+    }
 }
 
 void addSink(std::function<void(std::string_view)> sink) { sinks().push_back(std::move(sink)); }
@@ -130,8 +138,13 @@ void emit(LogLevel level, std::string_view timestamp, std::string_view name, std
         std::fputc('\n', stdout);
         std::fflush(stdout);
     };
-    if (gAroundConsoleLine) {
-        gAroundConsoleLine(write);
+    std::shared_ptr<const AroundConsoleLine> around;
+    {
+        const std::lock_guard lock{gAroundConsoleMutex};
+        around = gAroundConsoleLine;
+    }
+    if (around) {
+        (*around)(write);
     } else {
         write();
     }
