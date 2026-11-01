@@ -1,13 +1,197 @@
 #include <basalt/wire/common/timings/Timings.hpp>
 
 #include <algorithm>
+#include <functional>
 #include <cstdint>
 
 namespace basalt::wire::common {
+namespace {
+
+std::atomic<std::uint64_t> nextInstance{1};
+
+struct Frame {
+    const Timing* timing = nullptr;
+    std::int64_t calls = 0;
+    std::int64_t totalNanos = 0;
+    std::int64_t maxNanos = 0;
+    std::vector<std::unique_ptr<Frame>> children;
+
+    [[nodiscard]] Frame& child(const Timing& which) {
+        for (const std::unique_ptr<Frame>& existing : children) {
+            if (existing->timing == &which) {
+                return *existing;
+            }
+        }
+        children.push_back(std::make_unique<Frame>());
+        children.back()->timing = &which;
+        return *children.back();
+    }
+
+    void add(std::int64_t nanos) noexcept {
+        calls += 1;
+        totalNanos += nanos;
+        maxNanos = std::max(maxNanos, nanos);
+    }
+};
+
+[[nodiscard]] ProfileNode convert(const Frame& frame, std::string name) {
+    ProfileNode node;
+    node.name = std::move(name);
+    node.calls = frame.calls;
+    node.totalNanos = frame.totalNanos;
+    node.maxNanos = frame.maxNanos;
+    node.children.reserve(frame.children.size());
+    for (const std::unique_ptr<Frame>& child : frame.children) {
+        node.children.push_back(convert(*child, child->timing->name()));
+    }
+    std::ranges::sort(node.children, std::greater<>{}, &ProfileNode::totalNanos);
+    return node;
+}
+
+} // namespace
+
+std::int64_t ProfileNode::selfNanos() const noexcept {
+    std::int64_t inChildren = 0;
+    for (const ProfileNode& child : children) {
+        inChildren += child.totalNanos;
+    }
+    return std::max<std::int64_t>(totalNanos - inChildren, 0);
+}
+
+struct Timings::ThreadState {
+    std::mutex mutex;
+    std::string name;
+    std::uint64_t generation = 0;
+    Frame root;
+    std::vector<Frame*> stack;
+
+    void adopt(std::uint64_t current) {
+        if (generation != current) {
+            root = Frame{};
+            stack.clear();
+            generation = current;
+        }
+    }
+};
+
+Timings::Timings() : instance_(nextInstance.fetch_add(1, std::memory_order_relaxed)) {}
+
+Timings::~Timings() = default;
+
+Timings::ThreadState& Timings::threadState() const {
+    struct Cache {
+        std::uint64_t instance = 0;
+        ThreadState* state = nullptr;
+    };
+    thread_local Cache cache;
+    if (cache.instance == instance_) {
+        return *cache.state;
+    }
+    auto created = std::make_shared<ThreadState>();
+    {
+        const std::scoped_lock lock{threadsMutex_};
+        created->name = "thread-" + std::to_string(threads_.size() + 1);
+        threads_.push_back(created);
+    }
+    cache = Cache{instance_, created.get()};
+    return *created;
+}
+
+void Timings::nameThread(std::string_view name) const {
+    ThreadState& state = threadState();
+    const std::scoped_lock lock{state.mutex};
+    state.name = std::string{name};
+}
+
+ProfileScope Timings::enterScope(const Timing& timing) const {
+    ThreadState& state = threadState();
+    const std::uint64_t current = generation_.load(std::memory_order_relaxed);
+    const std::scoped_lock lock{state.mutex};
+    state.adopt(current);
+    Frame& frame = (state.stack.empty() ? state.root : *state.stack.back()).child(timing);
+    state.stack.push_back(&frame);
+    return ProfileScope{&frame, current};
+}
+
+void Timings::leaveScope(ProfileScope scope, std::int64_t nanos) const {
+    if (scope.node == nullptr) {
+        return;
+    }
+    ThreadState& state = threadState();
+    const std::scoped_lock lock{state.mutex};
+    // A reset in between freed the frame: the pointer is only compared, never followed.
+    if (state.generation != scope.generation || state.stack.empty() || state.stack.back() != scope.node) {
+        return;
+    }
+    state.stack.back()->add(nanos);
+    state.stack.pop_back();
+}
+
+void Timings::attribute(const Timing& timing, std::int64_t nanos) const {
+    ThreadState& state = threadState();
+    const std::uint64_t current = generation_.load(std::memory_order_relaxed);
+    const std::scoped_lock lock{state.mutex};
+    state.adopt(current);
+    (state.stack.empty() ? state.root : *state.stack.back()).child(timing).add(nanos);
+}
+
+std::vector<ThreadProfile> Timings::profiles() const {
+    std::vector<std::shared_ptr<ThreadState>> threads;
+    {
+        const std::scoped_lock lock{threadsMutex_};
+        threads = threads_;
+    }
+    const std::uint64_t current = generation_.load(std::memory_order_relaxed);
+    std::vector<ThreadProfile> out;
+    for (const std::shared_ptr<ThreadState>& state : threads) {
+        const std::scoped_lock lock{state->mutex};
+        if (state->generation != current || state->root.children.empty()) {
+            continue;
+        }
+        ThreadProfile profile;
+        profile.name = state->name;
+        profile.root = convert(state->root, "root");
+        for (const ProfileNode& child : profile.root.children) {
+            profile.root.totalNanos += child.totalNanos;
+            profile.root.calls += child.calls;
+        }
+        out.push_back(std::move(profile));
+    }
+    std::ranges::sort(out, std::greater<>{},
+                      [](const ThreadProfile& profile) { return profile.root.totalNanos; });
+    return out;
+}
 
 bool Timing::isEnabled() const noexcept { return owner_->enabled(); }
 
+ProfileScope Timing::enter() const noexcept {
+    try {
+        return owner_->enterScope(*this);
+    } catch (...) {
+        return {};
+    }
+}
+
+void Timing::leave(ProfileScope scope, std::int64_t nanos) noexcept {
+    add(nanos);
+    try {
+        owner_->leaveScope(scope, nanos);
+    } catch (...) {
+    }
+}
+
 void Timing::record(std::int64_t nanos) noexcept {
+    add(nanos);
+    if (!isEnabled()) {
+        return;
+    }
+    try {
+        owner_->attribute(*this, nanos);
+    } catch (...) {
+    }
+}
+
+void Timing::add(std::int64_t nanos) noexcept {
     calls_.fetch_add(1, std::memory_order_relaxed);
     totalNanos_.fetch_add(nanos, std::memory_order_relaxed);
     std::int64_t worst = maxNanos_.load(std::memory_order_relaxed);
@@ -54,6 +238,7 @@ void Timings::reset(std::int64_t nowNanos) {
         timing->reset();
     }
     startedAtNanos_.store(nowNanos, std::memory_order_relaxed);
+    generation_.fetch_add(1, std::memory_order_relaxed);
 }
 
 std::int64_t Timings::windowNanos(std::int64_t nowNanos) const noexcept {
