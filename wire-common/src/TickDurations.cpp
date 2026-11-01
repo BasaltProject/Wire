@@ -69,6 +69,33 @@ DurationSummary TickDurations::summary(std::int64_t nowNanos, int windowSeconds)
                            toMillis(total / static_cast<std::int64_t>(collected.size()))};
 }
 
+std::vector<TickBucket> TickDurations::timeline(std::int64_t nowNanos, int windowSeconds) const {
+    if (windowSeconds <= 0) {
+        return {};
+    }
+    const std::int64_t start = nowNanos - static_cast<std::int64_t>(windowSeconds) * kNanosPerSecond;
+    std::vector<TickBucket> buckets(static_cast<std::size_t>(windowSeconds));
+    std::vector<std::int64_t> totals(buckets.size(), 0);
+    std::vector<std::int64_t> worst(buckets.size(), 0);
+    forEachSampleAt(start, [&](std::int64_t at, std::int64_t duration) {
+        const std::int64_t slot = (at - start) / kNanosPerSecond;
+        if (slot < 0 || slot >= windowSeconds) {
+            return;
+        }
+        const auto index = static_cast<std::size_t>(slot);
+        buckets[index].ticks += 1;
+        totals[index] += duration;
+        worst[index] = std::max(worst[index], duration);
+    });
+    for (std::size_t index = 0; index < buckets.size(); ++index) {
+        if (buckets[index].ticks > 0) {
+            buckets[index].meanMillis = toMillis(totals[index] / buckets[index].ticks);
+            buckets[index].maxMillis = toMillis(worst[index]);
+        }
+    }
+    return buckets;
+}
+
 void TickDurations::reset() {
     written_.store(0, std::memory_order_relaxed);
     std::ranges::fill(durations_, 0);
