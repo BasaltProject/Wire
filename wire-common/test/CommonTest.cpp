@@ -184,6 +184,10 @@ TEST_CASE("timings keep a call tree per thread and drop it on reset") {
     CHECK(nested->children[0].name == "inner");
     CHECK(nested->children[0].calls == 2);
     CHECK(nested->selfNanos() <= nested->totalNanos);
+    REQUIRE(nested->windowCalls.size() == 1);
+    CHECK(nested->windowCalls[0] == 1);
+    CHECK(nested->windowNanos[0] == nested->totalNanos);
+    CHECK(profiles[0].root.windowCalls[0] == profiles[0].root.calls);
 
     outer.time([&] {
         timings.reset(0);
