@@ -77,7 +77,7 @@ std::optional<nbt::NbtCompound> tagOf(const WireItemStack& item) {
                 }
                 // A name travelled as a string of json before it was a component of its own.
                 nbt::NbtCompound display;
-                display.putString("Name", common::writeJson(text::componentJson::serialize(text->text)));
+                display.putString("Name", common::writeJson(text::componentJson::serializeLegacy(text->text)));
                 tag->set("display", nbt::NbtTag::ofCompound(std::move(display)));
             }
         }

@@ -2,7 +2,15 @@
 #include <basalt/wire/multiversion/java/LongMaskLight.hpp>
 #include <basalt/wire/protocol/ProtocolBuffer.hpp>
 #include <basalt/wire/protocol/VarInt.hpp>
+#include <basalt/wire/protocol/configuration/ConfigurationPackets.hpp>
+#include <basalt/wire/protocol/play/ChatPackets.hpp>
+#include <basalt/wire/protocol/play/HudPackets.hpp>
+#include <basalt/wire/protocol/play/InventoryPackets.hpp>
+#include <basalt/wire/protocol/play/PlayPackets.hpp>
+#include <basalt/wire/protocol/play/PlayerStatePackets.hpp>
 #include <basalt/wire/protocol/play/SimplePackets.hpp>
+#include <basalt/wire/protocol/play/UiPackets.hpp>
+#include <basalt/wire/text/ComponentNbt.hpp>
 
 #include <cstdint>
 
@@ -20,6 +28,22 @@ using protocol::ProtocolState;
     return tag;
 }
 
+/// 1.21.5 renamed click and hover events inside text components; a 1.21.4 client only knows the old names.
+template <typename Packet>
+void rewriteText(MutablePacket& packet) {
+    io::ByteBuffer input = io::ByteBuffer::wrap(packet.body);
+    auto value = Packet::read(input);
+    if (!value.has_value()) {
+        return;
+    }
+    io::ByteBuffer output;
+    {
+        const text::componentNbt::ScopedLegacyEvents legacy;
+        value->write(output);
+    }
+    packet.body = output.toVector();
+}
+
 } // namespace
 
 Link769::Link769(const VersionTables& tables)
@@ -31,10 +55,53 @@ Link769::Link769(const VersionTables& tables)
                                                                }) {}
 
 bool Link769::clientbound(ProtocolState state, MutablePacket& packet) {
+    if (state == ProtocolState::Configuration &&
+        packet.nativeId() == protocol::configuration::ConfigurationDisconnectPacket::kId) {
+        rewriteText<protocol::configuration::ConfigurationDisconnectPacket>(packet);
+        return RenumberingLink::clientbound(state, packet);
+    }
     if (state != ProtocolState::Play) {
         return RenumberingLink::clientbound(state, packet);
     }
     switch (packet.nativeId()) {
+    case play::SystemChatPacket::kId:
+        rewriteText<play::SystemChatPacket>(packet);
+        return RenumberingLink::clientbound(state, packet);
+    case play::TabListPacket::kId:
+        rewriteText<play::TabListPacket>(packet);
+        return RenumberingLink::clientbound(state, packet);
+    case play::PlayDisconnectPacket::kId:
+        rewriteText<play::PlayDisconnectPacket>(packet);
+        return RenumberingLink::clientbound(state, packet);
+    case play::OpenScreenPacket::kId:
+        rewriteText<play::OpenScreenPacket>(packet);
+        return RenumberingLink::clientbound(state, packet);
+    case play::BossEventPacket::kId:
+        rewriteText<play::BossEventPacket>(packet);
+        return RenumberingLink::clientbound(state, packet);
+    case play::SetObjectivePacket::kId:
+        rewriteText<play::SetObjectivePacket>(packet);
+        return RenumberingLink::clientbound(state, packet);
+    case play::SetScorePacket::kId:
+        rewriteText<play::SetScorePacket>(packet);
+        return RenumberingLink::clientbound(state, packet);
+    case play::SetPlayerTeamPacket::kId:
+        rewriteText<play::SetPlayerTeamPacket>(packet);
+        return RenumberingLink::clientbound(state, packet);
+    case play::DisguisedChatPacket::kId:
+        rewriteText<play::DisguisedChatPacket>(packet);
+        return RenumberingLink::clientbound(state, packet);
+    case play::PlayerChatPacket::kId:
+        rewriteText<play::PlayerChatPacket>(packet);
+        return RenumberingLink::clientbound(state, packet);
+    case play::PlayerCombatKillPacket::kId:
+        rewriteText<play::PlayerCombatKillPacket>(packet);
+        return RenumberingLink::clientbound(state, packet);
+    case play::kSetTitleTextId:
+    case play::kSetSubtitleTextId:
+    case play::kSetActionBarTextId:
+        rewriteText<play::TitleTextPacket>(packet);
+        return RenumberingLink::clientbound(state, packet);
     case play::MapChunkPacket::kId: {
         const auto chunk = decode(packet, [](io::ByteBuffer& in) -> std::optional<play::MapChunkPacket> {
             auto read = play::MapChunkPacket::read(in, false);

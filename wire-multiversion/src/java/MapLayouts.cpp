@@ -108,9 +108,11 @@ void writeName(io::ByteBuffer& output, const std::optional<text::Component>& nam
         return;
     }
     if (farEnd >= versions::kV1_20_3) {
-        protocol::writeAnonymousNbt(output, text::componentNbt::serialize(*name));
+        protocol::writeAnonymousNbt(output,
+                                    (farEnd >= versions::kV1_21_5 ? text::componentNbt::serialize(*name)
+                                                                  : text::componentNbt::serializeLegacy(*name)));
     } else {
-        protocol::writeString(output, common::writeJson(text::componentJson::serialize(*name)));
+        protocol::writeString(output, common::writeJson(text::componentJson::serializeLegacy(*name)));
     }
 }
 

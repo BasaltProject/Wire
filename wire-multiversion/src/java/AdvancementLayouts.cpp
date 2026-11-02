@@ -23,9 +23,11 @@ constexpr std::int32_t kHiddenFlag = 4;
 
 void writeText(io::ByteBuffer& output, const text::Component& component, std::int32_t farEnd) {
     if (farEnd >= versions::kV1_20_3) {
-        protocol::writeAnonymousNbt(output, text::componentNbt::serialize(component));
+        protocol::writeAnonymousNbt(output,
+                                    (farEnd >= versions::kV1_21_5 ? text::componentNbt::serialize(component)
+                                                                  : text::componentNbt::serializeLegacy(component)));
     } else {
-        protocol::writeString(output, common::writeJson(text::componentJson::serialize(component)));
+        protocol::writeString(output, common::writeJson(text::componentJson::serializeLegacy(component)));
     }
 }
 
