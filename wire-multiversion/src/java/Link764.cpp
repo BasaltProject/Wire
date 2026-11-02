@@ -15,7 +15,7 @@ namespace play = protocol::play;
 using protocol::ProtocolState;
 
 void writeJson(io::ByteBuffer& output, const text::Component& component) {
-    protocol::writeString(output, common::writeJson(text::componentJson::serialize(component)));
+    protocol::writeString(output, common::writeJson(text::componentJson::serializeLegacy(component)));
 }
 
 } // namespace

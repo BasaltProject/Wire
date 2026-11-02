@@ -1,23 +1,26 @@
 #include <basalt/wire/text/ComponentJson.hpp>
 
 #include <cstdint>
+#include <cstdlib>
 
 namespace basalt::wire::text::componentJson {
+common::JsonValue serializeWith(const Component& component, bool legacy);
+
 namespace {
 
 using common::JsonObject;
 using common::JsonValue;
 
-JsonValue serializeAll(const std::vector<Component>& components) {
+JsonValue serializeAll(const std::vector<Component>& components, bool legacy) {
     std::vector<JsonValue> out;
     out.reserve(components.size());
     for (const Component& component : components) {
-        out.push_back(serialize(component));
+        out.push_back(serializeWith(component, legacy));
     }
     return JsonValue::ofArray(std::move(out));
 }
 
-void writeStyle(JsonObject& object, const Style& style) {
+void writeStyle(JsonObject& object, const Style& style, bool legacy) {
     if (style.color) {
         const std::optional<std::string_view> name = TextColor::nameOf(*style.color);
         object.set("color", JsonValue::of(name ? std::string{*name} : style.color->toHexString()));
@@ -43,33 +46,75 @@ void writeStyle(JsonObject& object, const Style& style) {
     if (style.insertion) {
         object.set("insertion", JsonValue::of(*style.insertion));
     }
+    if (legacy) {
+        if (style.clickEvent) {
+            JsonObject click;
+            click.set("action", JsonValue::of(std::string{clickActionId(style.clickEvent->action)}));
+            click.set("value", JsonValue::of(style.clickEvent->value));
+            object.set("clickEvent", JsonValue::ofObject(std::move(click)));
+        }
+        if (style.hoverEvent) {
+            JsonObject hover;
+            hover.set("action", JsonValue::of(std::string{style.hoverEvent->actionId()}));
+            if (const auto* showText = std::get_if<HoverEvent::ShowText>(&style.hoverEvent->payload)) {
+                hover.set("contents", showText->value ? serializeWith(*showText->value, true) : JsonValue{});
+            } else if (const auto* showItem = std::get_if<HoverEvent::ShowItem>(&style.hoverEvent->payload)) {
+                JsonObject contents;
+                contents.set("id", JsonValue::of(showItem->itemId));
+                contents.set("count", JsonValue::of(static_cast<std::int64_t>(showItem->count)));
+                hover.set("contents", JsonValue::ofObject(std::move(contents)));
+            } else {
+                const auto& showEntity = std::get<HoverEvent::ShowEntity>(style.hoverEvent->payload);
+                JsonObject contents;
+                contents.set("type", JsonValue::of(showEntity.entityType));
+                contents.set("id", JsonValue::of(showEntity.uuid));
+                if (showEntity.name) {
+                    contents.set("name", serializeWith(*showEntity.name, true));
+                }
+                hover.set("contents", JsonValue::ofObject(std::move(contents)));
+            }
+            object.set("hoverEvent", JsonValue::ofObject(std::move(hover)));
+        }
+        return;
+    }
     if (style.clickEvent) {
+        const ClickEvent& event = *style.clickEvent;
         JsonObject click;
-        click.set("action", JsonValue::of(std::string{clickActionId(style.clickEvent->action)}));
-        click.set("value", JsonValue::of(style.clickEvent->value));
-        object.set("clickEvent", JsonValue::ofObject(std::move(click)));
+        click.set("action", JsonValue::of(std::string{clickActionId(event.action)}));
+        switch (event.action) {
+        case ClickEvent::Action::OpenUrl:
+            click.set("url", JsonValue::of(event.value));
+            break;
+        case ClickEvent::Action::RunCommand:
+        case ClickEvent::Action::SuggestCommand:
+            click.set("command", JsonValue::of(event.value));
+            break;
+        case ClickEvent::Action::ChangePage:
+            click.set("page", JsonValue::of(static_cast<std::int64_t>(std::atoi(event.value.c_str()))));
+            break;
+        case ClickEvent::Action::CopyToClipboard:
+            click.set("value", JsonValue::of(event.value));
+            break;
+        }
+        object.set("click_event", JsonValue::ofObject(std::move(click)));
     }
     if (style.hoverEvent) {
         JsonObject hover;
         hover.set("action", JsonValue::of(std::string{style.hoverEvent->actionId()}));
         if (const auto* showText = std::get_if<HoverEvent::ShowText>(&style.hoverEvent->payload)) {
-            hover.set("contents", showText->value ? serialize(*showText->value) : JsonValue{});
+            hover.set("value", showText->value ? serializeWith(*showText->value, legacy) : JsonValue{});
         } else if (const auto* showItem = std::get_if<HoverEvent::ShowItem>(&style.hoverEvent->payload)) {
-            JsonObject contents;
-            contents.set("id", JsonValue::of(showItem->itemId));
-            contents.set("count", JsonValue::of(static_cast<std::int64_t>(showItem->count)));
-            hover.set("contents", JsonValue::ofObject(std::move(contents)));
+            hover.set("id", JsonValue::of(showItem->itemId));
+            hover.set("count", JsonValue::of(static_cast<std::int64_t>(showItem->count)));
         } else {
             const auto& showEntity = std::get<HoverEvent::ShowEntity>(style.hoverEvent->payload);
-            JsonObject contents;
-            contents.set("type", JsonValue::of(showEntity.entityType));
-            contents.set("id", JsonValue::of(showEntity.uuid));
+            hover.set("id", JsonValue::of(showEntity.entityType));
+            hover.set("uuid", JsonValue::of(showEntity.uuid));
             if (showEntity.name) {
-                contents.set("name", serialize(*showEntity.name));
+                hover.set("name", serializeWith(*showEntity.name, legacy));
             }
-            hover.set("contents", JsonValue::ofObject(std::move(contents)));
         }
-        object.set("hoverEvent", JsonValue::ofObject(std::move(hover)));
+        object.set("hover_event", JsonValue::ofObject(std::move(hover)));
     }
 }
 
@@ -129,36 +174,50 @@ std::vector<Component> deserializeAll(const JsonObject& object, std::string_view
 
 std::optional<ClickEvent> readClickEvent(const JsonObject& object) {
     const std::optional<std::string> action = readString(object, "action");
-    const std::optional<std::string> value = readString(object, "value");
-    if (!action || !value) {
+    if (!action) {
         return std::nullopt;
     }
     const std::optional<ClickEvent::Action> parsed = clickActionFromId(*action);
     if (!parsed) {
         return std::nullopt;
     }
-    return ClickEvent{*parsed, *value};
+    if (*parsed == ClickEvent::Action::ChangePage) {
+        if (const JsonValue* page = object.find("page")) {
+            if (const auto* integer = page->get<std::int64_t>()) {
+                return ClickEvent::changePage(static_cast<std::int32_t>(*integer));
+            }
+        }
+    }
+    for (const std::string_view key : {"url", "command", "value"}) {
+        if (const std::optional<std::string> value = readString(object, key)) {
+            return ClickEvent{*parsed, *value};
+        }
+    }
+    return std::nullopt;
 }
 
 std::optional<HoverEvent> readHoverEvent(const JsonObject& object) {
     const std::optional<std::string> action = readString(object, "action");
+    if (!action) {
+        return std::nullopt;
+    }
     const JsonValue* contents = object.find("contents");
-    if (!action || contents == nullptr) {
-        return std::nullopt;
-    }
     if (*action == "show_text") {
-        return HoverEvent::showText(deserialize(*contents));
+        const JsonValue* value = object.find("value");
+        if (value == nullptr) {
+            value = contents;
+        }
+        return value != nullptr ? std::optional<HoverEvent>{HoverEvent::showText(deserialize(*value))} : std::nullopt;
     }
-    const auto* body = contents->get<JsonObject>();
-    if (body == nullptr) {
-        return std::nullopt;
-    }
+    const JsonObject* body =
+        contents != nullptr && contents->get<JsonObject>() != nullptr ? contents->get<JsonObject>() : &object;
     if (*action == "show_item") {
         return HoverEvent::showItem(readString(*body, "id").value_or(""), readInt(*body, "count", 1));
     }
     if (*action == "show_entity") {
-        HoverEvent::ShowEntity entity{readString(*body, "type").value_or(""), readString(*body, "id").value_or(""),
-                                      nullptr};
+        const bool legacy = body != &object;
+        HoverEvent::ShowEntity entity{readString(*body, legacy ? "type" : "id").value_or(""),
+                                      readString(*body, legacy ? "id" : "uuid").value_or(""), nullptr};
         if (const JsonValue* name = body->find("name")) {
             entity.name = std::make_shared<const Component>(deserialize(*name));
         }
@@ -179,11 +238,17 @@ Style readStyle(const JsonObject& object) {
     style.obfuscated = readBoolean(object, "obfuscated");
     style.font = readString(object, "font");
     style.insertion = readString(object, "insertion");
-    if (const JsonObject* click = readObject(object, "clickEvent")) {
-        style.clickEvent = readClickEvent(*click);
+    for (const std::string_view key : {"click_event", "clickEvent"}) {
+        if (const JsonObject* click = readObject(object, key)) {
+            style.clickEvent = readClickEvent(*click);
+            break;
+        }
     }
-    if (const JsonObject* hover = readObject(object, "hoverEvent")) {
-        style.hoverEvent = readHoverEvent(*hover);
+    for (const std::string_view key : {"hover_event", "hoverEvent"}) {
+        if (const JsonObject* hover = readObject(object, key)) {
+            style.hoverEvent = readHoverEvent(*hover);
+            break;
+        }
     }
     return style;
 }
@@ -223,7 +288,7 @@ Component deserializeSiblingChain(const std::vector<JsonValue>& array) {
 
 } // namespace
 
-JsonValue serialize(const Component& component) {
+JsonValue serializeWith(const Component& component, bool legacy) {
     JsonObject object;
     if (const auto* text = component.as<Component::Text>()) {
         object.set("text", JsonValue::of(text->content));
@@ -233,7 +298,7 @@ JsonValue serialize(const Component& component) {
             object.set("fallback", JsonValue::of(*translatable->fallback));
         }
         if (!translatable->args.empty()) {
-            object.set("with", serializeAll(translatable->args));
+            object.set("with", serializeAll(translatable->args, legacy));
         }
     } else if (const auto* keybind = component.as<Component::Keybind>()) {
         object.set("keybind", JsonValue::of(keybind->key));
@@ -246,13 +311,13 @@ JsonValue serialize(const Component& component) {
         const auto& selector = std::get<Component::Selector>(component.payload());
         object.set("selector", JsonValue::of(selector.pattern));
         if (selector.separator) {
-            object.set("separator", serialize(*selector.separator));
+            object.set("separator", serializeWith(*selector.separator, legacy));
         }
     }
 
-    writeStyle(object, component.style());
+    writeStyle(object, component.style(), legacy);
     if (!component.children().empty()) {
-        object.set("extra", serializeAll(component.children()));
+        object.set("extra", serializeAll(component.children(), legacy));
     }
     return JsonValue::ofObject(std::move(object));
 }
@@ -269,5 +334,9 @@ Component deserialize(const JsonValue& value) {
     }
     return Component::empty();
 }
+
+JsonValue serialize(const Component& component) { return serializeWith(component, false); }
+
+JsonValue serializeLegacy(const Component& component) { return serializeWith(component, true); }
 
 } // namespace basalt::wire::text::componentJson

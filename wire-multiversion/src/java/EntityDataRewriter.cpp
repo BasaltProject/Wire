@@ -134,9 +134,11 @@ void writeComponent(io::ByteBuffer& output, const text::Component& component, bo
     if (asLegacyName) {
         protocol::writeString(output, text::toPlainText(component));
     } else if (farEnd >= protocolVersions::kV1_20_3) {
-        protocol::writeAnonymousNbt(output, text::componentNbt::serialize(component));
+        protocol::writeAnonymousNbt(output, (farEnd >= protocolVersions::kV1_21_5
+                                                 ? text::componentNbt::serialize(component)
+                                                 : text::componentNbt::serializeLegacy(component)));
     } else {
-        protocol::writeString(output, common::writeJson(text::componentJson::serialize(component)));
+        protocol::writeString(output, common::writeJson(text::componentJson::serializeLegacy(component)));
     }
 }
 

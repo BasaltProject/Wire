@@ -92,6 +92,36 @@ TEST_CASE("components survive the NBT network form") {
     CHECK(roundTrip(hoverText) == hoverText);
 }
 
+TEST_CASE("click and hover events use the 1.21.5 names, with a legacy form for older clients") {
+    const Component linked = Component::text("link")
+                                 .clickEvent(ClickEvent::openUrl("https://basaltmc.org"))
+                                 .hoverEvent(HoverEvent::showText(Component::text("tip")));
+
+    const auto modern = componentNbt::serialize(linked);
+    const auto* modernCompound = modern.get<basalt::wire::nbt::NbtCompound>();
+    REQUIRE(modernCompound != nullptr);
+    CHECK(modernCompound->getCompound("click_event")->getString("url") == "https://basaltmc.org");
+    CHECK(modernCompound->getCompound("hover_event")->find("value") != nullptr);
+    CHECK_FALSE(modernCompound->contains("clickEvent"));
+
+    const auto legacy = componentNbt::serializeLegacy(linked);
+    const auto* legacyCompound = legacy.get<basalt::wire::nbt::NbtCompound>();
+    REQUIRE(legacyCompound != nullptr);
+    CHECK(legacyCompound->getCompound("clickEvent")->getString("value") == "https://basaltmc.org");
+    CHECK(componentNbt::deserialize(legacy) == linked);
+    CHECK(componentJson::deserialize(componentJson::serializeLegacy(linked)) == linked);
+    CHECK(componentJson::deserialize(componentJson::serialize(linked)) == linked);
+
+    {
+        const componentNbt::ScopedLegacyEvents scoped;
+        CHECK(componentNbt::serialize(linked).get<basalt::wire::nbt::NbtCompound>()->contains("clickEvent"));
+    }
+    CHECK(componentNbt::serialize(linked).get<basalt::wire::nbt::NbtCompound>()->contains("click_event"));
+
+    const Component page = Component::text("p").clickEvent(ClickEvent::changePage(3));
+    CHECK(roundTrip(page) == page);
+}
+
 TEST_CASE("translations resolve vanilla's format subset") {
     const LangTable table{{
         {"chat.type.text", "<%s> %s"},
