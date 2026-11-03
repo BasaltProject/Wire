@@ -23,6 +23,7 @@ TEST_CASE("Android native DNS uses the device network without JNI or a custom se
     const char* host = std::getenv("BASALT_TEST_ANDROID_DNS_HOST");
     REQUIRE(host != nullptr);
     auto endpoints = resolveDns(host, 443, {std::chrono::steady_clock::now() + 15s, {}, {}});
+    INFO((endpoints ? 0 : endpoints.error().code));
     REQUIRE(endpoints);
     REQUIRE_FALSE(endpoints->empty());
     for (const auto& endpoint : *endpoints) {

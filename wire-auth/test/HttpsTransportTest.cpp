@@ -26,10 +26,10 @@
 using namespace basalt::wire;
 using namespace std::chrono_literals;
 
-#if defined(__ANDROID__)
-TEST_CASE("Android HTTPS uses system DNS and CA roots without a Java runtime" *
-          doctest::skip(std::getenv("BASALT_TEST_ANDROID_HTTPS_URL") == nullptr)) {
-    const char* url = std::getenv("BASALT_TEST_ANDROID_HTTPS_URL");
+#if defined(__ANDROID__) || defined(__FreeBSD__)
+TEST_CASE("HTTPS uses native system DNS and CA roots without a Java runtime" *
+          doctest::skip(std::getenv("BASALT_TEST_SYSTEM_HTTPS_URL") == nullptr)) {
+    const char* url = std::getenv("BASALT_TEST_SYSTEM_HTTPS_URL");
     REQUIRE(url != nullptr);
     const auto response =
         auth::httpsGetBounded(url, 8 * 1024 * 1024, {std::chrono::steady_clock::now() + 20s, {}, {}, {}});
