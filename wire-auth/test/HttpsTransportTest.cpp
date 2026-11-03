@@ -9,6 +9,7 @@
 #include <array>
 #include <basalt_mbedtls_threads.h>
 #include <chrono>
+#include <cstdlib>
 #include <future>
 #include <mbedtls/ctr_drbg.h>
 #include <mbedtls/entropy.h>
@@ -24,6 +25,20 @@
 
 using namespace basalt::wire;
 using namespace std::chrono_literals;
+
+#if defined(__ANDROID__)
+TEST_CASE("Android HTTPS uses system DNS and CA roots without a Java runtime" *
+          doctest::skip(std::getenv("BASALT_TEST_ANDROID_HTTPS_URL") == nullptr)) {
+    const char* url = std::getenv("BASALT_TEST_ANDROID_HTTPS_URL");
+    REQUIRE(url != nullptr);
+    const auto response =
+        auth::httpsGetBounded(url, 8 * 1024 * 1024, {std::chrono::steady_clock::now() + 20s, {}, {}, {}});
+    INFO((response ? "request succeeded" : response.error().message));
+    REQUIRE(response);
+    CHECK(response->status == 200);
+    CHECK_FALSE(response->body.empty());
+}
+#endif
 
 namespace {
 struct TlsState {

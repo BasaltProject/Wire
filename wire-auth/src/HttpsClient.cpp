@@ -173,6 +173,20 @@ public:
             anyTrusted = loadWindowsRoots(trusted_);
         }
 #endif
+#if defined(__ANDROID__)
+        if (options_.trustPem.empty()) {
+            // Android stores individual roots, not a PEM bundle. Android 14+
+            // supplies them through Conscrypt's APEX; older releases use /system.
+            constexpr std::array<const char*, 2> kAndroidTrustStores{"/apex/com.android.conscrypt/cacerts",
+                                                                     "/system/etc/security/cacerts"};
+            for (const char* store : kAndroidTrustStores) {
+                if (mbedtls_x509_crt_parse_path(&trusted_, store) >= 0 && trusted_.raw.p != nullptr) {
+                    anyTrusted = true;
+                    break;
+                }
+            }
+        }
+#endif
         for (const char* store : kTrustStores) {
             if (!options_.trustPem.empty() || anyTrusted) {
                 break;
