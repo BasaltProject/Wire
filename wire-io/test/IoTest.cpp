@@ -210,6 +210,13 @@ TEST_CASE("nonblocking connections report readiness and distinguish would-block 
     const auto connected = client->finishConnect();
     REQUIRE(connected);
     REQUIRE(*connected);
+    // A completed client handshake does not guarantee the listener has processed
+    // the final ACK yet. Wait for its accept queue independently.
+    EventLoop accepting;
+    REQUIRE(accepting.watch(listener->nativeHandle(), {true, false}, 43));
+    const auto pending = accepting.wait(2000);
+    REQUIRE(pending);
+    REQUIRE_FALSE(pending->empty());
     auto peer = listener->accept();
     REQUIRE(peer);
     REQUIRE(peer->setNonBlocking());
