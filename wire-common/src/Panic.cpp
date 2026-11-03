@@ -12,10 +12,13 @@
 #include <string>
 #include <string_view>
 
-#if defined(__APPLE__) || defined(__linux__)
-#include <execinfo.h>
+#if defined(__APPLE__) || defined(__linux__) || defined(__FreeBSD__)
 #include <pthread.h>
 #include <unistd.h>
+#endif
+
+#if defined(BASALT_HAS_EXECINFO)
+#include <execinfo.h>
 #endif
 
 namespace basalt::wire::common::panic {
@@ -33,7 +36,7 @@ constexpr std::string_view kRule = "--------------------------------------------
 
 /// Uses write, not std::cerr: this runs in a signal handler where the stream's lock may be held.
 void say(std::string_view text) {
-#if defined(__APPLE__) || defined(__linux__)
+#if defined(__APPLE__) || defined(__linux__) || defined(__FreeBSD__)
     static_cast<void>(::write(STDERR_FILENO, text.data(), text.size()));
 #else
     std::fwrite(text.data(), 1, text.size(), stderr);
@@ -99,7 +102,7 @@ void closeReport() {
 }
 
 void sayBacktrace(int skip) {
-#if defined(__APPLE__) || defined(__linux__)
+#if defined(BASALT_HAS_EXECINFO)
     std::array<void*, 64> frames{};
     const int taken = ::backtrace(frames.data(), static_cast<int>(frames.size()));
     const int from = taken > skip ? skip : 0;
@@ -114,10 +117,14 @@ void sayBacktrace(int skip) {
 
 /// Which thread died, so a crash in a connection is not read as a crash in the tick.
 void sayThread() {
-#if defined(__APPLE__) || defined(__linux__)
+#if defined(__APPLE__) || defined(__linux__) || defined(__FreeBSD__)
     std::array<char, 64> name{};
     say("  Thread: ");
+#if defined(__ANDROID__)
+    sayHex(static_cast<std::uintptr_t>(::pthread_self()));
+#else
     sayHex(reinterpret_cast<std::uintptr_t>(::pthread_self()));
+#endif
     if (::pthread_getname_np(::pthread_self(), name.data(), name.size()) == 0 && name[0] != '\0') {
         say(" (");
         say(std::string_view{name.data()});
@@ -165,7 +172,7 @@ void describe(int number, const void* address, bool addressKnown) {
     closeReport();
 }
 
-#if defined(__APPLE__) || defined(__linux__)
+#if defined(__APPLE__) || defined(__linux__) || defined(__FreeBSD__)
 void onSignal(int number, siginfo_t* info, void*) {
     bool expected = false;
     if (!reporting.compare_exchange_strong(expected, true)) {
@@ -221,7 +228,7 @@ void install(std::string name, std::string version, std::string reportUrl) {
 #endif
                                      SIGILL, SIGFPE, SIGABRT};
     for (const int number : kFatalSignals) {
-#if defined(__APPLE__) || defined(__linux__)
+#if defined(__APPLE__) || defined(__linux__) || defined(__FreeBSD__)
         struct sigaction action{};
         action.sa_sigaction = onSignal;
         action.sa_flags = SA_SIGINFO;

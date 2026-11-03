@@ -7,6 +7,7 @@
 
 #include <array>
 #include <chrono>
+#include <cstdlib>
 #include <future>
 #include <stdexcept>
 #include <string>
@@ -15,6 +16,20 @@
 
 using namespace basalt::wire::io;
 using namespace std::chrono_literals;
+
+#if defined(__ANDROID__)
+TEST_CASE("Android native DNS uses the device network without JNI or a custom server" *
+          doctest::skip(std::getenv("BASALT_TEST_ANDROID_DNS_HOST") == nullptr)) {
+    const char* host = std::getenv("BASALT_TEST_ANDROID_DNS_HOST");
+    REQUIRE(host != nullptr);
+    auto endpoints = resolveDns(host, 443, {std::chrono::steady_clock::now() + 15s, {}, {}});
+    REQUIRE(endpoints);
+    REQUIRE_FALSE(endpoints->empty());
+    for (const auto& endpoint : *endpoints) {
+        CHECK(endpoint.port() == 443);
+    }
+}
+#endif
 
 namespace {
 class DnsFixture {

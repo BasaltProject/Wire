@@ -20,6 +20,21 @@ basalt_module(wire-common
     PRIVATE_DEPENDS basalt::simdjson
 )
 
+# Android before API 33 and musl do not provide the execinfo backtrace API.
+# Probe both declarations and linkage rather than treating every Linux libc as glibc.
+include(CheckCXXSourceCompiles)
+check_cxx_source_compiles("
+#include <execinfo.h>
+int main() {
+    void* frames[1];
+    int count = backtrace(frames, 1);
+    backtrace_symbols_fd(frames, count, 2);
+}
+" BASALT_HAS_EXECINFO)
+if(BASALT_HAS_EXECINFO)
+    target_compile_definitions(wire-common PRIVATE BASALT_HAS_EXECINFO=1)
+endif()
+
 basalt_test(wire-common-placeholder-test
     SOURCES
         test/PlaceholderTest.cpp

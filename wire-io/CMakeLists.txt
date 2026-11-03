@@ -22,6 +22,11 @@ basalt_module(wire-io
     PRIVATE_DEPENDS basalt::zlib basalt::zstd basalt::cares
 )
 
+if(ANDROID)
+    target_sources(wire-io PRIVATE src/AndroidDns.cpp)
+    target_link_libraries(wire-io PRIVATE android)
+endif()
+
 option(BASALT_IO_FORCE_POLL "Use portable poll readiness instead of the native backend" OFF)
 if(BASALT_IO_FORCE_POLL)
     target_compile_definitions(wire-io PRIVATE BASALT_IO_FORCE_POLL=1)

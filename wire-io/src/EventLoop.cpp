@@ -19,7 +19,7 @@ using pollfd_type = WSAPOLLFD;
 using pollfd_type = pollfd;
 #if (defined(__linux__) && !defined(BASALT_IO_FORCE_POLL))
 #include <sys/epoll.h>
-#elif (defined(__APPLE__) && !defined(BASALT_IO_FORCE_POLL))
+#elif ((defined(__APPLE__) || defined(__FreeBSD__)) && !defined(BASALT_IO_FORCE_POLL))
 #include <sys/event.h>
 #endif
 #endif
@@ -88,7 +88,8 @@ struct EventLoop::Impl {
 #if defined(_WIN32)
     TcpConnection reader;
     TcpConnection writer;
-#elif (defined(__linux__) && !defined(BASALT_IO_FORCE_POLL)) || (defined(__APPLE__) && !defined(BASALT_IO_FORCE_POLL))
+#elif (defined(__linux__) && !defined(BASALT_IO_FORCE_POLL)) ||                                                        \
+    ((defined(__APPLE__) || defined(__FreeBSD__)) && !defined(BASALT_IO_FORCE_POLL))
     int queue = -1;
 #endif
 
@@ -149,7 +150,7 @@ struct EventLoop::Impl {
             error = errno;
             return;
         }
-#elif (defined(__APPLE__) && !defined(BASALT_IO_FORCE_POLL))
+#elif ((defined(__APPLE__) || defined(__FreeBSD__)) && !defined(BASALT_IO_FORCE_POLL))
         queue = ::kqueue();
         if (queue < 0) {
             error = errno;
@@ -171,7 +172,8 @@ struct EventLoop::Impl {
         if (wakeWriter >= 0) {
             ::close(static_cast<int>(wakeWriter));
         }
-#if (defined(__linux__) && !defined(BASALT_IO_FORCE_POLL)) || (defined(__APPLE__) && !defined(BASALT_IO_FORCE_POLL))
+#if (defined(__linux__) && !defined(BASALT_IO_FORCE_POLL)) ||                                                          \
+    ((defined(__APPLE__) || defined(__FreeBSD__)) && !defined(BASALT_IO_FORCE_POLL))
         if (queue >= 0) {
             ::close(queue);
         }
@@ -188,7 +190,7 @@ struct EventLoop::Impl {
         if (::epoll_ctl(queue, exists ? EPOLL_CTL_MOD : EPOLL_CTL_ADD, static_cast<int>(item.handle), &event) != 0) {
             return std::unexpected{errno};
         }
-#elif (defined(__APPLE__) && !defined(BASALT_IO_FORCE_POLL))
+#elif ((defined(__APPLE__) || defined(__FreeBSD__)) && !defined(BASALT_IO_FORCE_POLL))
         std::array<struct kevent, 2> changes{};
         const auto data = reinterpret_cast<void*>(static_cast<std::uintptr_t>(item.serial));
         // A disabled read filter hides the peer's EOF, unlike epoll's RDHUP; an unreachable low-water mark keeps only
@@ -302,7 +304,7 @@ void EventLoop::unwatch(std::int64_t handle) {
     }
 #if (defined(__linux__) && !defined(BASALT_IO_FORCE_POLL))
     ::epoll_ctl(impl_->queue, EPOLL_CTL_DEL, static_cast<int>(handle), nullptr);
-#elif (defined(__APPLE__) && !defined(BASALT_IO_FORCE_POLL))
+#elif ((defined(__APPLE__) || defined(__FreeBSD__)) && !defined(BASALT_IO_FORCE_POLL))
     std::array<struct kevent, 2> changes{};
     EV_SET(&changes[0], static_cast<std::uintptr_t>(handle), EVFILT_READ, EV_DELETE, 0, 0, nullptr);
     EV_SET(&changes[1], static_cast<std::uintptr_t>(handle), EVFILT_WRITE, EV_DELETE, 0, 0, nullptr);
@@ -334,7 +336,7 @@ std::expected<std::span<const IoReady>, int> EventLoop::wait(std::optional<int> 
             }
             break;
         }
-#elif (defined(__APPLE__) && !defined(BASALT_IO_FORCE_POLL))
+#elif ((defined(__APPLE__) || defined(__FreeBSD__)) && !defined(BASALT_IO_FORCE_POLL))
         std::array<struct kevent, 128> events{};
         const timespec duration{timeout / 1000, (timeout % 1000) * 1000000L};
         const int count = ::kevent(impl_->queue, nullptr, 0, events.data(), static_cast<int>(events.size()),
