@@ -2,6 +2,10 @@
 #include <basalt/wire/io/EventLoop.hpp>
 #include <basalt/wire/io/TcpSocket.hpp>
 
+#if defined(__ANDROID__)
+#include "AndroidDns.hpp"
+#endif
+
 #ifdef _WIN32
 #include <winsock2.h>
 #include <ws2tcpip.h>
@@ -132,6 +136,11 @@ std::expected<std::vector<TcpAddress>, DnsError> resolveDns(std::string_view hos
     std::call_once(initialized, [] { initializationStatus = ares_library_init(ARES_LIB_INIT_ALL); });
     if (initializationStatus != ARES_SUCCESS)
         return std::unexpected(DnsError{DnsError::Kind::InitializeFailed, initializationStatus});
+
+#if defined(__ANDROID__)
+    if (options.servers.empty())
+        return detail::resolveAndroidDns(host, port, options);
+#endif
 
     Query query{port};
     ares_options setup{};

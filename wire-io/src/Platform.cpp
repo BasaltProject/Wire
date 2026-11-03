@@ -23,6 +23,15 @@
 #include <sys/resource.h>
 #include <termios.h>
 #include <unistd.h>
+#elif defined(__FreeBSD__)
+#include <poll.h>
+#include <sys/param.h>
+#include <sys/resource.h>
+#include <sys/rtprio.h>
+#include <sys/sysctl.h>
+#include <sys/user.h>
+#include <termios.h>
+#include <unistd.h>
 #else
 #include <cstdio>
 #include <poll.h>
@@ -74,6 +83,14 @@ std::uint64_t residentSetBytes() {
         return info.resident_size;
     }
     return 0;
+#elif defined(__FreeBSD__)
+    kinfo_proc info{};
+    std::size_t size = sizeof(info);
+    int mib[] = {CTL_KERN, KERN_PROC, KERN_PROC_PID, static_cast<int>(::getpid())};
+    if (::sysctl(mib, 4, &info, &size, nullptr, 0) != 0 || size != sizeof(info)) {
+        return 0;
+    }
+    return static_cast<std::uint64_t>(info.ki_rssize) * static_cast<std::uint64_t>(::sysconf(_SC_PAGESIZE));
 #else
     std::FILE* statm = std::fopen("/proc/self/statm", "r");
     if (statm == nullptr) {
@@ -129,6 +146,9 @@ void lowerCurrentThreadPriority() {
     SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_BELOW_NORMAL);
 #elif defined(__APPLE__)
     pthread_set_qos_class_self_np(QOS_CLASS_UTILITY, 0);
+#elif defined(__FreeBSD__)
+    struct rtprio priority{RTP_PRIO_IDLE, 0};
+    static_cast<void>(::rtprio_thread(RTP_SET, 0, &priority));
 #else
     // On Linux a nice value set on a thread id only reaches that thread.
     static_cast<void>(setpriority(PRIO_PROCESS, static_cast<id_t>(syscall(SYS_gettid)), 10));
