@@ -173,13 +173,17 @@ public:
             anyTrusted = loadWindowsRoots(trusted_);
         }
 #endif
-#if defined(__ANDROID__)
+#if defined(__ANDROID__) || defined(__FreeBSD__)
         if (options_.trustPem.empty()) {
-            // Android stores individual roots, not a PEM bundle. Android 14+
-            // supplies them through Conscrypt's APEX; older releases use /system.
-            constexpr std::array<const char*, 2> kAndroidTrustStores{"/apex/com.android.conscrypt/cacerts",
-                                                                     "/system/etc/security/cacerts"};
-            for (const char* store : kAndroidTrustStores) {
+            // These systems store individual roots rather than a PEM bundle.
+#if defined(__ANDROID__)
+            // Android 14+ supplies roots through Conscrypt's APEX.
+            constexpr std::array<const char*, 2> kTrustDirectories{"/apex/com.android.conscrypt/cacerts",
+                                                                   "/system/etc/security/cacerts"};
+#else
+            constexpr std::array<const char*, 1> kTrustDirectories{"/etc/ssl/certs"};
+#endif
+            for (const char* store : kTrustDirectories) {
                 if (mbedtls_x509_crt_parse_path(&trusted_, store) >= 0 && trusted_.raw.p != nullptr) {
                     anyTrusted = true;
                     break;
