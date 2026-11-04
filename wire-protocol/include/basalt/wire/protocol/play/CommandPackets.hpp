@@ -129,8 +129,9 @@ public:
         friend bool operator==(const RegistryProperties&, const RegistryProperties&) = default;
     };
 
-    using Properties = std::variant<None, StringProperties, Bounds<std::int32_t>, Bounds<double>, Bounds<float>,
-                                    EntityProperties, ScoreHolderProperties, TimeProperties, RegistryProperties>;
+    using Properties =
+        std::variant<None, StringProperties, Bounds<std::int32_t>, Bounds<std::int64_t>, Bounds<double>, Bounds<float>,
+                     EntityProperties, ScoreHolderProperties, TimeProperties, RegistryProperties>;
 
     explicit ArgumentParser(std::int32_t registryId, Properties properties = None{})
         : registryId_(registryId), properties_(std::move(properties)) {}
