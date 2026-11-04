@@ -1,3 +1,4 @@
+#include <basalt/wire/common/timings/NativeSampler.hpp>
 #include <basalt/wire/common/timings/Timings.hpp>
 
 #include <algorithm>
@@ -136,6 +137,7 @@ void Timings::nameThread(std::string_view name) const {
     ThreadState& state = threadState();
     const std::scoped_lock lock{state.mutex};
     state.name = std::string{name};
+    nameCurrentThread(name);
 }
 
 ProfileScope Timings::enterScope(const Timing& timing) const {

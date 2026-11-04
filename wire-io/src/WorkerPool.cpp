@@ -1,3 +1,4 @@
+#include <basalt/wire/common/timings/NativeSampler.hpp>
 #include <basalt/wire/io/TaskQueue.hpp>
 #include <basalt/wire/io/WorkerPool.hpp>
 
@@ -63,6 +64,7 @@ struct WorkerPool::Impl {
         workers.reserve(count);
         for (std::size_t i = 0; i < count; ++i) {
             workers.emplace_back([this](std::stop_token threadStop) {
+                wire::common::nameCurrentThread("IO worker");
                 std::stop_callback onThreadStop{threadStop, [this] { stop.request_stop(); }};
                 while (true) {
                     std::unique_lock lock{mutex};

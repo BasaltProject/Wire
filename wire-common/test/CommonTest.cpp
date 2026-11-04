@@ -4,13 +4,17 @@
 #include <basalt/wire/common/hash/Md5.hpp>
 #include <basalt/wire/common/hash/Sha256.hpp>
 #include <basalt/wire/common/json/Json.hpp>
+#include <basalt/wire/common/timings/NativeSampler.hpp>
 #include <basalt/wire/common/timings/Timings.hpp>
 #include <basalt/wire/common/toml/Toml.hpp>
 
 #include <doctest.h>
 
+#include <atomic>
+#include <chrono>
 #include <cstdint>
 #include <string>
+#include <thread>
 
 using namespace basalt::wire::common;
 
@@ -197,4 +201,58 @@ TEST_CASE("timings keep a call tree per thread and drop it on reset") {
     CHECK(profiles.size() <= 1);
     timings.reset(0);
     CHECK(timings.profiles().empty());
+}
+
+TEST_CASE("a demangled name loses its arguments, templates and return type") {
+    CHECK(withoutArguments("ns::Class::method(int, char const*) const") == "ns::Class::method");
+    CHECK(withoutArguments("ns::Class::method()") == "ns::Class::method");
+    CHECK(withoutArguments("void ns::run<int, std::vector<long>>(int)") == "ns::run");
+    CHECK(withoutArguments("ns::(anonymous namespace)::helper(int)") == "ns::(anonymous namespace)::helper");
+    CHECK(withoutArguments("ns::Owner::Owner(int)::$_0::operator()(bool) const") ==
+          "ns::Owner::Owner::$_0::operator()");
+    CHECK(withoutArguments("ns::Wrapper::operator bool() const") == "ns::Wrapper::operator bool");
+    CHECK(withoutArguments("plain_c_function") == "plain_c_function");
+}
+
+namespace {
+std::atomic<bool> stopSpinning{false};
+std::atomic<std::uint64_t> spinSink{0};
+
+[[gnu::noinline]] void spinForTheSampler() {
+    std::uint64_t n = 0;
+    while (!stopSpinning.load(std::memory_order_relaxed)) {
+        for (int i = 0; i < 1000; ++i) {
+            n += static_cast<std::uint64_t>(i) * 7;
+        }
+        spinSink.store(n, std::memory_order_relaxed);
+    }
+}
+} // namespace
+
+TEST_CASE("the native sampler names the function a busy thread was in") {
+    if (!NativeSampler::supported()) {
+        return;
+    }
+    Timings timings;
+    timings.setEnabled(true);
+    NativeSampler sampler{timings};
+    sampler.start();
+    stopSpinning.store(false);
+    std::thread spinner{[] {
+        nameCurrentThread("spinner");
+        spinForTheSampler();
+    }};
+    std::this_thread::sleep_for(std::chrono::milliseconds{600});
+    stopSpinning.store(true);
+    spinner.join();
+    sampler.stop();
+
+    bool found = false;
+    for (const std::string& thread : sampler.threadsJson()) {
+        if (thread.find("\"Native spinner\"") != std::string::npos &&
+            thread.find("spinForTheSampler") != std::string::npos) {
+            found = true;
+        }
+    }
+    CHECK(found);
 }

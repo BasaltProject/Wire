@@ -58,6 +58,16 @@ struct SandboxAccess {
             luaL_error(state, "%s", failureMessages::kInterrupted.data());
             return;
         }
+        const bool profiling = sandbox->profiling_ && sandbox->profiling_();
+        if (profiling != sandbox->profilingNow_) {
+            sandbox->profilingNow_ = profiling;
+            if (profiling) {
+                sandbox->profile_.reset();
+            }
+        }
+        if (profiling) {
+            sandbox->profile_.sample(state);
+        }
         const std::int64_t left = sandbox->budget_.fetch_sub(kHookStep, std::memory_order_relaxed) - kHookStep;
         if (left <= 0) {
             luaL_error(state, "%s", failureMessages::kBudget.data());
