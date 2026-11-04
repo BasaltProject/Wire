@@ -5,6 +5,7 @@
 #include <basalt/wire/protocol/ProtocolBuffer.hpp>
 #include <basalt/wire/protocol/VarInt.hpp>
 #include <basalt/wire/protocol/configuration/ConfigurationPackets.hpp>
+#include <basalt/wire/protocol/play/BlockEntityPackets.hpp>
 #include <basalt/wire/protocol/play/CommandPackets.hpp>
 #include <basalt/wire/protocol/play/EntityData.hpp>
 #include <basalt/wire/protocol/play/EntityPackets.hpp>
@@ -148,6 +149,19 @@ bool ContentRewriter::clientbound(ProtocolState state, MutablePacket& packet) {
             change.blockStateId = blockState(change.blockStateId);
         }
         encode(packet, [&](io::ByteBuffer& out) { update->write(out); });
+        break;
+    }
+    case play::BlockEventPacket::kId: {
+        auto event = decode(packet, [](io::ByteBuffer& in) { return play::BlockEventPacket::read(in); });
+        if (!event.has_value()) {
+            return true;
+        }
+        const std::int32_t mapped = tables_->block.map(event->blockId);
+        if (mapped == IdMap::kNone) {
+            return false;
+        }
+        event->blockId = mapped;
+        encode(packet, [&](io::ByteBuffer& out) { event->write(out); });
         break;
     }
     case play::LevelEventPacket::kId: {

@@ -23,7 +23,6 @@ constexpr std::int32_t kAddMob758 = 2;
 constexpr std::int32_t kNamedSound758 = 25;
 constexpr std::int32_t kChat758 = 15;
 
-constexpr std::int32_t kHolderByName = 0;
 constexpr std::int32_t kMaxText = 262144;
 constexpr std::int32_t kGameInfo = 2;
 constexpr std::uint8_t kSystemPosition = 1;
@@ -99,18 +98,16 @@ bool Link758::clientbound(ProtocolState state, MutablePacket& packet) {
         break;
     }
     case play::SoundPacket::kId: {
+        // parity: `ClientboundCustomSoundPacket` before 1.19 carried no seed.
         io::ByteBuffer input = io::ByteBuffer::wrap(packet.body);
-        if (protocol::varInt::read(input) != kHolderByName) {
-            return false;
-        }
         const std::string name = protocol::readString(input);
-        static_cast<void>(input.readByte());
         const std::int32_t source = protocol::varInt::read(input);
         const std::int32_t x = input.readInt();
         const std::int32_t y = input.readInt();
         const std::int32_t z = input.readInt();
         const float volume = input.readFloat();
         const float pitch = input.readFloat();
+        static_cast<void>(input.readLong());
         if (input.failed()) {
             return true;
         }

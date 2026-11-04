@@ -4,18 +4,36 @@
 #include <basalt/wire/protocol/VarInt.hpp>
 #include <basalt/wire/protocol/play/EntityData.hpp>
 #include <basalt/wire/protocol/play/EntityPackets.hpp>
+#include <basalt/wire/protocol/play/HudPackets.hpp>
 #include <basalt/wire/protocol/play/PlayPackets.hpp>
 #include <basalt/wire/protocol/play/SimplePackets.hpp>
 
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <string_view>
 
 namespace basalt::wire::multiversion::java {
 namespace {
 
 namespace play = protocol::play;
 using protocol::ProtocolState;
+
+/// Copper chests are substituted with regular chests below 1.21.9, so their lid sounds follow suit.
+[[nodiscard]] std::string_view olderSoundName(std::string_view sound) {
+    if (sound.starts_with("minecraft:")) {
+        sound.remove_prefix(std::string_view{"minecraft:"}.size());
+    }
+    if (sound == "block.copper_chest.open" || sound == "block.copper_chest_weathered.open" ||
+        sound == "block.copper_chest_oxidized.open") {
+        return "minecraft:block.chest.open";
+    }
+    if (sound == "block.copper_chest.close" || sound == "block.copper_chest_weathered.close" ||
+        sound == "block.copper_chest_oxidized.close") {
+        return "minecraft:block.chest.close";
+    }
+    return {};
+}
 
 /// parity: `ClientboundSetEntityMotionPacket` before 1.21.9, which stored blocks per tick times.
 constexpr double kVelocityScale = 8000.0;
@@ -105,6 +123,18 @@ bool Link772::clientbound(ProtocolState state, MutablePacket& packet) {
             }
             output.writeLong(spawn->globalPos.location.pack());
             output.writeFloat(spawn->yaw);
+        });
+        break;
+    case play::SoundPacket::kId:
+        rewrite(packet, [](io::ByteBuffer& input, io::ByteBuffer& output) {
+            auto sound = play::SoundPacket::read(input);
+            if (!sound.has_value()) {
+                return;
+            }
+            if (const std::string_view mapped = olderSoundName(sound->sound); !mapped.empty()) {
+                sound->sound = std::string{mapped};
+            }
+            sound->write(output);
         });
         break;
     default:
