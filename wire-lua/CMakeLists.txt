@@ -4,6 +4,7 @@ basalt_module(wire-lua
         src/LuaCall.cpp
         src/LuaRef.cpp
         src/LuaFailure.cpp
+        src/LuaProfile.cpp
         src/LuaSandbox.cpp
     DEPENDS basalt::wire-common
     PRIVATE_DEPENDS basalt::lua

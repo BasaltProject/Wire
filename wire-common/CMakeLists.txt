@@ -9,6 +9,7 @@ basalt_module(wire-common
         src/Md5.cpp
         src/Sha256.cpp
         src/Mth.cpp
+        src/NativeSampler.cpp
         src/Panic.cpp
         src/PlaceholderCondition.cpp
         src/Placeholders.cpp

@@ -93,3 +93,20 @@ TEST_CASE("a plugin cannot take more memory than it is allowed") {
     CHECK(failure->outOfMemory());
     CHECK(sandbox->memoryUsed() <= 512 * 1024);
 }
+
+TEST_CASE("the sampler names the Lua functions that were running") {
+    auto sandbox = LuaSandbox::create("profiled", LuaLimits{.instructionsPerTurn = 100'000'000});
+    REQUIRE(sandbox != nullptr);
+    sandbox->setProfiling([] { return true; });
+    const std::optional<LuaFailure> failure = run(*sandbox, R"(
+        local n = 0
+        local function hot() for i = 1, 200000 do n = n + i % 7 end end
+        local function outer() hot() end
+        outer()
+    )");
+    CHECK_FALSE(failure.has_value());
+    CHECK(sandbox->profile().samples() > 0);
+    const std::string tree = sandbox->profile().childrenJson(10.0);
+    CHECK(tree.find("hot (test.lua:3)") != std::string::npos);
+    CHECK(tree.find("outer (test.lua:4)") != std::string::npos);
+}

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <basalt/wire/lua/LuaFailure.hpp>
+#include <basalt/wire/lua/LuaProfile.hpp>
 
 #include <atomic>
 #include <cstddef>
@@ -66,6 +67,11 @@ public:
 
     [[nodiscard]] LuaFailure failureFromStack();
 
+    /// Asked every time the interpreter pauses; while it says yes, the stack at that moment is sampled.
+    void setProfiling(std::function<bool()> active) { profiling_ = std::move(active); }
+
+    [[nodiscard]] LuaProfile& profile() noexcept { return profile_; }
+
     /// Lets `require` load precompiled chunks; only for code the host has already verified.
     void allowBytecode(bool allowed) noexcept { bytecodeAllowed_ = allowed; }
 
@@ -88,5 +94,8 @@ private:
     std::atomic<bool> interrupted_{false};
     std::atomic<std::size_t> memoryUsed_{0};
     std::size_t memoryCeiling_ = 0;
+    std::function<bool()> profiling_;
+    LuaProfile profile_;
+    bool profilingNow_ = false;
 };
 } // namespace basalt::wire::lua
