@@ -492,6 +492,19 @@ TEST_CASE("the command tree round trips with its argument parsers") {
     CHECK(buffer.readableBytes() == 0);
 }
 
+TEST_CASE("a long argument parser keeps its bounds") {
+    using namespace basalt::wire::protocol::play;
+    using Parser = ArgumentParser;
+
+    const Parser parser{argumentType::kBrigadierLong, Parser::Bounds<std::int64_t>{-5'000'000'000LL, std::nullopt}};
+    io::ByteBuffer buffer;
+    parser.write(buffer);
+    const auto read = Parser::read(buffer);
+    REQUIRE(read.has_value());
+    CHECK(*read == parser);
+    CHECK(buffer.readableBytes() == 0);
+}
+
 TEST_CASE("item stacks round trip in both of their wire forms") {
     using namespace basalt::wire::protocol::play;
 

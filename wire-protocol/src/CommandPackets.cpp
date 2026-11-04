@@ -55,6 +55,8 @@ void ArgumentParser::write(io::ByteBuffer& buffer) const {
         varInt::write(buffer, static_cast<std::int32_t>(string->kind));
     } else if (const auto* integer = as<Bounds<std::int32_t>>()) {
         writeBounds(buffer, *integer, [](io::ByteBuffer& out, std::int32_t value) { out.writeInt(value); });
+    } else if (const auto* wide = as<Bounds<std::int64_t>>()) {
+        writeBounds(buffer, *wide, [](io::ByteBuffer& out, std::int64_t value) { out.writeLong(value); });
     } else if (const auto* real = as<Bounds<double>>()) {
         writeBounds(buffer, *real, [](io::ByteBuffer& out, double value) { out.writeDouble(value); });
     } else if (const auto* single = as<Bounds<float>>()) {
@@ -98,6 +100,8 @@ std::optional<ArgumentParser> ArgumentParser::read(io::ByteBuffer& buffer) {
     }
     case kBrigadierInteger:
         return ArgumentParser{id, readBounds<std::int32_t>(buffer, [](io::ByteBuffer& in) { return in.readInt(); })};
+    case kBrigadierLong:
+        return ArgumentParser{id, readBounds<std::int64_t>(buffer, [](io::ByteBuffer& in) { return in.readLong(); })};
     case kBrigadierDouble:
         return ArgumentParser{id, readBounds<double>(buffer, [](io::ByteBuffer& in) { return in.readDouble(); })};
     case kBrigadierFloat:
