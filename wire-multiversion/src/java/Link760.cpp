@@ -1,6 +1,7 @@
 #include <basalt/wire/multiversion/java/Link760.hpp>
 #include <basalt/wire/protocol/ProtocolBuffer.hpp>
 #include <basalt/wire/protocol/VarInt.hpp>
+#include <basalt/wire/protocol/play/HudPackets.hpp>
 
 #include <cstdint>
 
@@ -9,6 +10,7 @@ namespace {
 
 namespace play = protocol::play;
 
+constexpr std::int32_t kCustomSound760 = 23;
 constexpr std::int32_t kPlayerInfo760 = 55;
 
 /// parity: `ClientboundPlayerInfoPacket.Action`.
@@ -49,6 +51,39 @@ bool Link760::clientbound(protocol::ProtocolState state, MutablePacket& packet) 
             for (const common::Uuid& uuid : remove->players) {
                 writeUuid(output, uuid);
             }
+        });
+        break;
+    }
+    case play::SoundPacket::kId: {
+        // parity: `ClientboundCustomSoundPacket` before 1.19.3 merged it into `ClientboundSoundPacket`.
+        io::ByteBuffer input = io::ByteBuffer::wrap(packet.body);
+        if (protocol::varInt::read(input) != 0) {
+            return false;
+        }
+        const std::string name = protocol::readString(input);
+        if (protocol::readBoolean(input)) {
+            static_cast<void>(input.readFloat());
+        }
+        const std::int32_t source = protocol::varInt::read(input);
+        const std::int32_t x = input.readInt();
+        const std::int32_t y = input.readInt();
+        const std::int32_t z = input.readInt();
+        const float volume = input.readFloat();
+        const float pitch = input.readFloat();
+        const std::int64_t seed = input.readLong();
+        if (input.failed()) {
+            return true;
+        }
+        packet.overrideId(kCustomSound760);
+        encode(packet, [&](io::ByteBuffer& output) {
+            protocol::writeString(output, name);
+            protocol::varInt::write(output, source);
+            output.writeInt(x);
+            output.writeInt(y);
+            output.writeInt(z);
+            output.writeFloat(volume);
+            output.writeFloat(pitch);
+            output.writeLong(seed);
         });
         break;
     }

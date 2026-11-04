@@ -15,7 +15,9 @@
 #include <basalt/wire/protocol/ProtocolBuffer.hpp>
 #include <basalt/wire/protocol/configuration/ConfigurationPackets.hpp>
 #include <basalt/wire/protocol/play/AdvancementPackets.hpp>
+#include <basalt/wire/protocol/play/BlockEntityPackets.hpp>
 #include <basalt/wire/protocol/play/EntityPackets.hpp>
+#include <basalt/wire/protocol/play/HudPackets.hpp>
 #include <basalt/wire/protocol/play/InventoryPackets.hpp>
 #include <basalt/wire/protocol/play/MapPackets.hpp>
 #include <basalt/wire/protocol/play/PalettedContainer.hpp>
@@ -510,6 +512,107 @@ TEST_CASE("a map reaches an older client in the layout and palette that client h
         CHECK(in.readByte() == 4);
         CHECK(in.readByte() == 5);
         CHECK(in.readByte() == 1);
+    }
+}
+
+TEST_CASE("sound and block event packets translate across older versions") {
+    namespace play = basalt::wire::protocol::play;
+    namespace buffer = basalt::wire::protocol;
+    using basalt::wire::io::ByteBuffer;
+
+    SUBCASE("copper chest sounds fall back to regular chest sounds on 1.21.8") {
+        const std::unique_ptr<java::JavaChain> built = java::javaTranslators::chainFor(protocolVersions::kV1_21_7);
+        REQUIRE(built != nullptr);
+
+        play::SoundPacket openSound;
+        openSound.sound = "minecraft:block.copper_chest_weathered.open";
+        openSound.source = play::SoundSource::Blocks;
+        openSound.x = 80;
+        openSound.y = 512;
+        openSound.z = 80;
+        openSound.volume = 0.5F;
+        openSound.pitch = 0.95F;
+        openSound.seed = 42;
+        ByteBuffer body;
+        openSound.write(body);
+
+        ByteBuffer out = ByteBuffer::wrap(clientbound(built->chain(), play::SoundPacket::kId, body.toVector()));
+        const auto read = play::SoundPacket::read(out);
+        REQUIRE(read.has_value());
+        CHECK(read->sound == "minecraft:block.chest.open");
+    }
+
+    SUBCASE("named sounds use custom sound packet on 1.19.2 and 1.19 and drop seed on 1.18.2") {
+        play::SoundPacket sound;
+        sound.sound = "minecraft:entity.experience_orb.pickup";
+        sound.source = play::SoundSource::Players;
+        sound.x = 16;
+        sound.y = 64 * 8;
+        sound.z = 16;
+        sound.volume = 0.1F;
+        sound.pitch = 1.0F;
+        sound.seed = 99;
+        ByteBuffer body;
+        sound.write(body);
+
+        const auto sendTo = [&body](std::int32_t version, std::int32_t& sentId) {
+            const std::unique_ptr<java::JavaChain> built = java::javaTranslators::chainFor(version);
+            REQUIRE(built != nullptr);
+            std::vector<std::uint8_t> out;
+            sentId = -1;
+            built->chain().clientbound(basalt::wire::protocol::ProtocolState::Play, play::SoundPacket::kId,
+                                       body.toVector(), [&](std::int32_t id, std::span<const std::uint8_t> bytes) {
+                                           sentId = id;
+                                           out.assign(bytes.begin(), bytes.end());
+                                       });
+            return out;
+        };
+
+        std::int32_t id760 = -1;
+        ByteBuffer in760 = ByteBuffer::wrap(sendTo(protocolVersions::kV1_19_1, id760));
+        CHECK(id760 == 0x17);
+        CHECK(buffer::readString(in760) == "minecraft:entity.experience_orb.pickup");
+        CHECK(buffer::varInt::read(in760) == static_cast<std::int32_t>(play::SoundSource::Players));
+        CHECK(in760.readInt() == 16 * 8);
+        CHECK(in760.readInt() == 64 * 8 * 8);
+        CHECK(in760.readInt() == 16 * 8);
+        CHECK(in760.readFloat() == doctest::Approx(0.1F));
+        CHECK(in760.readFloat() == doctest::Approx(1.0F));
+        CHECK(in760.readLong() == 99);
+        CHECK(in760.readableBytes() == 0);
+
+        std::int32_t id759 = -1;
+        ByteBuffer in759 = ByteBuffer::wrap(sendTo(protocolVersions::kV1_19, id759));
+        CHECK(id759 == 0x16);
+        CHECK(buffer::readString(in759) == "minecraft:entity.experience_orb.pickup");
+
+        std::int32_t id758 = -1;
+        ByteBuffer in758 = ByteBuffer::wrap(sendTo(protocolVersions::kV1_18_2, id758));
+        CHECK(id758 == 0x19);
+        CHECK(buffer::readString(in758) == "minecraft:entity.experience_orb.pickup");
+        CHECK(buffer::varInt::read(in758) == static_cast<std::int32_t>(play::SoundSource::Players));
+        CHECK(in758.readInt() == 16 * 8);
+        CHECK(in758.readInt() == 64 * 8 * 8);
+        CHECK(in758.readInt() == 16 * 8);
+        CHECK(in758.readFloat() == doctest::Approx(0.1F));
+        CHECK(in758.readFloat() == doctest::Approx(1.0F));
+        CHECK(in758.readableBytes() == 0);
+    }
+
+    SUBCASE("block events remap their block id for older clients") {
+        const std::unique_ptr<java::JavaChain> built = java::javaTranslators::chainFor(protocolVersions::kV26_1);
+        REQUIRE(built != nullptr);
+
+        play::BlockEventPacket event{.pos = {1, 64, 2}, .b0 = 1, .b1 = 1, .blockId = 1000};
+        ByteBuffer body;
+        event.write(body);
+
+        ByteBuffer out = ByteBuffer::wrap(clientbound(built->chain(), play::BlockEventPacket::kId, body.toVector()));
+        const auto read = play::BlockEventPacket::read(out);
+        REQUIRE(read.has_value());
+        CHECK(read->blockId == 910);
+        CHECK(read->b0 == 1);
+        CHECK(read->b1 == 1);
     }
 }
 
