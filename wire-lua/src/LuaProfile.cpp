@@ -120,8 +120,9 @@ void LuaProfile::write(std::string& out, const Node& node, double perSample) {
         }
         out += "{\"name\":";
         quote(out, name);
-        out += ",\"calls\":" + std::to_string(child->hits) + ",\"total_millis\":" + millis(static_cast<double>(child->hits) * perSample) +
-               ",\"self_millis\":" + millis(static_cast<double>(std::max<std::int64_t>(child->hits - below, 0)) * perSample) +
+        out += ",\"calls\":" + std::to_string(child->hits) +
+               ",\"total_millis\":" + millis(static_cast<double>(child->hits) * perSample) + ",\"self_millis\":" +
+               millis(static_cast<double>(std::max<std::int64_t>(child->hits - below, 0)) * perSample) +
                ",\"max_millis\":0,\"window_calls\":[";
         for (std::size_t i = 0; i < child->windows.size(); ++i) {
             out += (i > 0 ? "," : "") + std::to_string(child->windows[i]);

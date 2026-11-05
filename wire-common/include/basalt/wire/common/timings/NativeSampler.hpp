@@ -39,7 +39,7 @@ public:
 
 private:
     struct State;
-    const Timings* timings_;
+    [[maybe_unused]] const Timings* timings_;
     std::unique_ptr<State> state_;
 };
 
