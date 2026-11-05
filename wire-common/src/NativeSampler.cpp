@@ -223,7 +223,7 @@ struct StackSymbols::Impl {
                 module.bias = info->dlpi_addr;
                 module.low = ~static_cast<std::uintptr_t>(0);
                 for (int i = 0; i < info->dlpi_phnum; ++i) {
-                    const ElfW(Phdr) & header = info->dlpi_phdr[i];
+                    const ElfW(Phdr)& header = info->dlpi_phdr[i];
                     if (header.p_type == PT_LOAD) {
                         module.low = std::min<std::uintptr_t>(module.low, info->dlpi_addr + header.p_vaddr);
                         module.high =
@@ -290,7 +290,7 @@ struct StackSymbols::Impl {
         if (table == nullptr || table->sh_link >= header->e_shnum) {
             return;
         }
-        const ElfW(Shdr) & strings = sections[table->sh_link];
+        const ElfW(Shdr)& strings = sections[table->sh_link];
         if (table->sh_offset + table->sh_size > module.mapSize ||
             strings.sh_offset + strings.sh_size > module.mapSize) {
             return;
@@ -299,7 +299,7 @@ struct StackSymbols::Impl {
         const char* names = reinterpret_cast<const char*>(base + strings.sh_offset);
         const std::size_t count = table->sh_size / sizeof(ElfW(Sym));
         for (std::size_t i = 0; i < count; ++i) {
-            const ElfW(Sym) & symbol = symbols[i];
+            const ElfW(Sym)& symbol = symbols[i];
             if (ELF64_ST_TYPE(symbol.st_info) != STT_FUNC || symbol.st_value == 0 ||
                 symbol.st_name >= strings.sh_size) {
                 continue;
