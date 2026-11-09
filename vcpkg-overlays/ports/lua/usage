@@ -1,0 +1,4 @@
+lua provides CMake integration for the C library:
+
+  find_package(unofficial-lua CONFIG REQUIRED)
+  target_link_libraries(main PRIVATE unofficial::lua::lua)

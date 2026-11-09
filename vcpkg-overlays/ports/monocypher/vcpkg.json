@@ -1,0 +1,17 @@
+{
+  "name": "monocypher",
+  "version": "4.0.2",
+  "description": "An easy to use, easy to deploy, auditable crypto library",
+  "homepage": "https://monocypher.org",
+  "license": "BSD-2-Clause OR CC0-1.0",
+  "dependencies": [
+    {
+      "name": "vcpkg-cmake",
+      "host": true
+    },
+    {
+      "name": "vcpkg-cmake-config",
+      "host": true
+    }
+  ]
+}
