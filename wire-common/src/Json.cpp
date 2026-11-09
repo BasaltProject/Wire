@@ -22,6 +22,20 @@ std::expected<JsonValue, JsonError> convert(simdjson::dom::element element, int 
         return JsonValue::of(std::int64_t{element});
     case simdjson::dom::element_type::UINT64:
         return JsonValue::of(static_cast<double>(std::uint64_t{element}));
+    case simdjson::dom::element_type::BIGINT: {
+        // Only reachable when the parser is configured with number_as_string(true);
+        // the value is the raw digit string of an integer that exceeds 64 bits.
+        std::string_view digits;
+        if (element.get_bigint().get(digits) != simdjson::SUCCESS) {
+            return std::unexpected{JsonError::SyntaxError};
+        }
+        double value{};
+        const auto parsed = std::from_chars(digits.data(), digits.data() + digits.size(), value);
+        if (parsed.ec != std::errc{}) {
+            return std::unexpected{JsonError::SyntaxError};
+        }
+        return JsonValue::of(value);
+    }
     case simdjson::dom::element_type::DOUBLE:
         return JsonValue::of(double{element});
     case simdjson::dom::element_type::STRING:

@@ -94,9 +94,11 @@ target_link_libraries(your-module PUBLIC basalt::wire-protocol)
 
 Wire owns the shared build functions (`basalt_module`, `basalt_test`,
 `basalt_bench`, the warnings, the sanitizers and `basalt::parity`) and the
-vendored dependencies in `third_party/`, so consumers inherit one set of
-compiler flags and one copy of every dependency rather than keeping their own in
-sync.
+third-party dependencies, which are managed with [vcpkg](https://vcpkg.io)
+(`vcpkg.json`, with overlay ports and triplets in `vcpkg-overlays/`), so consumers
+inherit one set of compiler flags and one copy of every dependency rather than
+keeping their own in sync. `cmake/BasaltVcpkg.cmake` finds `VCPKG_ROOT` (or clones
+and bootstraps vcpkg) automatically, and Dependabot keeps the baseline current.
 
 Clone a consumer with `--recurse-submodules`, or run
 `git submodule update --init` in an existing clone.

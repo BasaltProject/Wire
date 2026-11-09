@@ -1,16 +1,17 @@
 # Wire: the network layer shared by Basalt Server and Basalt Proxy.
 #
 # Builds standalone, and is also pulled in with add_subdirectory() by both consumers. Wire owns
-# the shared cmake modules and third_party/, so whichever side is on top, these come from here.
+# the shared cmake modules and vcpkg overlays, so whichever side is on top, these come from here.
 
 cmake_minimum_required(VERSION 3.28)
 
+list(APPEND CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/cmake)
+
 if(NOT DEFINED PROJECT_NAME)
+    include(BasaltVcpkg)
     project(basalt-wire LANGUAGES C CXX)
     set(BASALT_WIRE_STANDALONE ON)
 endif()
-
-list(APPEND CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/cmake)
 
 include(BasaltCcache)
 
@@ -29,7 +30,7 @@ if(NOT TARGET basalt_warnings)
     # The script half of basalt_embed_text(), named here so a consumer that pulled Wire in with
     # add_subdirectory() still finds it.
     set(BASALT_EMBED_SCRIPT ${CMAKE_CURRENT_SOURCE_DIR}/cmake/BasaltEmbedText.cmake CACHE INTERNAL "")
-    add_subdirectory(third_party)
+    include(BasaltDependencies)
 
     if(BASALT_BUILD_TESTS)
         enable_testing()
