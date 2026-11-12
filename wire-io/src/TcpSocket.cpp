@@ -271,6 +271,23 @@ TcpConnection& TcpConnection::operator=(TcpConnection&& other) noexcept {
 
 TcpConnection::~TcpConnection() { close(); }
 
+std::string TcpConnection::localAddress() const {
+    if (handle_ < 0) {
+        return {};
+    }
+    sockaddr_storage local{};
+    auto length = static_cast<socklen_type>(sizeof(local));
+    if (::getsockname(asSocket(handle_), reinterpret_cast<sockaddr*>(&local), &length) != 0) {
+        return {};
+    }
+    std::array<char, NI_MAXHOST> host{};
+    if (::getnameinfo(reinterpret_cast<const sockaddr*>(&local), length, host.data(),
+                      static_cast<namelen_type>(host.size()), nullptr, 0, NI_NUMERICHOST) != 0) {
+        return {};
+    }
+    return std::string{host.data()};
+}
+
 void TcpConnection::shutdownRead() noexcept {
     const std::int64_t handle = handle_;
     if (handle < 0) {

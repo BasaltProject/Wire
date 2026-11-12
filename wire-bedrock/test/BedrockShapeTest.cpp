@@ -77,7 +77,7 @@ std::vector<std::uint8_t> input(const int protocol) {
     writeVarInt(body, 0);
     body.writeByte(0);
     writeVarInt(body, 4);
-    writeVarUInt(body, 5);
+    writeVarInt(body, 5);
     writeVarInt(body, 6);
     body.writeByte(1);
     writeVarInt(body, 2);
@@ -209,5 +209,32 @@ TEST_CASE("a score line names its kind itself from 26.40 on") {
         }
         CHECK(removed.readableBytes() == 0);
         CHECK_FALSE(removed.failed());
+    }
+}
+
+TEST_CASE("hitting an entity names the hand from 26.60 on") {
+    for (const int protocol : {kNativeBedrockProtocol - 1, kNativeBedrockProtocol}) {
+        CAPTURE(protocol);
+        io::ByteBuffer body;
+        writeVarInt(body, 0);
+        body.writeByte(0);
+        writeVarUInt(body, 3);
+        writeVarUInt(body, 0);
+        writeVarULong(body, 42);
+        writeVarInt(body, 1);
+        writeVarInt(body, 4);
+        if (protocol >= kEntityUseHandProtocol) {
+            body.writeByte(1);
+        }
+        air(body);
+        for (int at = 0; at < 6; ++at) {
+            writeFloatLE(body, 0.0F);
+        }
+        io::ByteBuffer wire = io::ByteBuffer::wrap(body.toVector());
+        const BedrockTransaction read = readTransaction(wire, protocol);
+        REQUIRE(read.entityUse.has_value());
+        CHECK(read.entityUse->runtimeEntityId == 42);
+        CHECK(read.entityUse->hotbarSlot == 4);
+        CHECK(wire.readableBytes() == 0);
     }
 }

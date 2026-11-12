@@ -4,6 +4,9 @@ namespace basalt::wire::bedrock {
 
 const std::array<std::uint16_t, kJavaBlockStates>& bedrockBlockIdsFor(const int protocol) {
     // Each of these is the first protocol that reads that palette, in the order the window runs.
+    if (protocol >= 2225) {
+        return bedrockBlockIds2660();
+    }
     if (protocol >= 2193) {
         return bedrockBlockIds2650();
     }

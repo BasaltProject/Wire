@@ -18,4 +18,7 @@ struct SoundName {
 
 [[nodiscard]] std::int32_t bedrockSoundEvent(std::string_view javaSound, int protocol);
 
+/// The name a 1001 and newer client reads a numbered sound event by; empty when there is none.
+[[nodiscard]] std::string_view bedrockSoundEventName(std::string_view javaSound);
+
 } // namespace basalt::wire::bedrock

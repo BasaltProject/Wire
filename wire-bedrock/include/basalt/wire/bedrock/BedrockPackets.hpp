@@ -58,6 +58,21 @@ inline constexpr int kScoreKindProtocol = 2168;
 /// Where a jukebox plays its record under a server sound handle and says so with `RecordStarted`.
 inline constexpr int kRecordStartedProtocol = 2193;
 
+inline constexpr int kPlayFabInListProtocol = 2225;
+
+inline constexpr int kBlockPassengerProtocol = 2225;
+
+inline constexpr int kAnimateHandProtocol = 2225;
+
+inline constexpr int kEntityUseHandProtocol = 2225;
+
+inline constexpr int kClientBiomeUpdateProtocol = 2225;
+
+inline constexpr int kEditorMigrationProtocol = 2225;
+inline constexpr int kDataDrivenBlocksProtocol = 2193;
+
+inline constexpr int kSoundEventTypeProtocol = 2225;
+
 /// What a client asks for before anything else, and the only packet either side sends in the clear and uncompressed.
 struct RequestNetworkSettings {
     int protocolVersion = 0;
@@ -142,6 +157,10 @@ struct StartGameInfo {
 };
 
 void writeStartGame(io::ByteBuffer& buffer, const StartGameInfo& info, int protocol);
+
+void writeJigsawStructureData(io::ByteBuffer& buffer);
+
+void writeVoxelShapes(io::ByteBuffer& buffer);
 
 enum class TextType : std::uint8_t {
     Raw = 0,
@@ -464,7 +483,7 @@ void writePlaySound(io::ByteBuffer& buffer, std::string_view sound, double x, do
 void writeRecordStarted(io::ByteBuffer& buffer, std::int32_t x, std::int32_t y, std::int32_t z,
                         std::int64_t soundHandle);
 
-void writeStopSoundHandle(io::ByteBuffer& buffer, std::int64_t soundHandle);
+void writeStopSoundHandle(io::ByteBuffer& buffer, std::int64_t soundHandle, int protocol);
 
 void writeUpdateBlock(io::ByteBuffer& buffer, std::int32_t x, std::int32_t y, std::int32_t z, std::int32_t javaState,
                       int protocol);
@@ -487,7 +506,8 @@ enum class BedrockAnimation : std::int32_t {
     MagicCriticalHit = 5,
 };
 
-void writeAnimate(io::ByteBuffer& buffer, std::uint64_t runtimeEntityId, BedrockAnimation action);
+void writeAnimate(io::ByteBuffer& buffer, std::uint64_t runtimeEntityId, BedrockAnimation action, int protocol,
+                  bool offhand = false);
 
 struct BedrockScoreLine {
     std::int64_t lineId = 0;
@@ -691,6 +711,8 @@ struct BedrockItemRelease {
 };
 
 struct BedrockTransaction {
+    std::uint32_t kind = 0;
+    std::optional<BedrockItemUse> itemUse;
     std::optional<BedrockEntityUse> entityUse;
     std::optional<BedrockItemRelease> itemRelease;
 };
@@ -734,6 +756,9 @@ struct SkinInfo {
     std::uint32_t width = 64;
     std::uint32_t height = 64;
     std::vector<std::uint8_t> image;
+    /// True for a skin the server picked, which a client otherwise replaces with a default.
+    bool overridesAppearance = false;
+    std::string geometry;
 };
 
 /// One colour over the whole skin, picked from the name so two players are not the same colour.
@@ -965,7 +990,9 @@ struct BedrockLook {
 
 void writePlayerHotbar(io::ByteBuffer& buffer, std::int32_t slot);
 
-void writeLevelSoundEvent(io::ByteBuffer& buffer, std::int32_t event, float x, float y, float z, int protocol);
+/// `extraData` is a block runtime id for the sounds that depend on one, and -1 for the rest.
+void writeLevelSoundEvent(io::ByteBuffer& buffer, std::string_view name, float x, float y, float z, int protocol,
+                          std::int32_t extraData = -1);
 
 void writeItemFrameBlock(io::ByteBuffer& buffer, std::int32_t x, std::int32_t y, std::int32_t z, bool glowing, int face,
                          int protocol);
@@ -977,8 +1004,13 @@ void writeAddPainting(io::ByteBuffer& buffer, std::int64_t entityId, std::uint64
                       float z, std::int32_t direction, std::string_view motive);
 
 /// One kind per call, with its choices in the order their numbers run.
-void writeSyncEntityProperty(io::ByteBuffer& buffer, std::string_view entityType, std::string_view property,
-                             std::span<const std::string_view> choices);
+struct EntityEnumProperty {
+    std::string_view name;
+    std::span<const std::string_view> choices;
+};
+
+void writeSyncEntityProperties(io::ByteBuffer& buffer, std::string_view entityType,
+                               std::span<const EntityEnumProperty> properties);
 
 void writeEntityIntProperty(io::ByteBuffer& buffer, std::uint64_t runtimeEntityId, std::uint32_t index,
                             std::int32_t value);

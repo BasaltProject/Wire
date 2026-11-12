@@ -2,6 +2,7 @@
 #include <basalt/wire/bedrock/BedrockTypes.hpp>
 #include <basalt/wire/common/Base64.hpp>
 
+#include <algorithm>
 #include <random>
 #include <utility>
 
@@ -23,7 +24,7 @@ std::vector<std::uint8_t> randomSalt() {
 
 } // namespace
 
-BedrockConnection::BedrockConnection(RakSession& transport, std::shared_ptr<const EcKeyPair> keys,
+BedrockConnection::BedrockConnection(BedrockTransport& transport, std::shared_ptr<const EcKeyPair> keys,
                                      std::string gameVersion, BedrockGate gate)
     : transport_(transport), keys_(std::move(keys)), gameVersion_(std::move(gameVersion)), gate_(std::move(gate)) {}
 
@@ -72,14 +73,7 @@ void BedrockConnection::handlePacket(BedrockPacket packet, io::ByteBuffer& body)
         if (state_ != BedrockState::AwaitingEncryption) {
             return;
         }
-        state_ = BedrockState::ResourcePacks;
-        scratch_.clear();
-        writePlayStatus(scratch_, PlayStatus::LoginSuccess);
-        sendPacket(BedrockPacket::PlayStatus, scratch_.readable());
-        scratch_.clear();
-        writeResourcePacksInfo(scratch_, protocolVersion_);
-        sendPacket(BedrockPacket::ResourcePacksInfo, scratch_.readable());
-        flush();
+        beginResourcePacks();
         return;
     case BedrockPacket::ResourcePackClientResponse:
         onResourcePackResponse(body);
@@ -145,6 +139,22 @@ void BedrockConnection::onLoginPacket(io::ByteBuffer& body) {
     }
     login_ = *request;
 
+    if (!expectedIdentity_.empty() && !std::ranges::equal(expectedIdentity_, login_.identityPublicKey)) {
+        disconnect("the login does not match the connection identity");
+        return;
+    }
+
+    if (transport_.protectsBytes()) {
+        if (onLogin_) {
+            onLogin_(login_);
+            if (state_ == BedrockState::Closed) {
+                return;
+            }
+        }
+        beginResourcePacks();
+        return;
+    }
+
     const auto salt = randomSalt();
     const auto secret = keys_->sharedSecret(login_.identityPublicKey);
     if (!secret) {
@@ -173,6 +183,17 @@ void BedrockConnection::onLoginPacket(io::ByteBuffer& body) {
 
     cipher_ = std::make_unique<BedrockCipher>(deriveSessionKey(salt, *secret));
     state_ = BedrockState::AwaitingEncryption;
+}
+
+void BedrockConnection::beginResourcePacks() {
+    state_ = BedrockState::ResourcePacks;
+    scratch_.clear();
+    writePlayStatus(scratch_, PlayStatus::LoginSuccess);
+    sendPacket(BedrockPacket::PlayStatus, scratch_.readable());
+    scratch_.clear();
+    writeResourcePacksInfo(scratch_, protocolVersion_);
+    sendPacket(BedrockPacket::ResourcePacksInfo, scratch_.readable());
+    flush();
 }
 
 void BedrockConnection::onResourcePackResponse(io::ByteBuffer& body) {

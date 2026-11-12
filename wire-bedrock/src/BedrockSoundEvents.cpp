@@ -71,6 +71,74 @@ constexpr std::array<NumberedEvent, 52> kEvents{{
 
 } // namespace
 
+std::string_view bedrockSoundEventName(std::string_view javaSound) {
+    if (javaSound.starts_with("minecraft:")) {
+        javaSound.remove_prefix(std::string_view{"minecraft:"}.size());
+    }
+
+    struct Named {
+        std::string_view java;
+        std::string_view name;
+    };
+
+    static constexpr std::array<Named, 45> kNames{{
+        {"ambient.underwater.loop.additions", "ambient.in.water"},
+        {"ambient.underwater.loop.additions.rare", "ambient.in.water"},
+        {"ambient.underwater.loop.additions.ultra_rare", "ambient.in.water"},
+        {"block.anvil.fall", "fall"},
+        {"entity.baby_wolf.ambient", "ambient.baby"},
+        {"entity.chicken.death", "death"},
+        {"entity.ender_eye.death", "death"},
+        {"entity.salmon.death", "death"},
+        {"entity.cod.ambient", "ambient"},
+        {"entity.snow_golem.ambient", "ambient"},
+        {"entity.illusioner.cast_spell", "cast.spell"},
+        {"entity.player.attack.knockback", "attack"},
+        {"entity.player.attack.sweep", "attack"},
+        {"entity.player.attack.weak", "attack"},
+        {"entity.player.breath", "breathe"},
+        {"item.chorus_fruit.teleport", "teleport"},
+        {"item.hoe.till", "item.use.on"},
+        {"item.shovel.flatten", "item.use.on"},
+        {"item.nether_wart.plant", "place"},
+        {"entity.parrot.imitate.blaze", "imitate.blaze"},
+        {"entity.parrot.imitate.bogged", "imitate.bogged"},
+        {"entity.parrot.imitate.breeze", "imitate.breeze"},
+        {"entity.parrot.imitate.creaking", "imitate.creaking"},
+        {"entity.parrot.imitate.creeper", "imitate.creeper"},
+        {"entity.parrot.imitate.elder_guardian", "imitate.elder_guardian"},
+        {"entity.parrot.imitate.ender_dragon", "imitate.ender_dragon"},
+        {"entity.parrot.imitate.evoker", "imitate.evocation_illager"},
+        {"entity.parrot.imitate.ghast", "imitate.ghast"},
+        {"entity.parrot.imitate.husk", "imitate.husk"},
+        {"entity.parrot.imitate.magma_cube", "imitate.magma_cube"},
+        {"entity.parrot.imitate.shulker", "imitate.shulker"},
+        {"entity.parrot.imitate.silverfish", "imitate.silverfish"},
+        {"entity.parrot.imitate.skeleton", "imitate.skeleton"},
+        {"entity.parrot.imitate.slime", "imitate.slime"},
+        {"entity.parrot.imitate.spider", "imitate.spider"},
+        {"entity.parrot.imitate.stray", "imitate.stray"},
+        {"entity.parrot.imitate.vex", "imitate.vex"},
+        {"entity.parrot.imitate.vindicator", "imitate.vindication_illager"},
+        {"entity.parrot.imitate.witch", "imitate.witch"},
+        {"entity.parrot.imitate.wither", "imitate.wither"},
+        {"entity.parrot.imitate.wither_skeleton", "imitate.wither_skeleton"},
+        {"entity.parrot.imitate.zombie", "imitate.zombie"},
+        {"entity.parrot.imitate.zombie_villager", "imitate.zombie_villager"},
+        {"block.cobweb.place", "place"},
+        {"block.lily_pad.place", "place"},
+    }};
+    for (const Named& entry : kNames) {
+        if (entry.java == javaSound) {
+            return entry.name;
+        }
+    }
+    if (javaSound.starts_with("block.") && javaSound.ends_with(".place")) {
+        return "place";
+    }
+    return {};
+}
+
 std::int32_t bedrockSoundEvent(std::string_view javaSound, const int protocol) {
     if (javaSound.starts_with("minecraft:")) {
         javaSound.remove_prefix(std::string_view{"minecraft:"}.size());

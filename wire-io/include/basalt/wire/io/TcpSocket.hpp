@@ -78,6 +78,9 @@ public:
     /// Zero unless the connection was accepted.
     [[nodiscard]] std::uint16_t remotePort() const noexcept { return remotePort_; }
 
+    /// The address this end of the connection sits on, or empty when the socket cannot say.
+    [[nodiscard]] std::string localAddress() const;
+
     [[nodiscard]] std::int64_t nativeHandle() const noexcept { return handle_; }
 
     [[nodiscard]] bool isClosed() const noexcept { return handle_ < 0; }

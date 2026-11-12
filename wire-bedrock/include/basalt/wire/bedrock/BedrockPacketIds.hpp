@@ -6,9 +6,9 @@
 namespace basalt::wire::bedrock {
 
 /// The protocols this build speaks, oldest first.
-inline constexpr int kBedrockProtocols[] = {1001, 2168, 2169, 2193};
+inline constexpr int kBedrockProtocols[] = {1001, 2168, 2169, 2193, 2225};
 
-inline constexpr int kNativeBedrockProtocol = 2193;
+inline constexpr int kNativeBedrockProtocol = 2225;
 
 enum class BedrockPacket : std::uint16_t {
     Login = 1,
@@ -249,6 +249,14 @@ enum class BedrockPacket : std::uint16_t {
     PartyDestinationCookieResponse = 350,
     SetPlayerFurnaceOptions = 351,
     RecordStarted = 352,
+    ClientboundMatchmakingState = 353,
+    ServerboundStonecutterSetRecipe = 354,
+    ClientboundStonecutterSetRecipe = 355,
+    ServerboundMatchmakingCancel = 356,
+    SetPassengerOfBlock = 357,
+    ServerboundCursorItemDrag = 358,
+    ClientboundPlayAudioContent = 359,
+    ServerboundRegisterAudioContent = 360,
 };
 
 /// Empty when this build has never heard of that number.

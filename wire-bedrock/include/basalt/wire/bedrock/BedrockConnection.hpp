@@ -6,7 +6,7 @@
 #include <basalt/wire/bedrock/BedrockKeys.hpp>
 #include <basalt/wire/bedrock/BedrockPacketIds.hpp>
 #include <basalt/wire/bedrock/BedrockPackets.hpp>
-#include <basalt/wire/bedrock/RakSession.hpp>
+#include <basalt/wire/bedrock/BedrockTransport.hpp>
 
 #include <cstdint>
 #include <functional>
@@ -34,7 +34,7 @@ public:
     using ReadyHandler = std::function<void()>;
     using PacketHandler = std::function<void(BedrockPacket, io::ByteBuffer&)>;
 
-    BedrockConnection(RakSession& transport, std::shared_ptr<const EcKeyPair> keys, std::string gameVersion,
+    BedrockConnection(BedrockTransport& transport, std::shared_ptr<const EcKeyPair> keys, std::string gameVersion,
                       BedrockGate gate = BedrockGate{});
 
     [[nodiscard]] BedrockState state() const noexcept { return state_; }
@@ -43,7 +43,7 @@ public:
 
     [[nodiscard]] const LoginRequest& login() const noexcept { return login_; }
 
-    [[nodiscard]] RakSession& transport() const noexcept { return transport_; }
+    [[nodiscard]] BedrockTransport& transport() const noexcept { return transport_; }
 
     void onLogin(LoginHandler handler) { onLogin_ = std::move(handler); }
 
@@ -51,6 +51,9 @@ public:
     void onReady(ReadyHandler handler) { onReady_ = std::move(handler); }
 
     void onPacket(PacketHandler handler) { onPacket_ = std::move(handler); }
+
+    /// The login must be signed by this key (DER), which the wire proved the peer holds.
+    void expectIdentity(std::vector<std::uint8_t> publicKeyDer) { expectedIdentity_ = std::move(publicKeyDer); }
 
     /// Called when a client was turned away at the door, with the protocol it claimed and what it was told.
     void onRefused(std::function<void(int, const std::string&)> handler) { onRefused_ = std::move(handler); }
@@ -74,9 +77,10 @@ private:
     void onRequestNetworkSettings(io::ByteBuffer& body);
     void onLoginPacket(io::ByteBuffer& body);
     void onResourcePackResponse(io::ByteBuffer& body);
+    void beginResourcePacks();
     void sendRaw(std::span<const std::uint8_t> payload);
 
-    RakSession& transport_;
+    BedrockTransport& transport_;
     std::shared_ptr<const EcKeyPair> keys_;
     std::string gameVersion_;
     BedrockGate gate_;
@@ -86,6 +90,7 @@ private:
     LoginRequest login_;
     BatchSettings batch_;
     std::unique_ptr<BedrockCipher> cipher_;
+    std::vector<std::uint8_t> expectedIdentity_;
 
     LoginHandler onLogin_;
     ReadyHandler onReady_;

@@ -249,6 +249,14 @@ constexpr Entry kPackets[] = {
     {350, 1001, "PartyDestinationCookieResponse"},
     {351, 2193, "SetPlayerFurnaceOptions"},
     {352, 2193, "RecordStarted"},
+    {353, 2225, "ClientboundMatchmakingState"},
+    {354, 2225, "ServerboundStonecutterSetRecipe"},
+    {355, 2225, "ClientboundStonecutterSetRecipe"},
+    {356, 2225, "ServerboundMatchmakingCancel"},
+    {357, 2225, "SetPassengerOfBlock"},
+    {358, 2225, "ServerboundCursorItemDrag"},
+    {359, 2225, "ClientboundPlayAudioContent"},
+    {360, 2225, "ServerboundRegisterAudioContent"},
 };
 
 } // namespace

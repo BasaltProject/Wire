@@ -16,6 +16,8 @@ basalt_module(wire-bedrock
         src/BedrockBlocks2630.cpp
         src/BedrockBlocks2640.cpp
         src/BedrockBlocks2650.cpp
+        src/BedrockBlocks2660.cpp
+    src/BedrockDataDrivenBlocks.cpp
         src/BedrockBlockTables.cpp
         src/BedrockEffectIds.cpp
         src/BedrockEntityIdentifiers.cpp
@@ -34,14 +36,22 @@ basalt_module(wire-bedrock
         src/RakFrame.cpp
         src/RakNet.cpp
         src/RakServer.cpp
+        src/NetherNetDtls.cpp
+        src/NetherNetHttp.cpp
+        src/NetherNetIdentity.cpp
+        src/NetherNetSctp.cpp
+        src/NetherNetSdp.cpp
+        src/NetherNetServer.cpp
+        src/NetherNetStun.cpp
         src/RakSession.cpp
     DEPENDS basalt::wire-common basalt::wire-io basalt::wire-nbt basalt::wire-text basalt::wire-protocol
-    PRIVATE_DEPENDS basalt::mbedtls
+    PRIVATE_DEPENDS basalt::mbedtls basalt::usrsctp basalt::zlib
 )
 
 basalt_test(wire-bedrock-test
     SOURCES
         test/BedrockTest.cpp
         test/BedrockShapeTest.cpp
+        test/NetherNetTest.cpp
     DEPENDS basalt::wire-bedrock
 )

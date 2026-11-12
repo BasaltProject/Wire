@@ -1,5 +1,6 @@
 #pragma once
 
+#include <basalt/wire/bedrock/BedrockTransport.hpp>
 #include <basalt/wire/bedrock/RakFrame.hpp>
 #include <basalt/wire/bedrock/RakNet.hpp>
 #include <basalt/wire/io/ByteBuffer.hpp>
@@ -27,7 +28,7 @@ inline constexpr std::uint64_t kResendTimeoutMs = 500;
 inline constexpr std::uint64_t kKeepAliveMs = 2500;
 
 /// It never touches a socket; the datagrams it builds go to a sink.
-class RakSession {
+class RakSession final : public BedrockTransport {
 public:
     struct Stats {
         std::uint64_t datagramsSent = 0;
@@ -63,7 +64,7 @@ public:
     void receiveDatagram(std::span<const std::uint8_t> datagram, std::uint64_t nowMs,
                          std::vector<std::vector<std::uint8_t>>& messages);
 
-    void sendGame(std::span<const std::uint8_t> payload);
+    void sendGame(std::span<const std::uint8_t> payload) override;
 
     void sendMessage(std::span<const std::uint8_t> message, Reliability reliability, std::uint8_t channel = 0);
 

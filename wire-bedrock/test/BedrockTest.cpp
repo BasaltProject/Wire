@@ -641,7 +641,7 @@ TEST_CASE("the creative menu reads back exactly as long as it was written") {
     CHECK(items == bedrockItemPalette().size());
     for (std::uint32_t at = 0; at < items; ++at) {
         CHECK(readVarUInt(body) == at + 1);
-        CHECK(readInstance() == static_cast<std::int32_t>(at) + 1);
+        CHECK(readInstance() == wireItemId(static_cast<std::int32_t>(at) + 1));
         CHECK(readVarUInt(body) == 0);
     }
 
@@ -716,7 +716,7 @@ TEST_CASE("a recipe list reads back the way a client walks it") {
     static_cast<void>(readIngredient());
     CHECK(readIngredient().empty());
     REQUIRE(readVarUInt(body) == 1);
-    CHECK(readResult() == 7);
+    CHECK(readResult() == wireItemId(7));
     readTail();
     CHECK(body.readByte() == 1);
     readUnlocking();
@@ -727,7 +727,7 @@ TEST_CASE("a recipe list reads back the way a client walks it") {
     REQUIRE(readVarUInt(body) == 1);
     CHECK(readIngredient() == "minecraft:oak_planks");
     REQUIRE(readVarUInt(body) == 1);
-    CHECK(readResult() == 9);
+    CHECK(readResult() == wireItemId(9));
     readTail();
     readUnlocking();
     CHECK(readVarUInt(body) == 2);

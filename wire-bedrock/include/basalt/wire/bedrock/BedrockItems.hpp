@@ -6,6 +6,13 @@
 
 namespace basalt::wire::bedrock {
 
+/// Past every id the client already holds, so a name it knows and this server never declares cannot share a number.
+inline constexpr std::int32_t kItemIdOffset = 10000;
+
+[[nodiscard]] constexpr std::int32_t wireItemId(const std::int32_t runtimeId) {
+    return runtimeId == 0 ? 0 : runtimeId + kItemIdOffset;
+}
+
 struct ItemName {
     std::string_view java;
     std::int32_t palettePlace = 0;

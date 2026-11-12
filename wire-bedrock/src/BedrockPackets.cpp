@@ -25,7 +25,7 @@ void writeBool(io::ByteBuffer& buffer, bool value) { buffer.writeByte(value ? 1 
 /// Only this one field does; every other coordinate on the wire is zigzag.
 void writeBlockPosition(io::ByteBuffer& buffer, std::int32_t x, std::int32_t y, std::int32_t z) {
     writeVarInt(buffer, x);
-    writeVarUInt(buffer, static_cast<std::uint32_t>(y));
+    writeVarInt(buffer, y); // Signed since protocol 944, like the reader.
     writeVarInt(buffer, z);
 }
 
@@ -294,6 +294,9 @@ void writeStartGame(io::ByteBuffer& buffer, const StartGameInfo& info, const int
     writeVarInt(buffer, 0);
     writeBool(buffer, false);
     writeBool(buffer, false);
+    if (protocol >= kEditorMigrationProtocol) {
+        buffer.writeByte(0);
+    }
     writeVarInt(buffer, -1);
     writeVarUInt(buffer, 0);
     writeBool(buffer, false);
@@ -350,7 +353,12 @@ void writeStartGame(io::ByteBuffer& buffer, const StartGameInfo& info, const int
     writeBool(buffer, true);
     writeLongLE(buffer, info.currentTick);
     writeVarInt(buffer, 0);
-    writeVarUInt(buffer, 0);
+    if (protocol >= kDataDrivenBlocksProtocol) {
+        writeVarUInt(buffer, static_cast<std::uint32_t>(dataDrivenBlockCount()));
+        buffer.writeBytes(dataDrivenBlocks());
+    } else {
+        writeVarUInt(buffer, 0);
+    }
     writeString(buffer, info.multiplayerCorrelationId);
     writeBool(buffer, true);
     writeString(buffer, "Basalt");
@@ -369,6 +377,24 @@ void writeStartGame(io::ByteBuffer& buffer, const StartGameInfo& info, const int
     writeString(buffer, "");
     writeString(buffer, info.worldId);
     writeString(buffer, "");
+}
+
+void writeJigsawStructureData(io::ByteBuffer& buffer) {
+    buffer.writeByte(10);
+    writeVarUInt(buffer, 0);
+    for (const std::string_view name : {"processors", "template_pools", "jigsaws", "structure_sets"}) {
+        buffer.writeByte(9);
+        writeString(buffer, name);
+        buffer.writeByte(0);
+        writeVarInt(buffer, 0);
+    }
+    buffer.writeByte(0);
+}
+
+void writeVoxelShapes(io::ByteBuffer& buffer) {
+    writeVarUInt(buffer, 0);
+    writeVarUInt(buffer, 0);
+    writeShortLE(buffer, 0);
 }
 
 void writeTeleport(io::ByteBuffer& buffer, const std::uint64_t runtimeEntityId, const float x, const float y,
@@ -522,7 +548,7 @@ constexpr std::int32_t kFlagStopFlying = 43;
 /// One block position as this edition writes it: the height is unsigned, which is not a mistake of ours either.
 void readBedrockBlockPosition(io::ByteBuffer& buffer, std::int32_t& x, std::int32_t& y, std::int32_t& z) {
     x = readVarInt(buffer);
-    y = static_cast<std::int32_t>(readVarUInt(buffer));
+    y = readVarInt(buffer); // Signed since protocol 944, and the oldest this server speaks is 1001.
     z = readVarInt(buffer);
 }
 
@@ -587,6 +613,8 @@ void readInventorySource(io::ByteBuffer& buffer, const int flags) {
     }
 }
 
+[[nodiscard]] std::optional<BedrockItemUse> readItemUseBody(io::ByteBuffer& buffer, int protocol);
+
 [[nodiscard]] std::optional<BedrockItemUse> readItemUseTransaction(io::ByteBuffer& buffer, const int protocol) {
     const bool native = protocol >= kHeldItemDescriptorProtocol;
     const bool single = protocol >= kSingleFlagProtocol;
@@ -612,6 +640,11 @@ void readInventorySource(io::ByteBuffer& buffer, const int flags) {
         }
     }
 
+    return readItemUseBody(buffer, protocol);
+}
+
+[[nodiscard]] std::optional<BedrockItemUse> readItemUseBody(io::ByteBuffer& buffer, const int protocol) {
+    const bool native = protocol >= kHeldItemDescriptorProtocol;
     BedrockItemUse use;
     use.action = native ? readVarInt(buffer) : static_cast<std::int32_t>(readVarUInt(buffer));
     // What set the click off: a hand, a hold, or the server asking again.
@@ -1181,7 +1214,7 @@ void writeItemInstance(io::ByteBuffer& buffer, const BedrockItemStack& named, co
         writeVarInt(buffer, 0);
         return;
     }
-    writeVarInt(buffer, air ? 0 : item.runtimeId);
+    writeVarInt(buffer, air ? 0 : wireItemId(item.runtimeId));
     writeShortLE(buffer, static_cast<std::uint16_t>(air ? 0 : item.count));
     writeVarUInt(buffer, air ? 0U : static_cast<std::uint32_t>(item.data));
     writeVarInt(buffer, air ? 0 : item.blockRuntimeId);
@@ -1351,7 +1384,7 @@ void writeIngredient(io::ByteBuffer& buffer, const BedrockIngredient& ingredient
 }
 
 void writeItemInstance(io::ByteBuffer& buffer, const BedrockItemStack& item) {
-    writeVarInt(buffer, item.runtimeId);
+    writeVarInt(buffer, wireItemId(item.runtimeId));
     writeShortLE(buffer, static_cast<std::uint16_t>(item.count));
     writeVarUInt(buffer, static_cast<std::uint32_t>(item.data));
     writeVarInt(buffer, item.blockRuntimeId);
@@ -1644,9 +1677,9 @@ void writeItemStack(io::ByteBuffer& buffer, const BedrockItemStack& named, const
         return;
     }
     if (descriptor) {
-        writeShortLE(buffer, static_cast<std::uint16_t>(item.runtimeId));
+        writeShortLE(buffer, static_cast<std::uint16_t>(wireItemId(item.runtimeId)));
     } else {
-        writeVarInt(buffer, item.runtimeId);
+        writeVarInt(buffer, wireItemId(item.runtimeId));
     }
     writeShortLE(buffer, static_cast<std::uint16_t>(item.count));
     writeVarUInt(buffer, static_cast<std::uint32_t>(item.data));
@@ -1664,8 +1697,8 @@ void writeItemStack(io::ByteBuffer& buffer, const BedrockItemStack& named, const
 
 void writeItemComponent(io::ByteBuffer& buffer, const int protocol) {
     const std::span<const std::string_view> palette = bedrockItemPalette();
-    const auto known = [protocol](const std::size_t at) {
-        return bedrockItemStandIn(static_cast<std::int32_t>(at), protocol) == nullptr;
+    const auto known = [protocol, &palette](const std::size_t at) {
+        return palette[at] != "minecraft:air" && bedrockItemStandIn(static_cast<std::int32_t>(at), protocol) == nullptr;
     };
     std::uint32_t declared = 0;
     for (std::size_t at = 0; at < palette.size(); ++at) {
@@ -1677,9 +1710,9 @@ void writeItemComponent(io::ByteBuffer& buffer, const int protocol) {
             continue; // A name this client lacks is never declared to it: its look-alike goes instead.
         }
         writeString(buffer, palette[at]);
-        writeShortLE(buffer, static_cast<std::uint16_t>(at + 1));
+        writeShortLE(buffer, static_cast<std::uint16_t>(wireItemId(static_cast<std::int32_t>(at) + 1)));
         writeBool(buffer, false);
-        writeVarInt(buffer, 0);
+        writeVarInt(buffer, 2); // ItemVersion::None, what a vanilla item carries.
         writeEmptyCompound(buffer);
     }
 }
@@ -1868,10 +1901,15 @@ void writeRecordStarted(io::ByteBuffer& buffer, const std::int32_t x, const std:
     writeLongLE(buffer, soundHandle);
 }
 
-void writeStopSoundHandle(io::ByteBuffer& buffer, const std::int64_t soundHandle) {
+void writeStopSoundHandle(io::ByteBuffer& buffer, const std::int64_t soundHandle, const int protocol) {
     constexpr int kSlots = 7;
 
     writeLongLE(buffer, soundHandle);
+    if (protocol >= kSoundEventTypeProtocol) {
+        // Stop, which is type zero.
+        buffer.writeByte(0);
+        return;
+    }
     for (int slot = 0; slot < kSlots; ++slot) {
         writeVarUInt(buffer, 0);
     }
@@ -1918,6 +1956,9 @@ void writeLevelChunk(io::ByteBuffer& buffer, const std::int32_t chunkX, const st
 
     writeVarUInt(buffer, static_cast<std::uint32_t>(payload.readableBytes()));
     buffer.writeBytes(payload.readable());
+    if (protocol >= kClientBiomeUpdateProtocol) {
+        writeBool(buffer, false);
+    }
 }
 
 void writeEmptyLevelChunk(io::ByteBuffer& buffer, std::int32_t chunkX, std::int32_t chunkZ, std::uint32_t subChunkCount,
@@ -1945,6 +1986,9 @@ void writeEmptyLevelChunk(io::ByteBuffer& buffer, std::int32_t chunkX, std::int3
 
     writeVarUInt(buffer, static_cast<std::uint32_t>(payload.readableBytes()));
     buffer.writeBytes(payload.readable());
+    if (protocol >= kClientBiomeUpdateProtocol) {
+        writeBool(buffer, false);
+    }
 }
 
 namespace {
@@ -1965,8 +2009,8 @@ void writeSkin(io::ByteBuffer& buffer, const SkinInfo& skin, const int protocol)
         writeImage(buffer, skin.width, skin.height, skin.image);
         writeIntLE(buffer, 0);
         writeImage(buffer, 0, 0, {});
-        writeString(buffer, "");
-        writeString(buffer, "");
+        writeString(buffer, skin.geometry.empty() ? "{}" : skin.geometry);
+        writeString(buffer, "1.14.60");
         writeString(buffer, "");
         writeString(buffer, "");
         writeString(buffer, skin.skinId);
@@ -1978,18 +2022,20 @@ void writeSkin(io::ByteBuffer& buffer, const SkinInfo& skin, const int protocol)
         writeBool(buffer, false);
         writeBool(buffer, false);
         writeBool(buffer, true);
-        writeBool(buffer, false); // It does not override what the player chose, because there is none.
+        writeBool(buffer, skin.overridesAppearance);
         return;
     }
 
     writeString(buffer, skin.skinId);
-    writeString(buffer, "");
+    if (protocol < kPlayFabInListProtocol) {
+        writeString(buffer, "");
+    }
     writeString(buffer, skin.resourcePatch);
     writeImage(buffer, skin.width, skin.height, skin.image);
     writeVarUInt(buffer, 0);
     writeImage(buffer, 0, 0, {});
-    writeString(buffer, "");
-    writeString(buffer, "");
+    writeString(buffer, skin.geometry.empty() ? "{}" : skin.geometry); // An empty one is refused as JSON.
+    writeString(buffer, "1.14.60");
     writeString(buffer, "");
     writeString(buffer, "");
     writeString(buffer, skin.skinId);
@@ -2001,7 +2047,7 @@ void writeSkin(io::ByteBuffer& buffer, const SkinInfo& skin, const int protocol)
     writeBool(buffer, false);
     writeBool(buffer, false);
     writeBool(buffer, true);
-    writeBool(buffer, false); // It does not override what the player chose, because there is none.
+    writeBool(buffer, skin.overridesAppearance);
     writeString(buffer, "true");
     writeString(buffer, "");
 }
@@ -2075,6 +2121,7 @@ SkinInfo flatSkin(const std::string_view name) {
 
     SkinInfo skin;
     skin.skinId = "basalt-flat-" + std::to_string(hash);
+    skin.overridesAppearance = true;
     skin.image.resize(static_cast<std::size_t>(skin.width) * skin.height * 4);
     for (std::size_t at = 0; at < skin.image.size(); at += 4) {
         skin.image[at] = static_cast<std::uint8_t>(hash >> 16U);
@@ -2099,8 +2146,11 @@ void writePlayerListAdd(io::ByteBuffer& buffer, const std::span<const PlayerList
         writeVarLong(buffer, entry.entityId);
         writeString(buffer, entry.name);
         writeString(buffer, entry.xuid);
+        if (protocol >= kPlayFabInListProtocol) {
+            writeString(buffer, "");
+        }
         writeString(buffer, "");
-        writeIntLE(buffer, 0);
+        writeIntLE(buffer, -1); // A build platform of 0 is no member of the client's enum.
         writeSkin(buffer, entry.skin, protocol);
         writeBool(buffer, false);
         writeBool(buffer, false);
@@ -2165,8 +2215,11 @@ void writeAddPlayer(io::ByteBuffer& buffer, const AddPlayerInfo& info, const int
     writeVarUInt(buffer, 0);
 
     writeVarUInt(buffer, 0);
+    if (protocol >= kBlockPassengerProtocol) {
+        writeBool(buffer, false);
+    }
     writeString(buffer, "");
-    writeIntLE(buffer, 0);
+    writeIntLE(buffer, -1);
 }
 
 void writeUpdateAbilities(io::ByteBuffer& buffer, const std::int64_t entityId, const bool operator_,
@@ -2396,6 +2449,9 @@ void writeAddEntity(io::ByteBuffer& buffer, const std::int64_t entityId, const s
     writeVarUInt(buffer, 0);
     writeVarUInt(buffer, 0);
     writeVarUInt(buffer, 0);
+    if (protocol >= kBlockPassengerProtocol) {
+        writeBool(buffer, false);
+    }
 }
 
 void writeAddBorderCollider(io::ByteBuffer& buffer, const std::int64_t entityId, const float x, const float y,
@@ -2432,6 +2488,9 @@ void writeAddBorderCollider(io::ByteBuffer& buffer, const std::int64_t entityId,
     writeVarUInt(buffer, 0);
     writeVarUInt(buffer, 0);
     writeVarUInt(buffer, 0);
+    if (protocol >= kBlockPassengerProtocol) {
+        writeBool(buffer, false);
+    }
 }
 
 void writeTakeItemEntity(io::ByteBuffer& buffer, const std::uint64_t itemRuntimeId,
@@ -2440,11 +2499,15 @@ void writeTakeItemEntity(io::ByteBuffer& buffer, const std::uint64_t itemRuntime
     writeVarULong(buffer, collectorRuntimeId);
 }
 
-void writeAnimate(io::ByteBuffer& buffer, const std::uint64_t runtimeEntityId, const BedrockAnimation action) {
+void writeAnimate(io::ByteBuffer& buffer, const std::uint64_t runtimeEntityId, const BedrockAnimation action,
+                  const int protocol, const bool offhand) {
     buffer.writeByte(static_cast<std::uint8_t>(action));
     writeVarULong(buffer, runtimeEntityId);
     writeFloatLE(buffer, 0.0F);
     writeBool(buffer, false);
+    if (protocol >= kAnimateHandProtocol) {
+        buffer.writeByte(offhand ? 1 : 0);
+    }
 }
 
 void writeMobEquipment(io::ByteBuffer& buffer, const std::uint64_t runtimeEntityId, const BedrockItemStack& item,
@@ -2473,7 +2536,7 @@ void writeSetDisplayObjective(io::ByteBuffer& buffer, const std::string_view slo
     writeString(buffer, objective);
     writeString(buffer, title);
     writeString(buffer, "dummy");
-    writeVarInt(buffer, 0);
+    writeVarInt(buffer, 1);
 }
 
 void writeRemoveObjective(io::ByteBuffer& buffer, const std::string_view objective) { writeString(buffer, objective); }
@@ -2604,17 +2667,14 @@ void writePlayerHotbar(io::ByteBuffer& buffer, const std::int32_t slot) {
     writeBool(buffer, true);
 }
 
-void writeLevelSoundEvent(io::ByteBuffer& buffer, const std::int32_t event, const float x, const float y, const float z,
-                          const int protocol) {
-    // What a numbered sound this server sends carries past its own number: nothing at all.
-    constexpr std::int32_t kNoExtraData = -1;
-
-    writeVarUInt(buffer, static_cast<std::uint32_t>(event));
+void writeLevelSoundEvent(io::ByteBuffer& buffer, const std::string_view name, const float x, const float y,
+                          const float z, const int protocol, const std::int32_t extraData) {
+    writeString(buffer, name);
     writeFloatLE(buffer, x);
     writeFloatLE(buffer, y);
     writeFloatLE(buffer, z);
-    writeVarInt(buffer, kNoExtraData);
-    writeString(buffer, "");
+    writeVarInt(buffer, extraData);
+    writeString(buffer, extraData == -1 ? "" : ":");
     writeBool(buffer, false);
     writeBool(buffer, false);
     writeLongLE(buffer, 0);
@@ -2939,17 +2999,19 @@ void writeAddPainting(io::ByteBuffer& buffer, const std::int64_t entityId, const
     writeString(buffer, motive);
 }
 
-void writeSyncEntityProperty(io::ByteBuffer& buffer, const std::string_view entityType, const std::string_view property,
-                             const std::span<const std::string_view> choices) {
-    /// What kind of property it is, of which this server sends only the one that picks from a list.
+void writeSyncEntityProperties(io::ByteBuffer& buffer, const std::string_view entityType,
+                               const std::span<const EntityEnumProperty> properties) {
+    /// What kind of property it is, of which this server sends only the ones that pick from a list.
     constexpr std::int32_t kEnumProperty = 3;
 
     nbt::beginCompound(buffer);
-    nbt::beginCompoundList(buffer, "properties", 1);
-    nbt::writeString(buffer, "name", property);
-    nbt::writeStringList(buffer, "enum", choices);
-    nbt::writeInt(buffer, "type", kEnumProperty);
-    nbt::end(buffer);
+    nbt::beginCompoundList(buffer, "properties", static_cast<std::int32_t>(properties.size()));
+    for (const EntityEnumProperty& property : properties) {
+        nbt::writeString(buffer, "name", property.name);
+        nbt::writeStringList(buffer, "enum", property.choices);
+        nbt::writeInt(buffer, "type", kEnumProperty);
+        nbt::end(buffer);
+    }
     nbt::writeString(buffer, "type", entityType);
     nbt::end(buffer);
 }
@@ -3082,12 +3144,18 @@ namespace {
 
 BedrockTransaction readTransaction(io::ByteBuffer& buffer, const int protocol) {
     /// Only the last two are acted on here.
+    constexpr std::uint32_t kUseOnBlock = 2;
     constexpr std::uint32_t kUseOnEntity = 3;
     constexpr std::uint32_t kItemRelease = 4;
 
     BedrockTransaction transaction;
     const std::uint32_t kind = readTransactionHead(buffer, protocol);
+    transaction.kind = kind;
     if (buffer.failed()) {
+        return transaction;
+    }
+    if (kind == kUseOnBlock) {
+        transaction.itemUse = readItemUseBody(buffer, protocol);
         return transaction;
     }
     if (kind == kUseOnEntity) {
@@ -3095,6 +3163,9 @@ BedrockTransaction readTransaction(io::ByteBuffer& buffer, const int protocol) {
         use.runtimeEntityId = readVarULong(buffer);
         use.action = readVarInt(buffer);
         use.hotbarSlot = readVarInt(buffer);
+        if (protocol >= kEntityUseHandProtocol) {
+            static_cast<void>(buffer.readByte());
+        }
         static_cast<void>(readItem(buffer, protocol));
         for (int at = 0; at < 6; ++at) {
             static_cast<void>(readFloatLE(buffer));
