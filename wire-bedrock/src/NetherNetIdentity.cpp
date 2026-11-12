@@ -11,7 +11,7 @@ std::string base64urlOf(std::string_view text) {
     return common::base64url::encode({reinterpret_cast<const std::uint8_t*>(text.data()), text.size()});
 }
 
-std::string quoted(std::string_view text) {
+std::string jsonQuoted(std::string_view text) {
     std::string out = "\"";
     for (const char c : text) {
         if (c == '"' || c == '\\') {
@@ -49,7 +49,7 @@ std::optional<std::vector<std::uint8_t>> claimedPublicKey(std::string_view paylo
         if (text == nullptr) {
             return std::nullopt;
         }
-        jwk += (jwk.size() > 1 ? "," : "") + quoted(field) + ":" + quoted(*text);
+        jwk += (jwk.size() > 1 ? "," : "") + jsonQuoted(field) + ":" + jsonQuoted(*text);
     }
     return publicKeyDerFromJwk(jwk + "}");
 }
@@ -57,7 +57,7 @@ std::optional<std::vector<std::uint8_t>> claimedPublicKey(std::string_view paylo
 } // namespace
 
 std::string netherNetFingerprintJson(std::string_view algorithm, std::string_view digest) {
-    return R"({"fingerprint":[{"algorithm":)" + quoted(algorithm) + R"(,"digest":)" + quoted(digest) + "}]}";
+    return R"({"fingerprint":[{"algorithm":)" + jsonQuoted(algorithm) + R"(,"digest":)" + jsonQuoted(digest) + "}]}";
 }
 
 std::expected<NetherNetPeerIdentity, std::string>
@@ -137,9 +137,10 @@ std::optional<std::string> buildNetherNetAnswerIdentity(const EcKeyPair& key, st
     }
     const std::string detached = header + ".." + common::base64url::encode(*signature);
 
-    const std::string assertion = R"({"fingerprints":)" + quoted(detached) + R"(,"token":)" + quoted(*token) + "}";
-    const std::string envelope =
-        R"({"assertion":)" + quoted(assertion) + R"(,"idp":{"domain":)" + quoted(domain) + R"(,"protocol":"default"}})";
+    const std::string assertion =
+        R"({"fingerprints":)" + jsonQuoted(detached) + R"(,"token":)" + jsonQuoted(*token) + "}";
+    const std::string envelope = R"({"assertion":)" + jsonQuoted(assertion) + R"(,"idp":{"domain":)" +
+                                 jsonQuoted(domain) + R"(,"protocol":"default"}})";
     return common::base64::encode({reinterpret_cast<const std::uint8_t*>(envelope.data()), envelope.size()});
 }
 

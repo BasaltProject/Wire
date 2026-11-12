@@ -528,9 +528,9 @@ void NetherNetServer::Impl::servicePeers(Clock::time_point now) {
 }
 
 void NetherNetServer::Impl::serviceSctp(Peer& peer) {
-    std::vector<nethernet::SctpEvent> events;
-    peer.sctp->takeEvents(events);
-    for (nethernet::SctpEvent& event : events) {
+    std::vector<nethernet::SctpEvent> taken;
+    peer.sctp->takeEvents(taken);
+    for (nethernet::SctpEvent& event : taken) {
         switch (event.kind) {
         case nethernet::SctpEvent::Kind::Established:
             peer.sctpUp = true;
