@@ -137,4 +137,3 @@ TEST_CASE("signed messages chain, acknowledge each other and break on the first 
                                    SignedBody{.content = "hello", .timestamp = 1700000009000, .salt = 7}, now);
     CHECK(after.error() == "chat.disabled.chain_broken");
 }
-

@@ -627,4 +627,3 @@ TEST_CASE("every version the gate admits has an unbroken road of links") {
     }
     CHECK(java::javaTranslators::supported().contains(protocolVersions::kV1_8));
 }
-

@@ -22,9 +22,6 @@
   <img alt="License" src="https://img.shields.io/badge/license-GPL--3.0-green">
 </p>
 
-> **Pre-1.0.** Wire is consumed by Basalt Server and Basalt Proxy, which move together with it,
-> so its APIs change without notice.
-
 ## Overview
 
 Wire is everything Basalt needs to speak Minecraft over a socket, and nothing
@@ -135,19 +132,6 @@ Minecraft file is committed here, extracted here, or distributed here.
 | Generator | Ninja |
 | Compiler | Clang, with C++23 support |
 | ccache | Optional, but the build is much faster with it |
-
-## Development Status
-
-| Module | Status |
-|---|---|
-| `wire-common`, `wire-nbt`, `wire-text`, `wire-io` | Working |
-| `wire-protocol` | Handshake, status, login, configuration and play, at protocol 777 |
-| `wire-auth` | Working: encryption, Mojang session, profiles |
-| `wire-multiversion` | In use by Server for older Java clients; still maturing, and a link existing does not certify every client and backend pairing |
-| `wire-bedrock` | RakNet, login, encryption, batching and codecs; part of the Java to Bedrock translation still lives in Server |
-| `wire-lua`, `wire-plugins`, `wire-sqlite` | Working, used by Server |
-
-Native codecs are written against protocol 777; older versions go through `wire-multiversion`.
 
 ## License
 
