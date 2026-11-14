@@ -6,7 +6,6 @@
 namespace basalt::wire::protocol::sessionEnvelope {
 namespace {
 
-constexpr std::uint8_t kKindData = 0;
 constexpr std::uint8_t kKindControl = 1;
 constexpr std::uint8_t kControlOpen = 0;
 constexpr std::uint8_t kControlOpened = 1;
@@ -22,7 +21,7 @@ constexpr std::int32_t kMaxText = 65536;
 std::vector<std::uint8_t> encodeData(std::span<const std::uint8_t> packet) {
     std::vector<std::uint8_t> frame;
     frame.reserve(packet.size() + 1);
-    frame.push_back(kKindData);
+    frame.push_back(kDataFrameKind);
     frame.insert(frame.end(), packet.begin(), packet.end());
     return frame;
 }
@@ -63,7 +62,7 @@ std::vector<std::uint8_t> encodeControl(const Control& control) {
 std::expected<Frame, DecodeError> decode(std::span<const std::uint8_t> frame) {
     if (frame.empty())
         return std::unexpected(DecodeError::kEmpty);
-    if (frame[0] == kKindData) {
+    if (frame[0] == kDataFrameKind) {
         if (frame.size() - 1 > kMaxDataBytes)
             return std::unexpected(DecodeError::kTooLarge);
         return Data{frame.subspan(1)};

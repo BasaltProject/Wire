@@ -14,6 +14,8 @@ inline constexpr std::uint8_t kVersion1 = 1;
 /// A data frame carries one original packet untouched; a control frame carries one of the messages below.
 inline constexpr std::size_t kMaxDataBytes = 2 * 1024 * 1024;
 inline constexpr std::size_t kMaxControlBytes = 512;
+/// First byte of a data frame; the original packet follows it unchanged.
+inline constexpr std::uint8_t kDataFrameKind = 0;
 
 enum class Edition : std::uint8_t { Java = 0, Bedrock = 1 };
 
