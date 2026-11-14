@@ -11,6 +11,7 @@ basalt_module(wire-multiversion
         src/ProtocolVersions.cpp
         src/SubstitutionLabels.cpp
         src/java/AdvancementLayouts.cpp
+        src/java/ClickItems.cpp
         src/java/ContentRewriter.cpp
         src/java/EntitySpawns.cpp
         src/java/OlderPaintings.cpp
@@ -41,6 +42,20 @@ basalt_module(wire-multiversion
         src/java/Tables335.cpp
         src/java/Tables338.cpp
         src/java/Tables340.cpp
+        src/java/Flattening340.cpp
+        src/java/Connections340.cpp
+        src/java/Content340.cpp
+        src/java/Link110Up.cpp
+        src/java/Link19Up.cpp
+        src/java/Link47Up.cpp
+        src/java/Link47UpEntities.cpp
+        src/java/Link47UpWorld.cpp
+        src/java/Link210Up.cpp
+        src/java/Link316Up.cpp
+        src/java/Link338Up.cpp
+        src/java/Link340Up.cpp
+        src/java/Link340UpEntities.cpp
+        src/java/Link340UpWorld.cpp
         src/java/Tables393.cpp
         src/java/Tables401.cpp
         src/java/Tables404.cpp
@@ -87,6 +102,7 @@ basalt_module(wire-multiversion
         src/java/Link338.cpp
         src/java/Link340.cpp
         src/java/Link404.cpp
+        src/java/Link404Up.cpp
         src/java/Link485.cpp
         src/java/Link490.cpp
         src/java/Link498.cpp
@@ -118,7 +134,15 @@ basalt_module(wire-multiversion
         src/java/LoginCodec.cpp
         src/java/PlayerSpawn.cpp
         src/java/Link758Up.cpp
+        src/java/LegacyClicks.cpp
+        src/java/ComponentClicks.cpp
         src/java/Link754Up.cpp
+        src/java/Link736Up.cpp
+        src/java/Link578Up.cpp
+        src/java/Link498Up.cpp
+        src/java/TradeLinks.cpp
+        src/java/SlotLinks.cpp
+        src/java/DefaultCodec.cpp
         src/java/Link755Up.cpp
         src/java/Link756Up.cpp
         src/java/Link757Up.cpp
@@ -148,6 +172,7 @@ basalt_module(wire-multiversion
         src/java/Link776Up.cpp
         src/java/NewRegistries776.cpp
         src/java/UpEntityData.cpp
+        src/java/UpEntityDataValues.cpp
         src/java/LongMaskLight.cpp
         src/java/LoginFields.cpp
         src/java/LoginRewriter.cpp

@@ -137,7 +137,7 @@ constexpr std::array<EntityDataIndexRule, 5> kRules316 = {{
     {14, false, kTypes84},
     {15, false, kTypes84},
 }};
-constexpr std::array<EntityDataIndexRule, 12> kRules393 = {{
+constexpr std::array<EntityDataIndexRule, 12> kRules340 = {{
     {15, true, kTypes56},
     {13, false, kTypes80},
     {14, false, kTypes80},
@@ -387,8 +387,8 @@ std::span<const EntityDataIndexRule> entityDataIndexRules(std::int32_t version) 
         return kRules315;
     case 316:
         return kRules316;
-    case 393:
-        return kRules393;
+    case 340:
+        return kRules340;
     case 404:
         return kRules404;
     case 477:

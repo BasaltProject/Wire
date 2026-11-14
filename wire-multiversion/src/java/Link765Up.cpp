@@ -29,6 +29,7 @@ constexpr std::int32_t kConfigRegistryData766 = 7;
 constexpr std::int32_t kContainerContent = 19;
 constexpr std::int32_t kContainerSlot = 21;
 constexpr std::int32_t kLevelParticles = 39;
+constexpr std::int32_t kExplode = 30;
 constexpr std::int32_t kLogin = 41;
 constexpr std::int32_t kMerchantOffers = 43;
 constexpr std::int32_t kRespawn = 69;
@@ -287,6 +288,24 @@ bool Link765Up::clientbound(ProtocolState state, MutablePacket& packet) {
         return true;
     }
     switch (packet.id) {
+    case kExplode: {
+        io::ByteBuffer in = io::ByteBuffer::wrap(packet.body);
+        io::ByteBuffer out;
+        out.writeBytes(in.readSpan(3 * 8 + 4));
+        const std::int32_t count = pv::varInt::read(in);
+        pv::varInt::write(out, count);
+        out.writeBytes(in.readSpan(static_cast<std::size_t>(std::max(count, 0)) * 3 + 3 * 4));
+        for (int field = 0; field < 3; ++field) {
+            pv::varInt::write(out, pv::varInt::read(in));
+        }
+        pv::varInt::write(out, 0);
+        out.writeBytes(in.readable());
+        if (in.failed()) {
+            return false;
+        }
+        packet.body = out.toVector();
+        return true;
+    }
     case kLogin: {
         io::ByteBuffer in = io::ByteBuffer::wrap(packet.body);
         io::ByteBuffer out;

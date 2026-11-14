@@ -13,7 +13,9 @@ const VersionTables& tables393() {
                   "8463>8547;8464>8548;8465>8549;8466>8550;8467>8551;8468>8552;8469>8553;8470>8459;8471>8459;8472>8460;"
                   "8473>8460;8474>8461;8475>8461;8476>8462;8477>8462;8478>8463;8479>8463;8589>8573;8590>8573"};
         built.objectType = IdMap{"1:3:0;10:1:0;50:2:0;60:9:0;70:4:0;75:5:0;90:2:0;93:2:0|"};
+        built.upBlockStates = IdMap{"|1126>1127;8459>8470;8460>8472;8461>8474;8462>8476;8463>8478;8573>8589"};
         built.item = IdMap{"1:784:0|"};
+        built.explicitUpEntityType = IdMap{"0:2147483647:0|"};
         built.mobEffect = IdMap{"1:30:0|"};
         built.staticBiomes = NameIdMap{
             "minecraft:badlands:37;minecraft:badlands_plateau:39;minecraft:beach:16;minecraft:birch_forest:27;"

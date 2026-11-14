@@ -213,6 +213,13 @@ std::optional<ContainerSetSlotPacket> ContainerSetSlotPacket::read(io::ByteBuffe
     return buffer.failed() ? std::nullopt : std::optional{std::move(packet)};
 }
 
+void SetCursorItemPacket::write(io::ByteBuffer& buffer) const { WireItemStack::writeOptional(buffer, item); }
+
+std::optional<SetCursorItemPacket> SetCursorItemPacket::read(io::ByteBuffer& buffer) {
+    SetCursorItemPacket packet{WireItemStack::read(buffer)};
+    return buffer.failed() ? std::nullopt : std::optional{std::move(packet)};
+}
+
 void SetHeldSlotPacket::write(io::ByteBuffer& buffer) const { varInt::write(buffer, slot); }
 
 std::optional<SetHeldSlotPacket> SetHeldSlotPacket::read(io::ByteBuffer& buffer) {

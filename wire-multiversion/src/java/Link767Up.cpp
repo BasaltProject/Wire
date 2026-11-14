@@ -59,6 +59,7 @@ constexpr std::int32_t kUseItemOn = 56;
 
 constexpr std::int32_t kSeaLevel = 63;
 constexpr float kImpulse = 0.98F;
+constexpr std::int32_t kInteractionKeep = 0;
 constexpr std::int32_t kInteractionDestroy = 1;
 constexpr std::int32_t kInteractionDestroyWithDecay = 2;
 
@@ -264,36 +265,66 @@ void rewriteRespawn(MutablePacket& packet) {
     packet.body = out.toVector();
 }
 
-void explosionToBlockUpdates(MutablePacket& packet) {
+/// A 1.21 explosion as 1.21.2 sends it, plus the block updates 1.21.2 no longer folds into it.
+bool rewriteExplosion(MutablePacket& packet) {
+    constexpr float kSmallRadius = 2.0F;
     io::ByteBuffer in = io::ByteBuffer::wrap(packet.body);
-    const auto centerX = static_cast<std::int32_t>(std::floor(in.readDouble()));
-    const auto centerY = static_cast<std::int32_t>(std::floor(in.readDouble()));
-    const auto centerZ = static_cast<std::int32_t>(std::floor(in.readDouble()));
-    static_cast<void>(in.readFloat());
+    const double x = in.readDouble();
+    const double y = in.readDouble();
+    const double z = in.readDouble();
+    const float power = in.readFloat();
     const std::int32_t count = protocol::varInt::read(in);
     if (in.failed() || count < 0 || count > 1 << 16) {
-        return;
+        return false;
     }
     std::vector<std::int64_t> positions;
     for (std::int32_t index = 0; index < count && !in.failed(); ++index) {
-        const std::int32_t x = centerX + static_cast<std::int8_t>(in.readByte());
-        const std::int32_t y = centerY + static_cast<std::int8_t>(in.readByte());
-        const std::int32_t z = centerZ + static_cast<std::int8_t>(in.readByte());
-        positions.push_back(((static_cast<std::int64_t>(x) & 0x3FFFFFF) << 38) |
-                            ((static_cast<std::int64_t>(z) & 0x3FFFFFF) << 12) |
-                            (static_cast<std::int64_t>(y) & 0xFFF));
+        const auto blockX = static_cast<std::int32_t>(std::floor(x)) + static_cast<std::int8_t>(in.readByte());
+        const auto blockY = static_cast<std::int32_t>(std::floor(y)) + static_cast<std::int8_t>(in.readByte());
+        const auto blockZ = static_cast<std::int32_t>(std::floor(z)) + static_cast<std::int8_t>(in.readByte());
+        positions.push_back(((static_cast<std::int64_t>(blockX) & 0x3FFFFFF) << 38) |
+                            ((static_cast<std::int64_t>(blockZ) & 0x3FFFFFF) << 12) |
+                            (static_cast<std::int64_t>(blockY) & 0xFFF));
     }
-    in.skip(12);
+    const float knockX = in.readFloat();
+    const float knockY = in.readFloat();
+    const float knockZ = in.readFloat();
     const std::int32_t mode = protocol::varInt::read(in);
-    if (in.failed() || (mode != kInteractionDestroy && mode != kInteractionDestroyWithDecay)) {
-        return;
+    const std::int32_t small = protocol::varInt::read(in);
+    const std::int32_t large = protocol::varInt::read(in);
+    std::string sound = "minecraft:entity.generic.explode";
+    if (protocol::varInt::read(in) == 0) {
+        sound = protocol::readString(in);
     }
-    for (const std::int64_t position : positions) {
-        io::ByteBuffer body;
-        body.writeLong(position);
-        protocol::varInt::write(body, 0);
-        packet.extras.emplace_back(kBlockUpdate768, body.toVector());
+    if (in.failed()) {
+        return false;
     }
+    if (mode == kInteractionDestroy || mode == kInteractionDestroyWithDecay) {
+        for (const std::int64_t position : positions) {
+            io::ByteBuffer body;
+            body.writeLong(position);
+            protocol::varInt::write(body, 0);
+            packet.extras.emplace_back(kBlockUpdate768, body.toVector());
+        }
+    }
+    io::ByteBuffer out;
+    out.writeDouble(x);
+    out.writeDouble(y);
+    out.writeDouble(z);
+    const bool knocked = knockX != 0.0F || knockY != 0.0F || knockZ != 0.0F;
+    protocol::writeBoolean(out, knocked);
+    if (knocked) {
+        out.writeDouble(static_cast<double>(knockX));
+        out.writeDouble(static_cast<double>(knockY));
+        out.writeDouble(static_cast<double>(knockZ));
+    }
+    // parity: ServerExplosion.explode picks the small particle below radius 2 or when no block is touched.
+    protocol::varInt::write(out, power < kSmallRadius || mode == kInteractionKeep ? small : large);
+    protocol::varInt::write(out, 0);
+    protocol::writeString(out, sound);
+    protocol::writeBoolean(out, false);
+    packet.body = out.toVector();
+    return true;
 }
 
 void flagsToGround(MutablePacket& packet) {
@@ -384,8 +415,7 @@ bool Link767Up::clientbound(ProtocolState state, MutablePacket& packet) {
         widenContainerByte(packet);
         break;
     case kExplode:
-        explosionToBlockUpdates(packet);
-        return false;
+        return rewriteExplosion(packet);
     case kCooldown:
     case kRecipe:
     case kUpdateRecipes:

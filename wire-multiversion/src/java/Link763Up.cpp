@@ -1,10 +1,15 @@
+#include <basalt/wire/multiversion/ProtocolVersions.hpp>
+#include <basalt/wire/multiversion/java/EntityDataTypes.hpp>
+#include <basalt/wire/multiversion/java/JavaTranslators.hpp>
 #include <basalt/wire/multiversion/java/Link763Up.hpp>
 #include <basalt/wire/multiversion/java/PlayerSpawn.hpp>
 #include <basalt/wire/nbt/NbtIO.hpp>
 #include <basalt/wire/protocol/ProtocolBuffer.hpp>
 #include <basalt/wire/protocol/VarInt.hpp>
 
+#include <algorithm>
 #include <cstdint>
+#include <span>
 #include <string>
 #include <vector>
 
@@ -44,6 +49,13 @@ constexpr std::int32_t kSculkChargeParticle = 31;
 constexpr std::int32_t kItemParticle = 40;
 constexpr std::int32_t kVibrationParticle = 41;
 constexpr std::int32_t kShriekParticle = 93;
+constexpr std::array<std::int32_t, 9> kShapedParticles = {
+    kBlockParticle,       kBlockMarkerParticle, kDustParticle,      kDustTransitionParticle, kFallingDustParticle,
+    kSculkChargeParticle, kItemParticle,        kVibrationParticle, kShriekParticle};
+constexpr std::size_t kOptionalBlockStateKind = 15;
+constexpr std::int32_t kCompoundSerializer = 16;
+
+using Numbering = Link763Up::Numbering;
 
 void copyVarInt(io::ByteBuffer& in, io::ByteBuffer& out) { pv::varInt::write(out, pv::varInt::read(in)); }
 
@@ -110,8 +122,12 @@ void convertStack(io::ByteBuffer& in, io::ByteBuffer& out, bool toAnonymous) {
     convertNbt(in, out, toAnonymous);
 }
 
-void convertParticleData(io::ByteBuffer& in, io::ByteBuffer& out, std::int32_t particle, bool toAnonymous) {
-    switch (particle) {
+void convertParticleData(io::ByteBuffer& in, io::ByteBuffer& out, std::int32_t particle, bool toAnonymous,
+                         const Numbering& numbering) {
+    const auto shaped = std::ranges::find(numbering.particles, particle);
+    switch (shaped == numbering.particles.end()
+                ? -1
+                : kShapedParticles[static_cast<std::size_t>(shaped - numbering.particles.begin())]) {
     case kBlockParticle:
     case kBlockMarkerParticle:
     case kFallingDustParticle:
@@ -147,16 +163,18 @@ void convertParticleData(io::ByteBuffer& in, io::ByteBuffer& out, std::int32_t p
     }
 }
 
-void convertEntityData(io::ByteBuffer& in, io::ByteBuffer& out) {
+void convertEntityData(io::ByteBuffer& in, io::ByteBuffer& out, const Numbering& numbering) {
     while (!in.failed()) {
         const std::uint8_t index = in.readByte();
         out.writeByte(index);
         if (index == kEndOfMetadata) {
             return;
         }
-        const std::int32_t type = pv::varInt::read(in);
-        pv::varInt::write(out, type);
-        switch (type) {
+        const std::int32_t serializer = pv::varInt::read(in);
+        pv::varInt::write(out, serializer);
+        switch (serializer >= 0 && static_cast<std::size_t>(serializer) < numbering.serializers.size()
+                    ? numbering.serializers[static_cast<std::size_t>(serializer)]
+                    : -1) {
         case 0:
         case 8:
             copyBytes(in, out, 1);
@@ -223,7 +241,7 @@ void convertEntityData(io::ByteBuffer& in, io::ByteBuffer& out) {
         case 17: {
             const std::int32_t particle = pv::varInt::read(in);
             pv::varInt::write(out, particle);
-            convertParticleData(in, out, particle, true);
+            convertParticleData(in, out, particle, true, numbering);
             break;
         }
         case 18:
@@ -359,6 +377,28 @@ void rewriteChunk(io::ByteBuffer& in, io::ByteBuffer& out) {
 
 } // namespace
 
+Link763Up::Link763Up(const VersionTables& upward, std::int32_t backendVersion) : RenumberingLink(upward) {
+    for (std::size_t index = 0; index < kShapedParticles.size(); ++index) {
+        numbering_.particles[index] =
+            javaTranslators::particleAs(backendVersion, protocolVersions::kV1_20, kShapedParticles[index]);
+    }
+    const std::span<const std::int32_t> older = entityDataTypes(backendVersion);
+    const std::span<const std::int32_t> target = entityDataTypes(protocolVersions::kV1_20);
+    if (older.empty() || target.empty()) {
+        return;
+    }
+    numbering_.serializers.assign(static_cast<std::size_t>(*std::ranges::max_element(older) + 2), -1);
+    for (std::size_t kind = 0; kind < older.size() && kind < target.size(); ++kind) {
+        if (older[kind] >= 0) {
+            numbering_.serializers[static_cast<std::size_t>(older[kind])] = target[kind];
+        }
+    }
+    // parity: EntityDataSerializers.COMPOUND_TAG, which 26.3 lost, always came right after the optional block state.
+    if (older[kOptionalBlockStateKind] >= 0) {
+        numbering_.serializers[static_cast<std::size_t>(older[kOptionalBlockStateKind] + 1)] = kCompoundSerializer;
+    }
+}
+
 bool Link763Up::clientbound(ProtocolState state, MutablePacket& packet) {
     if (state != ProtocolState::Play) {
         return true;
@@ -400,11 +440,11 @@ bool Link763Up::clientbound(ProtocolState state, MutablePacket& packet) {
         transform(packet, rewriteChunk);
         break;
     case kWorldParticles:
-        transform(packet, [](io::ByteBuffer& in, io::ByteBuffer& out) {
+        transform(packet, [this](io::ByteBuffer& in, io::ByteBuffer& out) {
             const std::int32_t particle = pv::varInt::read(in);
             pv::varInt::write(out, particle);
             copyBytes(in, out, 1 + 24 + 12 + 4 + 4);
-            convertParticleData(in, out, particle, true);
+            convertParticleData(in, out, particle, true, numbering_);
         });
         break;
     case kLogin:
@@ -428,9 +468,9 @@ bool Link763Up::clientbound(ProtocolState state, MutablePacket& packet) {
         transform(packet, rewriteRespawn);
         break;
     case kEntityMetadata:
-        transform(packet, [](io::ByteBuffer& in, io::ByteBuffer& out) {
+        transform(packet, [this](io::ByteBuffer& in, io::ByteBuffer& out) {
             copyVarInt(in, out);
-            convertEntityData(in, out);
+            convertEntityData(in, out, numbering_);
             copyRest(in, out);
         });
         break;

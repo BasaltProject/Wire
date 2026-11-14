@@ -14,6 +14,7 @@ namespace pv = protocol;
 using protocol::ProtocolState;
 
 constexpr std::int32_t kChatPreview = 12;
+constexpr std::int32_t kExplode = 27;
 constexpr std::int32_t kCommands = 15;
 constexpr std::int32_t kHideMessage = 24;
 constexpr std::int32_t kNamedSound = 23;
@@ -32,7 +33,6 @@ constexpr std::int32_t kSound761 = 94;
 constexpr std::int32_t kChatCommand = 4;
 constexpr std::int32_t kChatMessage = 5;
 constexpr std::int32_t kMessageAcknowledgement = 3;
-constexpr std::int32_t kChatSessionUpdate = 32;
 
 constexpr std::int32_t kFirstSayCommand = 3;
 constexpr std::int32_t kParserMobEffect = 34;
@@ -256,6 +256,14 @@ bool Link760Up::clientbound(ProtocolState state, MutablePacket& packet) {
     case kPlayerInfo:
         rewritePlayerInfo(packet);
         break;
+    case kExplode:
+        transform(packet, [](io::ByteBuffer& in, io::ByteBuffer& out) {
+            for (int axis = 0; axis < 3; ++axis) {
+                out.writeDouble(static_cast<double>(in.readFloat()));
+            }
+            out.writeBytes(in.readable());
+        });
+        break;
     case kServerData:
         transform(packet, [](io::ByteBuffer& in, io::ByteBuffer& out) {
             for (int part = 0; part < 2; ++part) {
@@ -297,7 +305,6 @@ bool Link760Up::serverbound(ProtocolState state, MutablePacket& packet) {
         return true;
     }
     switch (packet.id) {
-    case kChatSessionUpdate:
     case kMessageAcknowledgement:
         return false;
     case kChatMessage:

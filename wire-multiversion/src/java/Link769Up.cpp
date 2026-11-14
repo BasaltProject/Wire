@@ -18,6 +18,7 @@
 #include <basalt/wire/text/ComponentJson.hpp>
 #include <basalt/wire/text/ComponentNbt.hpp>
 
+#include <algorithm>
 #include <array>
 #include <string>
 
@@ -589,7 +590,7 @@ void rewriteRegistry(MutablePacket& packet) {
 } // namespace
 
 Link769Up::Link769Up(const VersionTables& upward, std::int32_t backendVersion)
-    : RenumberingLink(upward), source_(stack769::sourceFor(backendVersion)) {}
+    : RenumberingLink(upward), source_(stack769::sourceFor(backendVersion)), backend_(backendVersion) {}
 
 bool Link769Up::clientbound(ProtocolState state, MutablePacket& packet) {
     const stack769::SourceScope scope(source_);
@@ -617,6 +618,9 @@ bool Link769Up::clientbound(ProtocolState state, MutablePacket& packet) {
     }
     if (state != ProtocolState::Play) {
         return true;
+    }
+    if (backend_ >= protocolVersions::kV1_20_5) {
+        clicks_.clientbound(packet.id, packet.body);
     }
     switch (packet.id) {
     case kLogin:
@@ -720,16 +724,18 @@ bool Link769Up::serverbound(ProtocolState state, MutablePacket& packet) {
     case kContainerClick: {
         io::ByteBuffer in = io::ByteBuffer::wrap(packet.body);
         io::ByteBuffer out;
-        copyVarInt(in, out);
+        const std::int32_t windowId = protocol::varInt::read(in);
+        protocol::varInt::write(out, windowId);
         copyVarInt(in, out);
         out.writeShort(in.readShort());
         out.writeByte(in.readByte());
         copyVarInt(in, out);
-        if (in.failed()) {
+        const bool rewritten =
+            !in.failed() && (backend_ < protocolVersions::kV1_20_5 ? ComponentClicks::namedClick(in, out)
+                                                                   : clicks_.click(windowId, in, out));
+        if (!rewritten) {
             return true;
         }
-        protocol::varInt::write(out, 0);
-        protocol::varInt::write(out, 0);
         packet.body = out.toVector();
         break;
     }

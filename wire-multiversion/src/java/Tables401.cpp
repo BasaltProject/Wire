@@ -12,6 +12,7 @@ const VersionTables& tables401() {
         built.objectType = IdMap{"1:3:0;10:1:0;50:2:0;60:9:0;70:4:0;75:5:0;90:2:0;93:2:0|"};
         built.block = IdMap{"0:561:0;566:32:-5|"};
         built.item = IdMap{"1:442:0;448:342:-5|"};
+        built.explicitUpEntityType = IdMap{"0:2147483647:0|"};
         built.mobEffect = IdMap{"1:30:0|"};
         built.staticBiomes = NameIdMap{
             "minecraft:badlands:37;minecraft:badlands_plateau:39;minecraft:beach:16;minecraft:birch_forest:27;"

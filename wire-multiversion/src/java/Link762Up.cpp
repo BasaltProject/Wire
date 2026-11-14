@@ -18,6 +18,7 @@ constexpr std::int32_t kMapChunk = 36;
 constexpr std::int32_t kUpdateLight = 39;
 constexpr std::int32_t kLogin = 40;
 constexpr std::int32_t kOpenSignEditor = 49;
+constexpr std::int32_t kEndCombat = 54;
 constexpr std::int32_t kDeathCombat = 56;
 constexpr std::int32_t kRespawn = 65;
 constexpr std::int32_t kMultiBlockChange = 67;
@@ -173,6 +174,9 @@ bool Link762Up::clientbound(ProtocolState state, MutablePacket& packet) {
             copyBytes(in, out, 8);
             pv::writeBoolean(out, true);
         });
+        break;
+    case kEndCombat:
+        transform(packet, [](io::ByteBuffer& in, io::ByteBuffer& out) { copyVarInt(in, out); });
         break;
     case kDeathCombat:
         transform(packet, [](io::ByteBuffer& in, io::ByteBuffer& out) {

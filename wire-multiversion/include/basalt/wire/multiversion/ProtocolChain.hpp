@@ -139,11 +139,15 @@ public:
     void clientboundFrom(std::size_t first, protocol::ProtocolState state, std::int32_t id,
                          std::span<const std::uint8_t> body, const Emit& emit) const;
 
+    /// Runs only the links before `last`, so what comes out is still in the numbering of the version they reach.
+    void clientboundUpTo(std::size_t last, protocol::ProtocolState state, std::int32_t id,
+                         std::span<const std::uint8_t> body, const Emit& emit) const;
+
 private:
     std::vector<std::reference_wrapper<ProtocolLink>> links_;
-    void clientboundAt(std::size_t first, protocol::ProtocolState state, std::int32_t id, std::int32_t nativeId,
-                       std::span<const std::uint8_t> body, const Emit& emit, bool resumed = false,
-                       MutablePacket::Spawn spawn = MutablePacket::Spawn::kObject) const;
+    void clientboundAt(std::size_t first, std::size_t last, protocol::ProtocolState state, std::int32_t id,
+                       std::int32_t nativeId, std::span<const std::uint8_t> body, const Emit& emit,
+                       bool resumed = false, MutablePacket::Spawn spawn = MutablePacket::Spawn::kObject) const;
     void serverboundStepwise(protocol::ProtocolState state, std::size_t remaining, std::int32_t id,
                              std::span<const std::uint8_t> body, const Emit& emit) const;
 

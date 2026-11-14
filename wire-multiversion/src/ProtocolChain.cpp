@@ -4,6 +4,7 @@
 #include <basalt/wire/nbt/NbtTag.hpp>
 #include <basalt/wire/protocol/configuration/ConfigurationPackets.hpp>
 
+#include <algorithm>
 #include <cstdint>
 #include <tuple>
 
@@ -219,10 +220,15 @@ void ProtocolChain::clientbound(protocol::ProtocolState state, std::int32_t id, 
 
 void ProtocolChain::clientboundFrom(std::size_t first, protocol::ProtocolState state, std::int32_t id,
                                     std::span<const std::uint8_t> body, const Emit& emit) const {
-    clientboundAt(first, state, id, id, body, emit);
+    clientboundAt(first, links_.size(), state, id, id, body, emit);
 }
 
-void ProtocolChain::clientboundAt(std::size_t first, protocol::ProtocolState state, std::int32_t id,
+void ProtocolChain::clientboundUpTo(std::size_t last, protocol::ProtocolState state, std::int32_t id,
+                                    std::span<const std::uint8_t> body, const Emit& emit) const {
+    clientboundAt(0, std::min(last, links_.size()), state, id, id, body, emit);
+}
+
+void ProtocolChain::clientboundAt(std::size_t first, std::size_t last, protocol::ProtocolState state, std::int32_t id,
                                   std::int32_t nativeId, std::span<const std::uint8_t> body, const Emit& emit,
                                   bool resumed, MutablePacket::Spawn spawn) const {
     MutablePacket packet;
@@ -232,7 +238,8 @@ void ProtocolChain::clientboundAt(std::size_t first, protocol::ProtocolState sta
     std::vector<std::tuple<std::size_t, std::int32_t, std::vector<std::uint8_t>>> later;
     std::vector<std::pair<std::size_t, MutablePacket::Continued>> continued;
 
-    if (first == 0 && !resumed && content_ != nullptr && !content_->clientbound(state, packet)) {
+    if (first == 0 && !resumed && last == links_.size() && content_ != nullptr &&
+        !content_->clientbound(state, packet)) {
         return;
     }
     for (MutablePacket::Continued& next : packet.continued) {
@@ -247,7 +254,7 @@ void ProtocolChain::clientboundAt(std::size_t first, protocol::ProtocolState sta
 
     std::int32_t current = packet.id;
     bool dropped = false;
-    for (std::size_t index = first; index < links_.size(); ++index) {
+    for (std::size_t index = first; index < last; ++index) {
         ProtocolLink& link = links_[index];
         if (!dropped && !stripRegistry(state, packet, link)) {
             dropped = true;
@@ -289,7 +296,7 @@ void ProtocolChain::clientboundAt(std::size_t first, protocol::ProtocolState sta
         }
     }
 
-    if (!dropped && tail_ != nullptr) {
+    if (!dropped && tail_ != nullptr && last == links_.size()) {
         packet.id = current;
         dropped = !tail_->clientbound(state, packet);
         current = packet.id;
@@ -306,10 +313,10 @@ void ProtocolChain::clientboundAt(std::size_t first, protocol::ProtocolState sta
         emit(extraId, extraBody);
     }
     for (const auto& [from, laterId, laterBody] : later) {
-        clientboundFrom(from, state, laterId, laterBody, emit);
+        clientboundAt(from, last, state, laterId, laterId, laterBody, emit);
     }
     for (const auto& [from, next] : continued) {
-        clientboundAt(from, state, next.id, next.nativeId, next.body, emit, true, next.spawn);
+        clientboundAt(from, last, state, next.id, next.nativeId, next.body, emit, true, next.spawn);
     }
 }
 

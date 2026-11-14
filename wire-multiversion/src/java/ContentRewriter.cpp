@@ -2,6 +2,7 @@
 #include <basalt/wire/multiversion/java/AdvancementLayouts.hpp>
 #include <basalt/wire/multiversion/java/BlockEntityStates.hpp>
 #include <basalt/wire/multiversion/java/BlockEntityTypes.hpp>
+#include <basalt/wire/multiversion/java/ClickItems.hpp>
 #include <basalt/wire/multiversion/java/ContentRewriter.hpp>
 #include <basalt/wire/multiversion/java/LegacyItemTags.hpp>
 #include <basalt/wire/multiversion/java/LegacyStacks.hpp>
@@ -21,6 +22,7 @@
 #include <basalt/wire/protocol/play/CommandPackets.hpp>
 #include <basalt/wire/protocol/play/EntityData.hpp>
 #include <basalt/wire/protocol/play/EntityPackets.hpp>
+#include <basalt/wire/protocol/play/InventoryPackets.hpp>
 #include <basalt/wire/protocol/play/ItemComponent.hpp>
 #include <basalt/wire/protocol/play/MapPackets.hpp>
 #include <basalt/wire/protocol/play/PlayPackets.hpp>
@@ -600,6 +602,9 @@ const IdLookup* ContentRewriter::lookupFor(const std::string& registryId) const 
 }
 
 bool ContentRewriter::serverbound(ProtocolState state, MutablePacket& packet) {
+    if (state == ProtocolState::Play && packet.nativeId() == play::ServerboundContainerClickPacket::kId) {
+        return renumberClickItems(packet.body, tables_->item);
+    }
     if (state != ProtocolState::Play || packet.nativeId() != play::ServerboundSetCreativeModeSlotPacket::kId) {
         return true;
     }

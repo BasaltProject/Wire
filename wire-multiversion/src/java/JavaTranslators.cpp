@@ -4,16 +4,27 @@
 #include <basalt/wire/multiversion/java/Link107.hpp>
 #include <basalt/wire/multiversion/java/Link109.hpp>
 #include <basalt/wire/multiversion/java/Link110.hpp>
+#include <basalt/wire/multiversion/java/Link110Up.hpp>
+#include <basalt/wire/multiversion/java/Link19Up.hpp>
 #include <basalt/wire/multiversion/java/Link210.hpp>
+#include <basalt/wire/multiversion/java/Link210Up.hpp>
+#include <basalt/wire/multiversion/java/Link316Up.hpp>
 #include <basalt/wire/multiversion/java/Link338.hpp>
+#include <basalt/wire/multiversion/java/Link338Up.hpp>
 #include <basalt/wire/multiversion/java/Link340.hpp>
+#include <basalt/wire/multiversion/java/Link340Up.hpp>
 #include <basalt/wire/multiversion/java/Link404.hpp>
+#include <basalt/wire/multiversion/java/Link404Up.hpp>
 #include <basalt/wire/multiversion/java/Link47.hpp>
+#include <basalt/wire/multiversion/java/Link47Up.hpp>
 #include <basalt/wire/multiversion/java/Link485.hpp>
 #include <basalt/wire/multiversion/java/Link490.hpp>
 #include <basalt/wire/multiversion/java/Link498.hpp>
+#include <basalt/wire/multiversion/java/Link498Up.hpp>
 #include <basalt/wire/multiversion/java/Link578.hpp>
+#include <basalt/wire/multiversion/java/Link578Up.hpp>
 #include <basalt/wire/multiversion/java/Link736.hpp>
+#include <basalt/wire/multiversion/java/Link736Up.hpp>
 #include <basalt/wire/multiversion/java/Link754.hpp>
 #include <basalt/wire/multiversion/java/Link754Up.hpp>
 #include <basalt/wire/multiversion/java/Link755.hpp>
@@ -61,6 +72,7 @@
 #include <basalt/wire/multiversion/java/LoginRewriter.hpp>
 #include <basalt/wire/multiversion/java/Registries764.hpp>
 #include <basalt/wire/multiversion/java/RenumberingLink.hpp>
+#include <basalt/wire/multiversion/java/SlotLinks.hpp>
 #include <basalt/wire/multiversion/java/Stacks113.hpp>
 #include <basalt/wire/multiversion/java/Tables107.hpp>
 #include <basalt/wire/multiversion/java/Tables108.hpp>
@@ -111,6 +123,7 @@
 #include <basalt/wire/multiversion/java/Tables774.hpp>
 #include <basalt/wire/multiversion/java/Tables775.hpp>
 #include <basalt/wire/multiversion/java/Tables776.hpp>
+#include <basalt/wire/multiversion/java/TradeLinks.hpp>
 #include <basalt/wire/multiversion/java/UpEntityData.hpp>
 
 #include <algorithm>
@@ -251,7 +264,7 @@ std::unique_ptr<ProtocolLink> climbing(const VersionTables& upward, std::int32_t
     }
 }
 
-constexpr std::array<UpEntry, 23> kUpLinks = {{
+constexpr std::array<UpEntry, 38> kUpLinks = {{
     {protocolVersions::kV26_2, &tables776, &climbing<Link776Up>},
     {protocolVersions::kV26_1, &tables775, &climbing<Link775Up>},
     {protocolVersions::kV1_21_11, &tables774, &climbing<Link774Up>},
@@ -275,11 +288,43 @@ constexpr std::array<UpEntry, 23> kUpLinks = {{
     {protocolVersions::kV1_17_1, &tables756, &climbing<Link756Up>},
     {protocolVersions::kV1_17, &tables755, &climbing<Link755Up>},
     {protocolVersions::kV1_16_4, &tables754, &climbing<Link754Up>},
+    {protocolVersions::kV1_16_3, &tables753, &climbing<RenumberingLink>},
+    {protocolVersions::kV1_16_2, &tables751, &climbing<RenumberingLink>},
+    {protocolVersions::kV1_16_1, &tables736, &climbing<Link736Up>},
+    {protocolVersions::kV1_16, &tables735, &climbing<RenumberingLink>},
+    {protocolVersions::kV1_15_2, &tables578, &climbing<Link578Up>},
+    {protocolVersions::kV1_15_1, &tables575, &climbing<RenumberingLink>},
+    {protocolVersions::kV1_15, &tables573, &climbing<RenumberingLink>},
+    {protocolVersions::kV1_14_4, &tables498, &climbing<Link498Up>},
+    {protocolVersions::kV1_14_3, &tables490, &climbing<Link490Up>},
+    {protocolVersions::kV1_14_2, &tables485, &climbing<RenumberingLink>},
+    {protocolVersions::kV1_14_1, &tables480, &climbing<Link480Up>},
+    {protocolVersions::kV1_14, &tables477, &climbing<RenumberingLink>},
+    {protocolVersions::kV1_13_2, &tables404, &climbing<Link404Up>},
+    {protocolVersions::kV1_13_1, &tables401, &climbing<Link401Up>},
+    {protocolVersions::kV1_13, &tables393, &climbing<Link393Up>},
+}};
+
+/// Below 1.13 the chain is 1.13's with these in front, each making its server look like the one above it; newest first.
+constexpr std::array<UpEntry, 11> kFlatteningLinks = {{
+    {protocolVersions::kV1_12_2, &tables340, &climbing<Link340Up>},
+    {protocolVersions::kV1_12_1, &tables338, &climbing<Link338Up>},
+    {protocolVersions::kV1_12, &tables335, &climbing<RenumberingLink>},
+    {protocolVersions::kV1_11_1, &tables316, &climbing<Link316Up>},
+    {protocolVersions::kV1_11, &tables315, &climbing<RenumberingLink>},
+    {protocolVersions::kV1_10, &tables210, &climbing<Link210Up>},
+    {protocolVersions::kV1_9_4, &tables110, &climbing<Link110Up>},
+    {protocolVersions::kV1_9_2, &tables109, &climbing<Link109Up>},
+    {protocolVersions::kV1_9_1, &tables108, &climbing<RenumberingLink>},
+    {protocolVersions::kV1_9, &tables107, &climbing<Link107Up>},
+    {protocolVersions::kV1_8, &tables47, &climbing<Link47Up>},
 }};
 
 class UpChain final : public JavaChain {
 public:
     UpChain(std::span<const UpEntry> used, std::int32_t backendVersion, std::int32_t clientVersion) {
+        const bool flattened = backendVersion < protocolVersions::kV1_13;
+        const std::int32_t shaped = flattened ? protocolVersions::kV1_13 : backendVersion;
         upward_.reserve(used.size());
         std::int32_t newer = clientVersion;
         for (const UpEntry& entry : used) {
@@ -289,16 +334,32 @@ public:
         std::ranges::reverse(upward_);
         std::vector<std::reference_wrapper<const VersionTables>> tables(upward_.begin(), upward_.end());
         composed_ = std::make_unique<ComposedTables>(tables);
-        if (backendVersion < protocolVersions::kV1_21_5) {
+        if (shaped < protocolVersions::kV1_21_5) {
             composed_->dataComponentType = ComposedIdMap{};
         }
-        content_ =
-            std::make_unique<ContentRewriter>(*composed_, nullptr, protocolVersions::kNative,
-                                              std::vector<std::int32_t>{}, backendVersion >= protocolVersions::kV26_1);
-        tail_ = std::make_unique<UpEntityData>(*content_, *composed_, backendVersion);
+        content_ = std::make_unique<ContentRewriter>(*composed_, nullptr, protocolVersions::kNative,
+                                                     std::vector<std::int32_t>{}, shaped >= protocolVersions::kV26_1);
+        tail_ = std::make_unique<UpEntityData>(*content_, *composed_, shaped);
         std::vector<std::reference_wrapper<ProtocolLink>> refs;
+        if (flattened) {
+            std::int32_t above = protocolVersions::kV1_13;
+            for (const UpEntry& entry : kFlatteningLinks) {
+                if (entry.version < backendVersion) {
+                    break;
+                }
+                flattening_.push_back(invertedTables(entry.tables(), above));
+                above = entry.version;
+            }
+            for (std::size_t index = flattening_.size(); index > 0; --index) {
+                links_.push_back(kFlatteningLinks[index - 1].make(flattening_[index - 1], shaped));
+                refs.emplace_back(*links_.back());
+            }
+        }
         for (std::size_t index = 0; index < used.size(); ++index) {
-            links_.push_back(used[used.size() - 1 - index].make(upward_[index], backendVersion));
+            const UpEntry& entry = used[used.size() - 1 - index];
+            // What a server answers a shift-click with changed in 1.11, so this link is told the real version.
+            const bool real = entry.version == protocolVersions::kV1_16_4;
+            links_.push_back(entry.make(upward_[index], real ? backendVersion : shaped));
             refs.emplace_back(*links_.back());
         }
         chain_ = std::make_unique<ProtocolChain>(std::move(refs), nullptr, tail_.get(), true);
@@ -308,6 +369,7 @@ public:
 
 private:
     std::vector<VersionTables> upward_;
+    std::vector<VersionTables> flattening_;
     std::unique_ptr<ComposedTables> composed_;
     std::unique_ptr<ContentRewriter> content_;
     std::unique_ptr<UpEntityData> tail_;
@@ -340,21 +402,27 @@ const std::set<std::int32_t>& upSupported() {
         for (const UpEntry& entry : kUpLinks) {
             reachable.insert(entry.version);
         }
+        for (const UpEntry& entry : kFlatteningLinks) {
+            reachable.insert(entry.version);
+        }
         return reachable;
     }();
     return versions;
 }
 
 std::unique_ptr<JavaChain> upChainFor(std::int32_t backendProtocol, std::int32_t clientProtocol) {
+    const bool flattened = std::ranges::any_of(
+        kFlatteningLinks, [backendProtocol](const UpEntry& entry) { return entry.version == backendProtocol; });
+    const std::int32_t reached = flattened ? protocolVersions::kV1_13 : backendProtocol;
     std::size_t first = 0;
     while (first < kUpLinks.size() && kUpLinks[first].version >= clientProtocol) {
         first++;
     }
     std::size_t used = first;
-    while (used < kUpLinks.size() && kUpLinks[used].version >= backendProtocol) {
+    while (used < kUpLinks.size() && kUpLinks[used].version >= reached) {
         used++;
     }
-    if (used == first || kUpLinks[used - 1].version != backendProtocol) {
+    if (used == first || kUpLinks[used - 1].version != reached) {
         return nullptr;
     }
     return std::make_unique<UpChain>(std::span{kUpLinks}.subspan(first, used - first), backendProtocol, clientProtocol);
@@ -393,6 +461,22 @@ std::unique_ptr<JavaChain> chainFor(std::int32_t protocol, const SubstitutionLab
         used++;
     }
     return std::make_unique<Chain>(std::span{kLinks}.first(used), labels, protocol);
+}
+
+std::int32_t particleAs(std::int32_t protocol, std::int32_t from, std::int32_t id) {
+    if (protocol >= from) {
+        return id;
+    }
+    for (const LinkEntry& entry : kLinks) {
+        if (entry.version >= from) {
+            continue;
+        }
+        id = entry.tables().particleType.map(id);
+        if (id == IdMap::kNone || entry.version <= protocol) {
+            return id;
+        }
+    }
+    return id;
 }
 
 std::int32_t blockStateAs(std::int32_t protocol, std::int32_t nativeState) {

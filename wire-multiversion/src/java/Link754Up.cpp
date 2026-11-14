@@ -60,7 +60,6 @@ constexpr std::int32_t kServerContainerAck = 0x07;
 
 constexpr std::int32_t kWorldHeight = 256;
 constexpr std::int32_t kPongInventoryBit = 1 << 30;
-constexpr std::int32_t kMaxClickSlots = 128;
 constexpr std::array<std::string_view, 4> kTagRegistries = {"minecraft:block", "minecraft:item", "minecraft:fluid",
                                                             "minecraft:entity_type"};
 
@@ -85,25 +84,6 @@ void addHeights(nbt::NbtTag& codec) {
             addHeight(*element);
         }
     }
-}
-
-void copyStack(io::ByteBuffer& in, io::ByteBuffer& out) {
-    const std::uint8_t present = in.readByte();
-    out.writeByte(present);
-    if (present == 0) {
-        return;
-    }
-    pv::varInt::write(out, pv::varInt::read(in));
-    out.writeByte(in.readByte());
-    const auto tag = readNamedNbt(in);
-    if (!in.failed()) {
-        out.writeBytes(tag->raw);
-    }
-}
-
-void skipStack(io::ByteBuffer& in) {
-    io::ByteBuffer sink;
-    copyStack(in, sink);
 }
 
 void writeBitMask(io::ByteBuffer& out, std::int32_t mask) {
@@ -145,6 +125,7 @@ bool Link754Up::clientbound(ProtocolState state, MutablePacket& packet) {
     if (state != ProtocolState::Play) {
         return true;
     }
+    clicks_.clientbound(packet.id, packet.body);
     io::ByteBuffer in = io::ByteBuffer::wrap(packet.body);
     io::ByteBuffer out;
     switch (packet.id) {
@@ -349,22 +330,8 @@ bool Link754Up::serverbound(ProtocolState state, MutablePacket& packet) {
         return true;
     }
     if (packet.id == kPlayClick) {
-        out.writeByte(in.readByte());
-        out.writeShort(in.readShort());
-        out.writeByte(in.readByte());
-        out.writeShort(0);
-        const std::int32_t mode = pv::varInt::read(in);
-        pv::varInt::write(out, mode);
-        const std::int32_t changed = pv::readCollectionSize(in, 1);
-        for (std::int32_t index = 0; index < std::min(changed, kMaxClickSlots) && !in.failed(); ++index) {
-            static_cast<void>(in.readShort());
-            skipStack(in);
-        }
-        if (mode == 1 || mode == 5) {
-            skipStack(in);
-            out.writeByte(0);
-        } else {
-            copyStack(in, out);
+        if (!clicks_.click(in, out)) {
+            return false;
         }
     } else {
         return true;

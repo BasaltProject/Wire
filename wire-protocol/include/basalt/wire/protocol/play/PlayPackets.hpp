@@ -43,6 +43,9 @@ inline constexpr std::int32_t kPlayerLoadedId = 0x2c;
 
 inline constexpr std::int32_t kPunchId = 0x2e;
 
+/// Tags sent again during play: the same body as the configuration packet.
+inline constexpr std::int32_t kUpdateTagsId = 0x89;
+
 struct PlayerPositionPacket {
     static constexpr std::int32_t kId = 0x49;
 

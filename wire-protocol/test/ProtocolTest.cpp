@@ -384,6 +384,14 @@ TEST_CASE("the simple play packets round trip") {
     explosion.write(explosionBuffer);
     CHECK(*ExplodePacket::read(explosionBuffer) == explosion);
 
+    SetCursorItemPacket cursor;
+    cursor.item = WireItemStack{};
+    cursor.item->itemId = 900;
+    cursor.item->count = 3;
+    io::ByteBuffer cursorBuffer;
+    cursor.write(cursorBuffer);
+    CHECK(*SetCursorItemPacket::read(cursorBuffer) == cursor);
+
     explosion.knockbackX = 0.5;
     explosion.knockbackY = 1.0;
     explosion.knockbackZ = -0.25;

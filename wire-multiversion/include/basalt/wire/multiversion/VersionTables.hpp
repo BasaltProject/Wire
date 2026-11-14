@@ -89,6 +89,8 @@ struct VersionTables {
     IdMap upEntityType{""};
     /// Below 1.14 an object spawns by a number of its own, which this maps to where a link has one.
     std::optional<IdMap> objectType;
+    /// A whole climbing table, for a step whose inverse is not a function of the descending one.
+    std::optional<IdMap> explicitUpEntityType;
     IdMap attribute{"0:2147483647:0|"};
     IdMap dataComponentType{"0:2147483647:0|"};
     IdMap menu{"0:2147483647:0|"};

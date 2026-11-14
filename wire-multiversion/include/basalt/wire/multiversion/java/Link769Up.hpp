@@ -1,5 +1,6 @@
 #pragma once
 
+#include <basalt/wire/multiversion/java/ComponentClicks.hpp>
 #include <basalt/wire/multiversion/java/RenumberingLink.hpp>
 #include <basalt/wire/multiversion/java/Stack769.hpp>
 
@@ -19,6 +20,8 @@ public:
 private:
     std::int32_t messageIndex_ = 0;
     stack769::Source source_;
+    std::int32_t backend_;
+    ComponentClicks clicks_;
 };
 
 } // namespace basalt::wire::multiversion::java

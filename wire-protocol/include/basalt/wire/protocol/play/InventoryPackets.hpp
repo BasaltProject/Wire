@@ -68,6 +68,18 @@ struct ContainerSetSlotPacket {
     friend bool operator==(const ContainerSetSlotPacket&, const ContainerSetSlotPacket&) = default;
 };
 
+/// What the player holds on the cursor, outside any container.
+struct SetCursorItemPacket {
+    static constexpr std::int32_t kId = 0x62;
+
+    std::optional<WireItemStack> item;
+
+    void write(io::ByteBuffer& buffer) const;
+    [[nodiscard]] static std::optional<SetCursorItemPacket> read(io::ByteBuffer& buffer);
+
+    friend bool operator==(const SetCursorItemPacket&, const SetCursorItemPacket&) = default;
+};
+
 /// Which hotbar slot the player is holding, server to client.
 struct SetHeldSlotPacket {
     static constexpr std::int32_t kId = 0x6b;

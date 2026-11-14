@@ -1,5 +1,7 @@
 #include <basalt/wire/common/json/Json.hpp>
+#include <basalt/wire/multiversion/ProtocolVersions.hpp>
 #include <basalt/wire/multiversion/java/CommandParsers.hpp>
+#include <basalt/wire/multiversion/java/JavaTranslators.hpp>
 #include <basalt/wire/multiversion/java/Link764Up.hpp>
 #include <basalt/wire/nbt/NbtTag.hpp>
 #include <basalt/wire/protocol/ProtocolBuffer.hpp>
@@ -7,6 +9,7 @@
 #include <basalt/wire/text/ComponentJson.hpp>
 #include <basalt/wire/text/ComponentNbt.hpp>
 
+#include <algorithm>
 #include <array>
 #include <cstdint>
 #include <string>
@@ -29,6 +32,11 @@ constexpr std::int32_t kCommands = 17;
 constexpr std::int32_t kDisconnect = 27;
 constexpr std::int32_t kDisguisedChat = 28;
 constexpr std::int32_t kGameEvent = 32;
+constexpr std::int32_t kExplode = 30;
+constexpr std::int32_t kInteractionKeep = 0;
+constexpr std::int32_t kInteractionDestroy = 1;
+constexpr std::int32_t kExplosionParticle765 = 23;
+constexpr std::int32_t kExplosionEmitterParticle765 = 22;
 constexpr std::int32_t kInitializeBorder = 35;
 constexpr std::int32_t kLogin = 41;
 constexpr std::int32_t kMapItemData = 42;
@@ -323,6 +331,12 @@ void transform(MutablePacket& packet, Block&& block) {
 
 } // namespace
 
+Link764Up::Link764Up(const VersionTables& upward, std::int32_t backendVersion)
+    : RenumberingLink(upward),
+      smallExplosion_(javaTranslators::particleAs(backendVersion, protocolVersions::kV1_20_3, kExplosionParticle765)),
+      largeExplosion_(
+          javaTranslators::particleAs(backendVersion, protocolVersions::kV1_20_3, kExplosionEmitterParticle765)) {}
+
 bool Link764Up::clientbound(ProtocolState state, MutablePacket& packet) {
     if (state == ProtocolState::Configuration) {
         if (packet.id == kConfigDisconnect) {
@@ -356,6 +370,20 @@ bool Link764Up::clientbound(ProtocolState state, MutablePacket& packet) {
     case kSubtitle:
     case kTitle:
         transform(packet, [](io::ByteBuffer& in, io::ByteBuffer& out) { convertComponent(in, out); });
+        break;
+    case kExplode:
+        // parity: what 1.20.3 sends for a plain explosion, which breaks blocks only when it lists some.
+        transform(packet, [this](io::ByteBuffer& in, io::ByteBuffer& out) {
+            copyBytes(in, out, 3 * 8 + 4);
+            const std::int32_t count = pv::varInt::read(in);
+            pv::varInt::write(out, count);
+            copyBytes(in, out, static_cast<std::size_t>(std::max(count, 0)) * 3 + 3 * 4);
+            pv::varInt::write(out, count > 0 ? kInteractionDestroy : kInteractionKeep);
+            pv::varInt::write(out, smallExplosion_);
+            pv::varInt::write(out, largeExplosion_);
+            pv::writeString(out, "minecraft:entity.generic.explode");
+            pv::writeBoolean(out, false);
+        });
         break;
     case kSystemChat:
         transform(packet, [](io::ByteBuffer& in, io::ByteBuffer& out) {
