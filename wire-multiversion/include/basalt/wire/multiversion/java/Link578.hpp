@@ -19,6 +19,7 @@ public:
 private:
     static void rewriteLogin(MutablePacket& packet);
     static void rewriteRespawn(MutablePacket& packet);
+    static void toGlobalEntity(MutablePacket& packet);
     static void dropSender(MutablePacket& packet);
     /// Every number is the same; only where its bits sit changes.
     static void repackChunk(MutablePacket& packet);

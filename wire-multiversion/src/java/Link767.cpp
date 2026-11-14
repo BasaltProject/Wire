@@ -1,6 +1,7 @@
 #include <basalt/wire/common/SafeInt.hpp>
 #include <basalt/wire/multiversion/java/Link767.hpp>
 #include <basalt/wire/multiversion/java/LoginFields.hpp>
+#include <basalt/wire/multiversion/java/PlayerInfoActions.hpp>
 #include <basalt/wire/protocol/ProtocolBuffer.hpp>
 #include <basalt/wire/protocol/VarInt.hpp>
 #include <basalt/wire/protocol/login/LoginPackets.hpp>
@@ -10,6 +11,7 @@
 #include <basalt/wire/protocol/play/PlayerStatePackets.hpp>
 #include <basalt/wire/protocol/play/RecipePackets.hpp>
 #include <basalt/wire/protocol/play/SimplePackets.hpp>
+#include <basalt/wire/protocol/play/WorldPackets.hpp>
 
 #include <cmath>
 #include <cstdint>
@@ -18,6 +20,13 @@ namespace basalt::wire::multiversion::java {
 namespace {
 
 namespace play = protocol::play;
+
+constexpr std::size_t kCursorBytes = 3 * sizeof(float);
+
+/// parity: ServerboundClientTickEndPacket and the four ServerboundMovePlayerPacket kinds, numbered as this server does.
+constexpr std::int32_t kClientTickEnd = 13;
+constexpr std::int32_t kMovePlayerPos = 30;
+constexpr std::int32_t kMovePlayerStatusOnly = 33;
 using protocol::ProtocolState;
 
 constexpr std::int32_t kTeleportEntity767 = 112;
@@ -45,6 +54,25 @@ bool Link767::clientbound(ProtocolState state, MutablePacket& packet) {
         return true;
     }
     switch (packet.nativeId()) {
+    case play::PlayerInfoUpdatePacket::kId:
+        // 1.21.2 added the order in the tab list.
+        playerInfoActions::drop(packet, play::PlayerInfoUpdatePacket::kUpdateListOrder);
+        break;
+    case play::SetTimePacket::kId: {
+        // Before 1.21.2 a stopped clock was a negative time of day, not a flag after it.
+        io::ByteBuffer input = io::ByteBuffer::wrap(packet.body);
+        const std::int64_t gameTime = input.readLong();
+        const std::int64_t dayTime = input.readLong();
+        const bool ticking = protocol::readBoolean(input);
+        if (input.failed()) {
+            return true;
+        }
+        encode(packet, [&](io::ByteBuffer& output) {
+            output.writeLong(gameTime);
+            output.writeLong(ticking ? dayTime : (dayTime == 0 ? -1 : -dayTime));
+        });
+        break;
+    }
     case play::LoginPlayPacket::kId: {
         const LoginFields login = decode(packet, [](io::ByteBuffer& in) { return LoginFields::read(in, false, true); });
         encode(packet, [&](io::ByteBuffer& out) { login.write(out, false, false); });
@@ -127,6 +155,23 @@ bool Link767::clientbound(ProtocolState state, MutablePacket& packet) {
 }
 
 bool Link767::serverbound(ProtocolState state, MutablePacket& packet) {
+    if (state == ProtocolState::Play && packet.nativeId() >= kMovePlayerPos &&
+        packet.nativeId() <= kMovePlayerStatusOnly) {
+        // 1.21.2 ends each client tick with a packet of its own; a client before it moves at most once a tick.
+        packet.extras.emplace_back(kClientTickEnd, std::vector<std::uint8_t>{});
+    }
+    if (state == ProtocolState::Play && packet.nativeId() == play::ServerboundUseItemOnPacket::kId) {
+        // 1.21.2 says whether the click landed on the world border, after whether it was inside the block.
+        rewrite(packet, [](io::ByteBuffer& input, io::ByteBuffer& output) {
+            protocol::varInt::write(output, protocol::varInt::read(input));
+            output.writeLong(input.readLong());
+            protocol::varInt::write(output, protocol::varInt::read(input));
+            output.writeBytes(input.readSpan(kCursorBytes + 1));
+            protocol::writeBoolean(output, false);
+            output.writeBytes(input.readable());
+        });
+        return true;
+    }
     if (state == ProtocolState::Play && (packet.nativeId() == play::ContainerClosePacket::kServerboundId ||
                                          packet.nativeId() == play::ServerboundContainerClickPacket::kId)) {
         widenContainer(packet);

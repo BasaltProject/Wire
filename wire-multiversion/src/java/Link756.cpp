@@ -1,7 +1,13 @@
+#include <basalt/wire/multiversion/ProtocolVersions.hpp>
+#include <basalt/wire/multiversion/java/BlockEntityTypes.hpp>
+#include <basalt/wire/multiversion/java/JavaTranslators.hpp>
 #include <basalt/wire/multiversion/java/Link756.hpp>
+#include <basalt/wire/multiversion/java/NamedBlockEntities.hpp>
+#include <basalt/wire/multiversion/java/NamedNbt.hpp>
 #include <basalt/wire/protocol/ProtocolBuffer.hpp>
 #include <basalt/wire/protocol/VarInt.hpp>
 #include <basalt/wire/protocol/play/BitStorage.hpp>
+#include <basalt/wire/protocol/play/BlockEntityPackets.hpp>
 #include <basalt/wire/protocol/play/PlayPackets.hpp>
 #include <basalt/wire/protocol/play/WorldPackets.hpp>
 
@@ -28,6 +34,15 @@ constexpr int kBiomeMaxIndirectBits = 3;
 constexpr int kSmallestPalette = 4;
 
 constexpr std::size_t kBitsPerWord = 64;
+
+constexpr std::int32_t kColumnSide = 16;
+constexpr std::int32_t kColumnMask = 15;
+
+[[nodiscard]] std::int32_t lightId() {
+    static const std::int32_t id = javaTranslators::packetIdAt(protocolVersions::kV1_17_1, ProtocolState::Play, true,
+                                                               play::UpdateLightPacket::kId);
+    return id;
+}
 
 void setBit(std::vector<std::int64_t>& mask, std::size_t index) {
     const std::size_t word = index / kBitsPerWord;
@@ -120,13 +135,16 @@ bool Link756::clientbound(ProtocolState state, MutablePacket& packet) {
         dropSimulationDistance(packet);
         return true;
     }
+    if (packet.nativeId() == play::BlockEntityDataPacket::kId) {
+        return nameBlockEntity(packet);
+    }
     if (packet.nativeId() != play::MapChunkPacket::kId) {
         return true;
     }
     io::ByteBuffer input = io::ByteBuffer::wrap(packet.body);
     const std::int32_t x = input.readInt();
     const std::int32_t z = input.readInt();
-    const nbt::NbtTag heightmaps = protocol::readAnonymousNbt(input);
+    const nbt::NbtTag heightmaps = readNamedTag(input);
     const std::int32_t sectionBytes = protocol::varInt::read(input);
     io::ByteBuffer sections =
         io::ByteBuffer::wrap(input.readBytes(static_cast<std::size_t>(sectionBytes < 0 ? 0 : sectionBytes)));
@@ -150,6 +168,25 @@ bool Link756::clientbound(ProtocolState state, MutablePacket& packet) {
         index++;
     }
 
+    const std::int32_t blockEntities = protocol::varInt::read(input);
+    std::vector<nbt::NbtCompound> named;
+    for (std::int32_t i = 0; i < blockEntities && !input.failed(); ++i) {
+        const std::uint8_t packedXZ = input.readByte();
+        const std::int16_t y = input.readShort();
+        const std::int32_t type = protocol::varInt::read(input);
+        const nbt::NbtTag tag = readNamedTag(input);
+        named.push_back(namedBlockEntities::tagFor(type, tag.get<nbt::NbtCompound>(), x * kColumnSide + (packedXZ >> 4),
+                                                   y, z * kColumnSide + (packedXZ & kColumnMask)));
+    }
+    if (!input.failed()) {
+        // The light rode inside the chunk from 1.18; before, it is a packet of its own that follows the chunk.
+        io::ByteBuffer light;
+        protocol::varInt::write(light, x);
+        protocol::varInt::write(light, z);
+        light.writeBytes(input.readable());
+        packet.continued.push_back({lightId(), play::UpdateLightPacket::kId, light.toVector()});
+    }
+
     const std::vector<std::uint8_t> data = kept.toVector();
     encode(packet, [&](io::ByteBuffer& output) {
         output.writeInt(x);
@@ -158,14 +195,36 @@ bool Link756::clientbound(ProtocolState state, MutablePacket& packet) {
         for (const std::int64_t word : mask) {
             output.writeLong(word);
         }
-        protocol::writeAnonymousNbt(output, heightmaps);
+        writeNamedNbt(output, heightmaps);
         protocol::varInt::write(output, static_cast<std::int32_t>(biomes.size()));
         for (const std::int32_t biome : biomes) {
             protocol::varInt::write(output, biome);
         }
         protocol::varInt::write(output, static_cast<std::int32_t>(data.size()));
         output.writeBytes(data);
-        protocol::varInt::write(output, 0);
+        protocol::varInt::write(output, static_cast<std::int32_t>(named.size()));
+        for (const nbt::NbtCompound& tag : named) {
+            writeNamedNbt(output, nbt::NbtTag::ofCompound(tag));
+        }
+    });
+    return true;
+}
+
+bool Link756::nameBlockEntity(MutablePacket& packet) {
+    io::ByteBuffer input = io::ByteBuffer::wrap(packet.body);
+    const std::int64_t packed = input.readLong();
+    const std::int32_t type = protocol::varInt::read(input);
+    const nbt::NbtTag tag = readNamedTag(input);
+    const std::uint8_t action = namedBlockEntities::actionFor(blockEntityTypes::nativeName(type));
+    if (input.failed() || action == namedBlockEntities::kNoAction) {
+        return false;
+    }
+    const play::BlockPos pos = play::BlockPos::unpack(packed);
+    encode(packet, [&](io::ByteBuffer& output) {
+        output.writeLong(packed);
+        output.writeByte(action);
+        writeNamedNbt(output, nbt::NbtTag::ofCompound(
+                                  namedBlockEntities::tagFor(type, tag.get<nbt::NbtCompound>(), pos.x, pos.y, pos.z)));
     });
     return true;
 }
@@ -181,8 +240,8 @@ void Link756::dropSimulationDistance(MutablePacket& packet) {
     for (std::int32_t i = 0; i < worlds && !input.failed(); ++i) {
         worldNames.push_back(protocol::readString(input));
     }
-    const nbt::NbtTag codec = protocol::readAnonymousNbt(input);
-    const nbt::NbtTag dimension = protocol::readAnonymousNbt(input);
+    const nbt::NbtTag codec = readNamedTag(input);
+    const nbt::NbtTag dimension = readNamedTag(input);
     const std::string worldName = protocol::readString(input);
     const std::int64_t hashedSeed = input.readLong();
     const std::int32_t maxPlayers = protocol::varInt::read(input);
@@ -200,8 +259,8 @@ void Link756::dropSimulationDistance(MutablePacket& packet) {
         for (const std::string& name : worldNames) {
             protocol::writeString(output, name);
         }
-        protocol::writeAnonymousNbt(output, codec);
-        protocol::writeAnonymousNbt(output, dimension);
+        writeNamedNbt(output, codec);
+        writeNamedNbt(output, dimension);
         protocol::writeString(output, worldName);
         output.writeLong(hashedSeed);
         protocol::varInt::write(output, maxPlayers);

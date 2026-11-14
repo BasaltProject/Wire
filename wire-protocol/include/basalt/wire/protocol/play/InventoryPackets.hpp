@@ -29,6 +29,9 @@ struct WireItemStack {
 
     static void writeOptional(io::ByteBuffer& buffer, const std::optional<WireItemStack>& stack);
 
+    /// parity: ItemStack.OPTIONAL_UNTRUSTED_STREAM_CODEC, each component behind its length.
+    static void writeDelimited(io::ByteBuffer& buffer, const std::optional<WireItemStack>& stack);
+
     [[nodiscard]] static std::optional<WireItemStack> read(io::ByteBuffer& buffer);
 
     [[nodiscard]] static std::optional<WireItemStack> readDelimited(io::ByteBuffer& buffer);

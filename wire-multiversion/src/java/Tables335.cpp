@@ -20,11 +20,11 @@ const VersionTables& tables335() {
                         "64,65,66,67,68,69,70,71,72,73,74,75,76,77,78"});
         built.packets = PacketIdTables{std::move(built_clientbound), std::move(built_serverbound)};
         built.blockStates = IdMap{"0:4084:0|"};
+        built.entityType = IdMap{"1:6:0;9:2:0;23:1:0;27:3:0;31:2:0;34:4:0;50:24:0;75:5:0;90:14:0;105:1:0;120:1:0|"};
+        built.objectType = IdMap{"1:3:0;10:1:0;50:2:0;60:9:0;70:4:0;75:5:0;90:2:0;93:1:0|"};
         built.item = IdMap{"1:25:0;27:5:0;33:1:0;35:1:0;37:18:0;56:3:0;60:3:0;65:3:0;69:2:0;72:2:0;76:7:0;84:8:0;95:9:"
                            "0;106:9:0;116:1:0;119:5:0;125:7:0;133:7:0;141:3:0;145:4:0;151:25:0;179:2:0;182:11:0;198:6:"
                            "0;205:2:0;208:1:0;210:2:0;213:40:0;255:196:0;452:2:0;2256:12:0|"};
-        built.entityType = IdMap{
-            "1:6:0;9:2:0;16:2:0;23:1:0;27:3:0;31:2:0;34:4:0;40:1:0;43:5:0;50:24:0;75:5:0;90:14:0;105:1:0;120:1:0|"};
         built.mobEffect = IdMap{"1:27:0|"};
         built.staticBiomes = NameIdMap{
             "minecraft:badlands:37;minecraft:badlands_plateau:39;minecraft:beach:16;minecraft:birch_forest:27;"

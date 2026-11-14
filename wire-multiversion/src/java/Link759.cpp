@@ -1,3 +1,4 @@
+#include <basalt/wire/multiversion/java/ChatShapes.hpp>
 #include <basalt/wire/multiversion/java/Link759.hpp>
 #include <basalt/wire/protocol/ProtocolBuffer.hpp>
 #include <basalt/wire/protocol/VarInt.hpp>
@@ -29,6 +30,13 @@ bool Link759::clientbound(protocol::ProtocolState state, MutablePacket& packet) 
         protocol::writeString(output, json);
         protocol::varInt::write(output, overlay ? kGameInfo : kSystem);
     });
+    return true;
+}
+
+bool Link759::serverbound(protocol::ProtocolState state, MutablePacket& packet) {
+    if (state == protocol::ProtocolState::Play) {
+        chatShapes::to1_19_1(packet);
+    }
     return true;
 }
 

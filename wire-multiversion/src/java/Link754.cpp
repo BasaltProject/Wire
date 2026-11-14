@@ -1,9 +1,14 @@
 #include <basalt/wire/multiversion/java/Link754.hpp>
+#include <basalt/wire/multiversion/java/NamedNbt.hpp>
 #include <basalt/wire/protocol/ProtocolBuffer.hpp>
 #include <basalt/wire/protocol/VarInt.hpp>
 #include <basalt/wire/protocol/play/BitStorage.hpp>
+#include <basalt/wire/protocol/play/BlockEntityPackets.hpp>
 #include <basalt/wire/protocol/play/EntityPackets.hpp>
 #include <basalt/wire/protocol/play/HudPackets.hpp>
+#include <basalt/wire/protocol/play/InventoryPackets.hpp>
+#include <basalt/wire/protocol/play/PlayPackets.hpp>
+#include <basalt/wire/protocol/play/PlayerStatePackets.hpp>
 #include <basalt/wire/protocol/play/WorldPackets.hpp>
 
 #include <algorithm>
@@ -14,6 +19,8 @@ namespace basalt::wire::multiversion::java {
 namespace {
 
 namespace play = protocol::play;
+
+constexpr std::int32_t kRemoveEntities754 = 0x36;
 using protocol::ProtocolState;
 
 /// parity: `ServerboundClientInformationPacket`.
@@ -173,6 +180,34 @@ bool Link754::clientbound(ProtocolState state, MutablePacket& packet) {
         return cutChunk(packet);
     case play::UpdateLightPacket::kId:
         return cutLight(packet);
+    case play::BlockEntityDataPacket::kId: {
+        io::ByteBuffer input = io::ByteBuffer::wrap(packet.body);
+        const play::BlockPos pos = play::BlockPos::unpack(input.readLong());
+        return !input.failed() && pos.y >= 0 && pos.y <= kMaxY;
+    }
+    case play::RemoveEntitiesPacket::kId: {
+        // 1.17.0 removed one entity per packet; 1.16.5 takes a list again.
+        io::ByteBuffer input = io::ByteBuffer::wrap(packet.body);
+        const std::int32_t entityId = protocol::varInt::read(input);
+        if (input.failed()) {
+            return false;
+        }
+        packet.overrideId(kRemoveEntities754);
+        encode(packet, [&](io::ByteBuffer& output) {
+            protocol::varInt::write(output, 1);
+            protocol::varInt::write(output, entityId);
+        });
+        return true;
+    }
+    case play::PlayerPositionPacket::kId:
+        // 1.17 added whether to dismount after the teleport id, and an angle after the spawn position.
+        if (!packet.body.empty()) {
+            packet.body.pop_back();
+        }
+        break;
+    case play::SpawnPositionPacket::kId:
+        packet.body.resize(std::min(packet.body.size(), sizeof(std::int64_t)));
+        break;
     case play::ClientboundBlockUpdatePacket::kId: {
         const auto update =
             decode(packet, [](io::ByteBuffer& in) { return play::ClientboundBlockUpdatePacket::read(in); });
@@ -256,7 +291,7 @@ bool Link754::cutChunk(MutablePacket& packet) {
     const std::int32_t x = input.readInt();
     const std::int32_t z = input.readInt();
     const std::vector<std::int64_t> mask = readMask(input);
-    const nbt::NbtTag heightmaps = protocol::readAnonymousNbt(input);
+    const nbt::NbtTag heightmaps = readNamedTag(input);
     const std::int32_t biomeCount = protocol::varInt::read(input);
     std::vector<std::int32_t> biomes;
     biomes.reserve(std::min(static_cast<std::size_t>(biomeCount < 0 ? 0 : biomeCount), input.readableBytes()));
@@ -288,13 +323,23 @@ bool Link754::cutChunk(MutablePacket& packet) {
         index++;
     }
 
+    std::vector<nbt::NbtTag> blockEntities;
+    const std::int32_t entityCount = protocol::varInt::read(input);
+    for (std::int32_t i = 0; i < entityCount && !input.failed(); ++i) {
+        nbt::NbtTag tag = readNamedTag(input);
+        const nbt::NbtCompound* entity = tag.get<nbt::NbtCompound>();
+        if (entity != nullptr && entity->getInt("y") >= 0 && entity->getInt("y") <= kMaxY) {
+            blockEntities.push_back(std::move(tag));
+        }
+    }
+
     const std::vector<std::uint8_t> data = kept.toVector();
     encode(packet, [&](io::ByteBuffer& output) {
         output.writeInt(x);
         output.writeInt(z);
         protocol::writeBoolean(output, true);
         protocol::varInt::write(output, newMask);
-        protocol::writeAnonymousNbt(output, nbt::NbtTag::ofCompound(loweredHeightmaps(heightmaps)));
+        writeNamedNbt(output, nbt::NbtTag::ofCompound(loweredHeightmaps(heightmaps)));
         protocol::varInt::write(output, kBiomesIn1_16);
         for (std::int32_t i = 0; i < kBiomesIn1_16; ++i) {
             const auto source = static_cast<std::size_t>(kFirstSection * kBiomesPerSection + i);
@@ -302,7 +347,10 @@ bool Link754::cutChunk(MutablePacket& packet) {
         }
         protocol::varInt::write(output, static_cast<std::int32_t>(data.size()));
         output.writeBytes(data);
-        protocol::varInt::write(output, 0);
+        protocol::varInt::write(output, static_cast<std::int32_t>(blockEntities.size()));
+        for (const nbt::NbtTag& tag : blockEntities) {
+            writeNamedNbt(output, tag);
+        }
     });
     return true;
 }
@@ -355,6 +403,27 @@ bool Link754::cutLight(MutablePacket& packet) {
 }
 
 bool Link754::serverbound(ProtocolState state, MutablePacket& packet) {
+    if (state == ProtocolState::Play && packet.nativeId() == play::ServerboundContainerClickPacket::kId) {
+        // The action number left with the confirmation 1.17 dropped; the stack the client predicted is not needed.
+        io::ByteBuffer input = io::ByteBuffer::wrap(packet.body);
+        const std::uint8_t container = input.readByte();
+        const std::int16_t slot = input.readShort();
+        const std::uint8_t button = input.readByte();
+        static_cast<void>(input.readShort());
+        const std::int32_t mode = protocol::varInt::read(input);
+        if (input.failed()) {
+            return false;
+        }
+        encode(packet, [&](io::ByteBuffer& output) {
+            output.writeByte(container);
+            output.writeShort(slot);
+            output.writeByte(button);
+            protocol::varInt::write(output, mode);
+            protocol::varInt::write(output, 0);
+            protocol::writeBoolean(output, false);
+        });
+        return true;
+    }
     // What a client says about itself grew: 1.17 added whether it filters text.
     const bool settings =
         (state == ProtocolState::Configuration && packet.nativeId() == kClientInformationConfiguration) ||

@@ -118,8 +118,8 @@ struct PlayerInfoUpdatePacket {
     static constexpr std::uint8_t kUpdateListed = 1 << 3;
     static constexpr std::uint8_t kUpdateLatency = 1 << 4;
     static constexpr std::uint8_t kUpdateDisplayName = 1 << 5;
-    static constexpr std::uint8_t kUpdateHat = 1 << 6;
-    static constexpr std::uint8_t kUpdateListOrder = 1 << 7;
+    static constexpr std::uint8_t kUpdateListOrder = 1 << 6;
+    static constexpr std::uint8_t kUpdateHat = 1 << 7;
 
     static constexpr std::uint8_t kInitializing =
         kAddPlayer | kInitializeChat | kUpdateGameMode | kUpdateListed | kUpdateLatency;

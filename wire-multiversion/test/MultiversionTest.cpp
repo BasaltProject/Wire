@@ -10,6 +10,7 @@
 #include <basalt/wire/multiversion/java/JavaTranslators.hpp>
 #include <basalt/wire/multiversion/java/LoginFields.hpp>
 #include <basalt/wire/multiversion/java/LongMaskLight.hpp>
+#include <basalt/wire/multiversion/java/NamedNbt.hpp>
 #include <basalt/wire/multiversion/java/Stack769.hpp>
 #include <basalt/wire/multiversion/java/Tables775.hpp>
 #include <basalt/wire/nbt/NbtTag.hpp>
@@ -265,7 +266,7 @@ TEST_CASE("a chain renumbers a packet through every link and drops what has no n
     CHECK(sent[0].first == 0);
 }
 
-TEST_CASE("1.8 writes the kind and the index in one byte and leaves out what it has no kind for") {
+TEST_CASE("1.8 writes the kind and the index in one byte and each field as the kind it reads") {
     using basalt::wire::protocol::play::SetEntityDataPacket;
 
     const java::EntityDataRewriter rewriter{
@@ -277,7 +278,7 @@ TEST_CASE("1.8 writes the kind and the index in one byte and leaves out what it 
 
     const auto body = rewriter.rewrite(data, 5);
     REQUIRE(body.has_value());
-    CHECK(*body == std::vector<std::uint8_t>{0x01, 0x00, 0x21, 0x7F});
+    CHECK(*body == std::vector<std::uint8_t>{0x01, 0x00, 0x21, 0x21, 0x01, 0x2C, 0x7F});
 }
 
 namespace {
@@ -626,4 +627,140 @@ TEST_CASE("every version the gate admits has an unbroken road of links") {
         CHECK(java::javaTranslators::chainFor(version) != nullptr);
     }
     CHECK(java::javaTranslators::supported().contains(protocolVersions::kV1_8));
+}
+
+TEST_CASE("1.13 reads and writes a stack as a short id, a count and a named tag") {
+    namespace play = basalt::wire::protocol::play;
+    namespace buffer = basalt::wire::protocol;
+    using basalt::wire::io::ByteBuffer;
+    using basalt::wire::protocol::ProtocolState;
+
+    play::WireItemStack damaged{.itemId = 1, .count = 1};
+    damaged.components.emplace_back(play::dataComponent::kDamage, play::ItemComponent::Number{7});
+    play::ContainerSetContentPacket content;
+    content.items = {play::WireItemStack{.itemId = 1, .count = 5}, std::nullopt, damaged};
+    ByteBuffer body;
+    content.write(body);
+    const auto through = [&body](std::int32_t version) {
+        const std::unique_ptr<java::JavaChain> built = java::javaTranslators::chainFor(version);
+        REQUIRE(built != nullptr);
+        std::vector<std::uint8_t> out;
+        built->chain().clientbound(
+            ProtocolState::Play, play::ContainerSetContentPacket::kId, body.toVector(),
+            [&](std::int32_t, std::span<const std::uint8_t> bytes) { out.assign(bytes.begin(), bytes.end()); });
+        return out;
+    };
+    ByteBuffer flagged = ByteBuffer::wrap(through(protocolVersions::kV1_13_2));
+    flagged.skip(3);
+    REQUIRE(buffer::readBoolean(flagged));
+    const std::int32_t stone = buffer::varInt::read(flagged);
+
+    for (const std::int32_t version : {protocolVersions::kV1_13, protocolVersions::kV1_13_1}) {
+        ByteBuffer in = ByteBuffer::wrap(through(version));
+        CHECK(in.readByte() == 0);
+        CHECK(in.readShort() == 3);
+        CHECK(in.readShort() == stone);
+        CHECK(in.readByte() == 5);
+        CHECK(in.readByte() == 0);
+        CHECK(in.readShort() == -1);
+        CHECK(in.readShort() == stone);
+        CHECK(in.readByte() == 1);
+        const auto tag = java::readNamedNbt(in);
+        REQUIRE(tag.has_value());
+        const auto* compound = tag->tag.get<basalt::wire::nbt::NbtCompound>();
+        REQUIRE(compound != nullptr);
+        CHECK(compound->getInt("Damage") == 7);
+        CHECK_FALSE(in.failed());
+        CHECK(in.readableBytes() == 0);
+
+        const std::unique_ptr<java::JavaChain> built = java::javaTranslators::chainFor(version);
+        ByteBuffer creative;
+        creative.writeShort(36);
+        creative.writeShort(static_cast<std::int16_t>(stone));
+        creative.writeByte(2);
+        creative.writeByte(0);
+        std::optional<play::ServerboundSetCreativeModeSlotPacket> back;
+        built->chain().serverbound(ProtocolState::Play,
+                                   java::javaTranslators::packetIdAt(version, ProtocolState::Play, false,
+                                                                     play::ServerboundSetCreativeModeSlotPacket::kId),
+                                   creative.toVector(), [&](std::int32_t, std::span<const std::uint8_t> bytes) {
+                                       ByteBuffer native = ByteBuffer::wrap({bytes.begin(), bytes.end()});
+                                       back = play::ServerboundSetCreativeModeSlotPacket::read(native);
+                                   });
+        REQUIRE(back.has_value());
+        CHECK(back->slot == 36);
+        REQUIRE(back->item.has_value());
+        CHECK(back->item->itemId == 1);
+        CHECK(back->item->count == 2);
+    }
+}
+
+TEST_CASE("an older client's click reaches the server without the stacks it predicted") {
+    namespace play = basalt::wire::protocol::play;
+    namespace buffer = basalt::wire::protocol;
+    using basalt::wire::io::ByteBuffer;
+    using basalt::wire::protocol::ProtocolState;
+
+    ByteBuffer flagged;
+    flagged.writeByte(0);
+    flagged.writeShort(36);
+    flagged.writeByte(1);
+    flagged.writeShort(7);
+    buffer::varInt::write(flagged, 0);
+    buffer::writeBoolean(flagged, true);
+    buffer::varInt::write(flagged, 1);
+    flagged.writeByte(5);
+    flagged.writeByte(0);
+
+    for (const std::int32_t version : {protocolVersions::kV1_16_4, protocolVersions::kV1_13_2}) {
+        const std::unique_ptr<java::JavaChain> built = java::javaTranslators::chainFor(version);
+        REQUIRE(built != nullptr);
+        std::optional<play::ServerboundContainerClickPacket> click;
+        bool whole = false;
+        built->chain().serverbound(ProtocolState::Play,
+                                   java::javaTranslators::packetIdAt(version, ProtocolState::Play, false,
+                                                                     play::ServerboundContainerClickPacket::kId),
+                                   flagged.toVector(), [&](std::int32_t, std::span<const std::uint8_t> bytes) {
+                                       ByteBuffer native = ByteBuffer::wrap({bytes.begin(), bytes.end()});
+                                       click = play::ServerboundContainerClickPacket::read(native);
+                                       whole = native.readableBytes() == 0;
+                                   });
+        REQUIRE(click.has_value());
+        CHECK(whole);
+        CHECK(click->slot == 36);
+        CHECK(click->button == 1);
+        CHECK(click->mode == play::ServerboundContainerClickPacket::Mode::Pickup);
+        CHECK_FALSE(click->clientHasCarriedItem);
+    }
+}
+
+TEST_CASE("below 1.20.2 an NBT root carries an empty name") {
+    namespace play = basalt::wire::protocol::play;
+    using basalt::wire::io::ByteBuffer;
+    using basalt::wire::protocol::ProtocolState;
+
+    play::BlockEntityDataPacket sign;
+    sign.pos = {1, 2, 3};
+    sign.tag.emplace();
+    sign.tag->putInt("x", 1);
+    ByteBuffer body;
+    sign.write(body);
+
+    const auto through = [&body](std::int32_t version) {
+        const std::unique_ptr<java::JavaChain> built = java::javaTranslators::chainFor(version);
+        REQUIRE(built != nullptr);
+        std::vector<std::uint8_t> out;
+        built->chain().clientbound(
+            ProtocolState::Play, play::BlockEntityDataPacket::kId, body.toVector(),
+            [&](std::int32_t, std::span<const std::uint8_t> bytes) { out.assign(bytes.begin(), bytes.end()); });
+        return out;
+    };
+    const std::vector<std::uint8_t> named = through(protocolVersions::kV1_20);
+    REQUIRE(named.size() > 12);
+    CHECK(named[9] == 0x0A);
+    CHECK(named[10] == 0);
+    CHECK(named[11] == 0);
+    const std::vector<std::uint8_t> unnamed = through(protocolVersions::kV1_20_2);
+    REQUIRE(unnamed.size() == named.size() - 2);
+    CHECK(unnamed[9] == 0x0A);
 }

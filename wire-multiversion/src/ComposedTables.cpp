@@ -19,6 +19,15 @@ ComposedIdMap composeOne(std::span<const std::reference_wrapper<const VersionTab
     return ComposedIdMap{std::move(steps)};
 }
 
+ComposedIdMap composeObjects(std::span<const std::reference_wrapper<const VersionTables>> tables) {
+    std::vector<std::reference_wrapper<const IdMap>> steps;
+    steps.reserve(tables.size());
+    for (const VersionTables& table : tables) {
+        steps.emplace_back(table.objectType.has_value() ? *table.objectType : table.entityType);
+    }
+    return ComposedIdMap{std::move(steps)};
+}
+
 } // namespace
 
 std::int32_t ComposedIdMap::map(std::int32_t id) const {
@@ -60,7 +69,7 @@ std::int32_t ComposedIdMap::unmap(std::int32_t id) const {
 ComposedTables::ComposedTables(std::span<const std::reference_wrapper<const VersionTables>> tables)
     : blockStates(composeOne(tables, &VersionTables::blockStates)), block(composeOne(tables, &VersionTables::block)),
       item(composeOne(tables, &VersionTables::item)), particleType(composeOne(tables, &VersionTables::particleType)),
-      entityType(composeOne(tables, &VersionTables::entityType)),
+      entityType(composeOne(tables, &VersionTables::entityType)), objectType(composeObjects(tables)),
       attribute(composeOne(tables, &VersionTables::attribute)),
       dataComponentType(composeOne(tables, &VersionTables::dataComponentType)),
       menu(composeOne(tables, &VersionTables::menu)), mobEffect(composeOne(tables, &VersionTables::mobEffect)),

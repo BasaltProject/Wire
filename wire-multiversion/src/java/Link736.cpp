@@ -1,4 +1,5 @@
 #include <basalt/wire/multiversion/java/Link736.hpp>
+#include <basalt/wire/multiversion/java/NamedNbt.hpp>
 #include <basalt/wire/protocol/ProtocolBuffer.hpp>
 #include <basalt/wire/protocol/VarInt.hpp>
 #include <basalt/wire/protocol/play/PlayPackets.hpp>
@@ -102,12 +103,12 @@ void Link736::rewriteLogin(MutablePacket& packet) {
     for (std::int32_t i = 0; i < worlds && !input.failed(); ++i) {
         worldNames.push_back(protocol::readString(input));
     }
-    const nbt::NbtTag codecTag = protocol::readAnonymousNbt(input);
+    const nbt::NbtTag codecTag = readNamedTag(input);
     nbt::NbtCompound codec;
     if (const nbt::NbtCompound* parsed = codecTag.get<nbt::NbtCompound>()) {
         codec = *parsed;
     }
-    const nbt::NbtTag dimension = protocol::readAnonymousNbt(input);
+    const nbt::NbtTag dimension = readNamedTag(input);
     const std::string worldName = protocol::readString(input);
     const std::int64_t hashedSeed = input.readLong();
     const std::int32_t maxPlayers = protocol::varInt::read(input);
@@ -124,7 +125,7 @@ void Link736::rewriteLogin(MutablePacket& packet) {
         for (const std::string& name : worldNames) {
             protocol::writeString(output, name);
         }
-        protocol::writeAnonymousNbt(output, nbt::NbtTag::ofCompound(dimensionRegistry(codec)));
+        writeNamedNbt(output, nbt::NbtTag::ofCompound(dimensionRegistry(codec)));
         protocol::writeString(output, dimensionName(&codec, dimension));
         protocol::writeString(output, worldName);
         output.writeLong(hashedSeed);
@@ -135,7 +136,7 @@ void Link736::rewriteLogin(MutablePacket& packet) {
 
 void Link736::rewriteRespawn(MutablePacket& packet) const {
     io::ByteBuffer input = io::ByteBuffer::wrap(packet.body);
-    const nbt::NbtTag dimension = protocol::readAnonymousNbt(input);
+    const nbt::NbtTag dimension = readNamedTag(input);
     encode(packet, [&](io::ByteBuffer& output) {
         protocol::writeString(output, dimensionName(nullptr, dimension));
         output.writeBytes(input.readable());
@@ -162,7 +163,7 @@ void Link736::rewriteChunk(MutablePacket& packet) const {
     const std::int32_t z = input.readInt();
     const std::uint8_t fullChunk = input.readByte();
     const std::int32_t mask = protocol::varInt::read(input);
-    const nbt::NbtTag heightmaps = protocol::readAnonymousNbt(input);
+    const nbt::NbtTag heightmaps = readNamedTag(input);
     const std::int32_t count = protocol::varInt::read(input);
     std::vector<std::int32_t> biomeIds;
     biomeIds.reserve(std::min(static_cast<std::size_t>(count < 0 ? 0 : count), input.readableBytes()));
@@ -175,7 +176,7 @@ void Link736::rewriteChunk(MutablePacket& packet) const {
         output.writeByte(fullChunk);
         protocol::writeBoolean(output, true);
         protocol::varInt::write(output, mask);
-        protocol::writeAnonymousNbt(output, heightmaps);
+        writeNamedNbt(output, heightmaps);
         for (std::int32_t index = 0; index < kBiomesInChunk; ++index) {
             output.writeInt(biomeAt(biomeIds, static_cast<std::size_t>(index)));
         }

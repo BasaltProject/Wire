@@ -20,6 +20,7 @@ basalt_module(wire-protocol
         src/HudPackets.cpp
         src/InventoryPackets.cpp
         src/ItemComponent.cpp
+        src/ItemComponentSkip.cpp
         src/LoginPackets.cpp
         src/LoginPluginPackets.cpp
         src/LowPrecisionVec3.cpp

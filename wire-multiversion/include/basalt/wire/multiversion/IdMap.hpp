@@ -1,11 +1,41 @@
 #pragma once
 
+#include <atomic>
 #include <cstdint>
+#include <mutex>
 #include <string>
 #include <string_view>
 #include <vector>
 
 namespace basalt::wire::multiversion {
+
+/// Whether a table shared by every session has been parsed: several I/O threads can reach it first at once.
+class ParsedFlag {
+public:
+    ParsedFlag() = default;
+
+    ParsedFlag(const ParsedFlag& other) noexcept : value_(other.value_.load(std::memory_order_acquire)) {}
+
+    ParsedFlag& operator=(const ParsedFlag& other) noexcept {
+        value_.store(other.value_.load(std::memory_order_acquire), std::memory_order_release);
+        return *this;
+    }
+
+    ~ParsedFlag() = default;
+
+    explicit operator bool() const noexcept { return value_.load(std::memory_order_acquire); }
+
+    ParsedFlag& operator=(bool value) noexcept {
+        value_.store(value, std::memory_order_release);
+        return *this;
+    }
+
+    /// Held while parsing, so two threads never fill the same table.
+    [[nodiscard]] static std::mutex& lock() noexcept;
+
+private:
+    std::atomic<bool> value_{false};
+};
 
 class IdLookup {
 public:
@@ -52,7 +82,7 @@ private:
     mutable std::vector<std::int32_t> deltas_;
     mutable std::vector<std::int32_t> substituteFrom_;
     mutable std::vector<std::int32_t> substituteTo_;
-    mutable bool parsed_ = false;
+    mutable ParsedFlag parsed_;
 };
 
 class NameIdMap {
@@ -75,7 +105,7 @@ private:
     std::string encoded_;
     mutable std::vector<std::string> names_;
     mutable std::vector<std::int32_t> ids_;
-    mutable bool parsed_ = false;
+    mutable ParsedFlag parsed_;
 };
 
 /// A set of names, parsed on first use.
@@ -94,7 +124,7 @@ private:
 
     std::string encoded_;
     mutable std::vector<std::string> names_;
-    mutable bool parsed_ = false;
+    mutable ParsedFlag parsed_;
 };
 
 } // namespace basalt::wire::multiversion

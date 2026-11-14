@@ -1,11 +1,11 @@
 #include <basalt/wire/multiversion/java/Link776.hpp>
 #include <basalt/wire/multiversion/java/LoginFields.hpp>
 #include <basalt/wire/multiversion/java/LongMaskLight.hpp>
+#include <basalt/wire/multiversion/java/NativeParticles.hpp>
 #include <basalt/wire/protocol/ProtocolBuffer.hpp>
 #include <basalt/wire/protocol/VarInt.hpp>
 #include <basalt/wire/protocol/configuration/ConfigurationPackets.hpp>
 #include <basalt/wire/protocol/play/BlockEntityPackets.hpp>
-#include <basalt/wire/protocol/play/CommandPackets.hpp>
 #include <basalt/wire/protocol/play/EntityPackets.hpp>
 #include <basalt/wire/protocol/play/InventoryPackets.hpp>
 #include <basalt/wire/protocol/play/ParticleOptions.hpp>
@@ -45,16 +45,6 @@ constexpr std::int32_t kChangeDestroyDirection = 1;
 /// The brewing stand's total brew time and total fuel, the slots 26.3 added after the two it had.
 constexpr std::int16_t kFirstNewBrewingSlot = 2;
 
-/// The particle types that carry options, by this server's numbering.
-constexpr std::array<std::pair<std::int32_t, Shape>, 22> kParticleShapes = {{
-    {1, Shape::BlockState},      {2, Shape::BlockState},   {7, Shape::Geyser},  {8, Shape::GeyserBase},
-    {9, Shape::GeyserBase},      {10, Shape::Geyser},      {15, Shape::Number}, {21, Shape::Dust},
-    {22, Shape::DustTransition}, {23, Shape::Spell},       {28, Shape::Color},  {36, Shape::BlockState},
-    {46, Shape::Color},          {48, Shape::Number},      {52, Shape::Color},  {56, Shape::Spell},
-    {57, Shape::Item},           {58, Shape::Vibration},   {59, Shape::Trail},  {115, Shape::Delay},
-    {121, Shape::BlockState},    {125, Shape::BlockState},
-}};
-
 constexpr std::array<std::string_view, 3> kNewRegistries = {
     "minecraft:decorated_pot_pattern", "minecraft:block_transformer", "minecraft:worldgen/block_state_provider"};
 
@@ -64,30 +54,6 @@ constexpr std::array<std::string_view, 2> kNewPropertySets = {"minecraft:brewing
 constexpr std::array<std::string_view, 5> kDarkerOnOwnArmour = {"copper", "diamond", "gold", "iron", "netherite"};
 
 constexpr std::string_view kTrimPalettePrefix = "trim/";
-
-play::ArgumentParser olderArgument(const play::ArgumentParser& parser) {
-    namespace type = play::argumentType;
-    switch (parser.registryId()) {
-    case type::kDialog:
-        return play::ArgumentParser{55, parser.properties()};
-    case type::kUuid:
-        return play::ArgumentParser{56, parser.properties()};
-    case type::kContextFloatProvider:
-    case type::kContextIntProvider:
-    case type::kSlotSource:
-    case type::kFeature:
-    case type::kSwingAnimation:
-        return play::ArgumentParser{type::kBrigadierString, play::ArgumentParser::StringProperties{
-                                                                play::ArgumentParser::StringKind::QuotablePhrase}};
-    default:
-        return parser;
-    }
-}
-
-Shape shapeOf(std::int32_t nativeType) {
-    const auto found = std::ranges::find(kParticleShapes, nativeType, &std::pair<std::int32_t, Shape>::first);
-    return found == kParticleShapes.end() ? Shape::None : found->second;
-}
 
 void moveEntityDown(MutablePacket& packet, std::int32_t kind) {
     io::ByteBuffer input = io::ByteBuffer::wrap(packet.body);
@@ -379,19 +345,6 @@ bool Link776::clientbound(ProtocolState state, MutablePacket& packet) {
         }
         break;
     }
-    case play::CommandsPacket::kId: {
-        auto commands = decode(packet, [](io::ByteBuffer& in) { return play::CommandsPacket::read(in); });
-        if (!commands.has_value()) {
-            return true;
-        }
-        for (play::CommandNodeData& node : commands->nodes) {
-            if (node.parser.has_value()) {
-                node.parser = olderArgument(*node.parser);
-            }
-        }
-        encode(packet, [&](io::ByteBuffer& out) { commands->write(out); });
-        break;
-    }
     case play::UpdateRecipesPacket::kId:
         rewrite(packet, [](io::ByteBuffer& input, io::ByteBuffer& output) {
             struct Set {
@@ -474,7 +427,7 @@ bool Link776::configuration(MutablePacket& packet) const {
 void Link776::particles(MutablePacket& packet) const {
     rewrite(packet, [this](io::ByteBuffer& input, io::ByteBuffer& output) {
         const std::int32_t type = protocol::varInt::read(input);
-        const Shape shape = shapeOf(target_->particleType.unmap(type));
+        const Shape shape = nativeParticles::shapeOf(target_->particleType.unmap(type));
         std::optional<play::ParticleOptions> options;
         if (shape != Shape::None) {
             options = play::ParticleOptions::read(input, shape);

@@ -14,6 +14,8 @@ public:
 
     [[nodiscard]] bool clientbound(protocol::ProtocolState state, MutablePacket& packet) override;
 
+    [[nodiscard]] bool serverbound(protocol::ProtocolState state, MutablePacket& packet) override;
+
 private:
     struct PendingChunk {
         std::int32_t x = 0;

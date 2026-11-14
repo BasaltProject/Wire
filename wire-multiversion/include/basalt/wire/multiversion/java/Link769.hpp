@@ -15,7 +15,11 @@ public:
 
     [[nodiscard]] bool clientbound(protocol::ProtocolState state, MutablePacket& packet) override;
 
+    [[nodiscard]] bool serverbound(protocol::ProtocolState state, MutablePacket& packet) override;
+
 private:
+    static void toExperienceOrb(MutablePacket& packet);
+
     void writeOlderChunk(const protocol::play::MapChunkPacket& chunk, io::ByteBuffer& output);
 
     ChunkRewriter olderChunks_;

@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <map>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -86,6 +87,8 @@ struct VersionTables {
     IdMap particleType{"0:2147483647:0|"};
     IdMap entityType{"0:2147483647:0|"};
     IdMap upEntityType{""};
+    /// Below 1.14 an object spawns by a number of its own, which this maps to where a link has one.
+    std::optional<IdMap> objectType;
     IdMap attribute{"0:2147483647:0|"};
     IdMap dataComponentType{"0:2147483647:0|"};
     IdMap menu{"0:2147483647:0|"};

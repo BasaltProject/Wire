@@ -30,6 +30,9 @@ bool Link761::clientbound(protocol::ProtocolState state, MutablePacket& packet) 
     }
     switch (packet.nativeId()) {
     case play::SpawnEntityPacket::kId: {
+        if (packet.spawn == MutablePacket::Spawn::kExperienceOrb || packet.spawn == MutablePacket::Spawn::kPainting) {
+            return true;
+        }
         io::ByteBuffer input = io::ByteBuffer::wrap(packet.body);
         const std::int32_t entityId = protocol::varInt::read(input);
         const std::int64_t mostSignificant = input.readLong();

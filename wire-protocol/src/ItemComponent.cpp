@@ -1,3 +1,5 @@
+#include "ItemComponentSkip.hpp"
+
 #include <basalt/wire/protocol/ProtocolBuffer.hpp>
 #include <basalt/wire/protocol/play/ItemComponent.hpp>
 #include <basalt/wire/text/ComponentNbt.hpp>
@@ -154,10 +156,15 @@ std::optional<ItemComponent> ItemComponent::readPayload(io::ByteBuffer& buffer, 
         break;
     }
 
-    if (!length) {
+    if (length) {
+        return ItemComponent{id, Raw{buffer.readBytes(*length)}};
+    }
+    const auto payload = buffer.readable();
+    if (!componentSkip::skipPayload(buffer, id)) {
         return std::nullopt;
     }
-    return ItemComponent{id, Raw{buffer.readBytes(*length)}};
+    const auto bytes = payload.first(payload.size() - buffer.readableBytes());
+    return ItemComponent{id, Raw{{bytes.begin(), bytes.end()}}};
 }
 
 } // namespace basalt::wire::protocol::play

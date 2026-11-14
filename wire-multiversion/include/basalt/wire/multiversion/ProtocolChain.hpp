@@ -29,8 +29,22 @@ public:
 
     std::vector<std::pair<std::int32_t, std::vector<std::uint8_t>>> extras;
 
+    /// What a spawn is to the far end: before 1.19 a mob spawns apart, and some entities had a packet of their own.
+    enum class Spawn : std::uint8_t { kObject, kMob, kPainting, kExperienceOrb, kLightning };
+    Spawn spawn = Spawn::kObject;
+
     /// Like extras, but they run through the links after this one too, so they are in this link's output shape.
     std::vector<std::pair<std::int32_t, std::vector<std::uint8_t>>> forwarded;
+
+    /// Like forwarded, but the packet keeps the native id the links after this one recognise it by.
+    struct Continued {
+        std::int32_t id;
+        std::int32_t nativeId;
+        std::vector<std::uint8_t> body;
+        Spawn spawn = Spawn::kObject;
+    };
+
+    std::vector<Continued> continued;
 
     void reset(std::int32_t newId, std::int32_t newNativeId, std::vector<std::uint8_t> newBody);
 
@@ -83,8 +97,8 @@ public:
 
     [[nodiscard]] virtual bool serverbound(protocol::ProtocolState state, MutablePacket& packet) = 0;
 
-    /// Only in a chain that climbs: a packet the client has that the server has no id for, before ids are renumbered.
-    /// True when the link rewrote it as one of the server's, id included.
+    /// A serverbound packet the newer side has no id for, before ids are renumbered.
+    /// True when the link rewrote it as one of the newer side's, id included.
     [[nodiscard]] virtual bool serverboundForeign(protocol::ProtocolState, MutablePacket&) { return false; }
 };
 
@@ -127,6 +141,9 @@ public:
 
 private:
     std::vector<std::reference_wrapper<ProtocolLink>> links_;
+    void clientboundAt(std::size_t first, protocol::ProtocolState state, std::int32_t id, std::int32_t nativeId,
+                       std::span<const std::uint8_t> body, const Emit& emit, bool resumed = false,
+                       MutablePacket::Spawn spawn = MutablePacket::Spawn::kObject) const;
     void serverboundStepwise(protocol::ProtocolState state, std::size_t remaining, std::int32_t id,
                              std::span<const std::uint8_t> body, const Emit& emit) const;
 

@@ -185,8 +185,10 @@ void MutablePacket::reset(std::int32_t newId, std::int32_t newNativeId, std::vec
     nativeId_ = newNativeId;
     body = std::move(newBody);
     idOverridden_ = false;
+    spawn = Spawn::kObject;
     extras.clear();
     forwarded.clear();
+    continued.clear();
 }
 
 bool MutablePacket::takeOverride() noexcept {
@@ -217,21 +219,33 @@ void ProtocolChain::clientbound(protocol::ProtocolState state, std::int32_t id, 
 
 void ProtocolChain::clientboundFrom(std::size_t first, protocol::ProtocolState state, std::int32_t id,
                                     std::span<const std::uint8_t> body, const Emit& emit) const {
+    clientboundAt(first, state, id, id, body, emit);
+}
+
+void ProtocolChain::clientboundAt(std::size_t first, protocol::ProtocolState state, std::int32_t id,
+                                  std::int32_t nativeId, std::span<const std::uint8_t> body, const Emit& emit,
+                                  bool resumed, MutablePacket::Spawn spawn) const {
     MutablePacket packet;
     Carried carried;
-    packet.reset(id, id, std::vector<std::uint8_t>{body.begin(), body.end()});
+    packet.reset(id, nativeId, std::vector<std::uint8_t>{body.begin(), body.end()});
+    packet.spawn = spawn;
     std::vector<std::tuple<std::size_t, std::int32_t, std::vector<std::uint8_t>>> later;
+    std::vector<std::pair<std::size_t, MutablePacket::Continued>> continued;
 
-    if (first == 0 && content_ != nullptr && !content_->clientbound(state, packet)) {
+    if (first == 0 && !resumed && content_ != nullptr && !content_->clientbound(state, packet)) {
         return;
     }
+    for (MutablePacket::Continued& next : packet.continued) {
+        continued.emplace_back(first, std::move(next));
+    }
+    packet.continued.clear();
     if (!packet.extras.empty()) {
         carried.insert(carried.end(), std::make_move_iterator(packet.extras.begin()),
                        std::make_move_iterator(packet.extras.end()));
         packet.extras.clear();
     }
 
-    std::int32_t current = id;
+    std::int32_t current = packet.id;
     bool dropped = false;
     for (std::size_t index = first; index < links_.size(); ++index) {
         ProtocolLink& link = links_[index];
@@ -245,6 +259,10 @@ void ProtocolChain::clientboundFrom(std::size_t first, protocol::ProtocolState s
             later.emplace_back(index + 1, forwardedId, std::move(forwardedBody));
         }
         packet.forwarded.clear();
+        for (MutablePacket::Continued& next : packet.continued) {
+            continued.emplace_back(index + 1, std::move(next));
+        }
+        packet.continued.clear();
         if (!dropped) {
             stripUnknownMembers(state, packet, link);
         }
@@ -279,12 +297,19 @@ void ProtocolChain::clientboundFrom(std::size_t first, protocol::ProtocolState s
 
     if (!dropped) {
         emit(current, packet.body);
+        // The client's edge may follow a packet with others, already in the client's numbering.
+        for (const auto& [extraId, extraBody] : packet.extras) {
+            emit(extraId, extraBody);
+        }
     }
     for (const auto& [extraId, extraBody] : carried) {
         emit(extraId, extraBody);
     }
     for (const auto& [from, laterId, laterBody] : later) {
         clientboundFrom(from, state, laterId, laterBody, emit);
+    }
+    for (const auto& [from, next] : continued) {
+        clientboundAt(from, state, next.id, next.nativeId, next.body, emit, true, next.spawn);
     }
 }
 
@@ -307,9 +332,17 @@ void ProtocolChain::serverbound(protocol::ProtocolState state, std::int32_t id, 
     }
     std::int32_t current = id;
     for (auto link = links_.rbegin(); link != links_.rend(); ++link) {
-        const std::int32_t mapped = link->get().packets().toNative(state, current);
+        std::int32_t mapped = link->get().packets().toNative(state, current);
         if (mapped == PacketIdMap::kDropped) {
-            return;
+            // A packet the link's newer side has no id for, which the link may rebuild as one of that side's.
+            MutablePacket foreign;
+            foreign.reset(current, current, std::vector<std::uint8_t>{body.begin(), body.end()});
+            if (!link->get().serverboundForeign(state, foreign)) {
+                return;
+            }
+            mapped = foreign.id;
+            shaped = std::move(foreign.body);
+            body = shaped;
         }
         current = mapped;
     }

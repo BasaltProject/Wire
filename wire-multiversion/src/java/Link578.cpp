@@ -1,8 +1,11 @@
 #include <basalt/wire/multiversion/CompactBitStorage.hpp>
+#include <basalt/wire/multiversion/java/LegacyStacks.hpp>
 #include <basalt/wire/multiversion/java/Link578.hpp>
+#include <basalt/wire/multiversion/java/NamedNbt.hpp>
 #include <basalt/wire/protocol/ProtocolBuffer.hpp>
 #include <basalt/wire/protocol/VarInt.hpp>
 #include <basalt/wire/protocol/play/BitStorage.hpp>
+#include <basalt/wire/protocol/play/EntityData.hpp>
 #include <basalt/wire/protocol/play/EntityPackets.hpp>
 #include <basalt/wire/protocol/play/PlayPackets.hpp>
 #include <basalt/wire/protocol/play/PlayerStatePackets.hpp>
@@ -34,6 +37,10 @@ constexpr std::int32_t kSlotMask = 0x7F;
 constexpr std::int32_t kMoreSlots = 0x80;
 
 constexpr std::size_t kModifierBytes = 16 + 8 + 1;
+
+constexpr std::int32_t kAddGlobalEntity578 = 2;
+/// parity: `ClientboundAddGlobalEntityPacket`, whose only kind was the lightning bolt.
+constexpr std::uint8_t kLightningKind = 1;
 
 /// parity: the keys of `Attributes` before 1.16 gave them a namespace and snake case.
 constexpr std::array<std::pair<std::string_view, std::string_view>, 13> kLegacyNames = {{
@@ -141,14 +148,7 @@ void repackContainer(io::ByteBuffer& input, io::ByteBuffer& output) {
 
 [[nodiscard]] std::vector<std::uint8_t> itemBytes(io::ByteBuffer& input) {
     io::ByteBuffer output;
-    const std::uint8_t present = input.readByte();
-    output.writeByte(present);
-    if (present == 0) {
-        return output.toVector();
-    }
-    protocol::varInt::write(output, protocol::varInt::read(input));
-    output.writeByte(input.readByte());
-    protocol::writeAnonymousNbt(output, protocol::readAnonymousNbt(input));
+    static_cast<void>(legacyStacks::copyFlagged(input, output, legacyStacks::Root::kNamed, legacyStacks::Root::kNamed));
     return output.toVector();
 }
 
@@ -179,6 +179,11 @@ bool Link578::clientbound(ProtocolState state, MutablePacket& packet) {
         break;
     case play::UpdateAttributesPacket::kId:
         renameAttributes(packet);
+        break;
+    case play::SpawnEntityPacket::kId:
+        if (packet.spawn == MutablePacket::Spawn::kLightning) {
+            toGlobalEntity(packet);
+        }
         break;
     default:
         break;
@@ -218,7 +223,7 @@ void Link578::rewriteLogin(MutablePacket& packet) {
     for (std::int32_t i = 0; i < worlds && !input.failed(); ++i) {
         static_cast<void>(protocol::readString(input));
     }
-    static_cast<void>(protocol::readAnonymousNbt(input));
+    static_cast<void>(readNamedTag(input));
     const std::string dimension = protocol::readString(input);
     static_cast<void>(protocol::readString(input));
     const std::int64_t hashedSeed = input.readLong();
@@ -242,6 +247,28 @@ void Link578::rewriteLogin(MutablePacket& packet) {
         output.writeByte(reducedDebugInfo);
         output.writeByte(respawnScreen);
     });
+}
+
+void Link578::toGlobalEntity(MutablePacket& packet) {
+    io::ByteBuffer input = io::ByteBuffer::wrap(packet.body);
+    const std::int32_t entityId = protocol::varInt::read(input);
+    static_cast<void>(input.readLong());
+    static_cast<void>(input.readLong());
+    static_cast<void>(protocol::varInt::read(input));
+    const double x = input.readDouble();
+    const double y = input.readDouble();
+    const double z = input.readDouble();
+    if (input.failed()) {
+        return;
+    }
+    packet.overrideId(kAddGlobalEntity578);
+    io::ByteBuffer output;
+    protocol::varInt::write(output, entityId);
+    output.writeByte(kLightningKind);
+    output.writeDouble(x);
+    output.writeDouble(y);
+    output.writeDouble(z);
+    packet.body = output.toVector();
 }
 
 void Link578::rewriteRespawn(MutablePacket& packet) {
@@ -284,7 +311,7 @@ void Link578::repackChunk(MutablePacket& packet) {
     const std::uint8_t fullChunk = input.readByte();
     static_cast<void>(input.readByte());
     const std::int32_t mask = protocol::varInt::read(input);
-    const nbt::NbtTag heightmaps = protocol::readAnonymousNbt(input);
+    const nbt::NbtTag heightmaps = readNamedTag(input);
     std::vector<std::int32_t> biomes;
     biomes.reserve(kBiomesInChunk);
     for (std::int32_t i = 0; i < kBiomesInChunk && !input.failed(); ++i) {
@@ -309,7 +336,7 @@ void Link578::repackChunk(MutablePacket& packet) {
         output.writeInt(z);
         output.writeByte(fullChunk);
         protocol::varInt::write(output, mask);
-        protocol::writeAnonymousNbt(output, compactHeightmaps(heightmaps));
+        writeNamedNbt(output, compactHeightmaps(heightmaps));
         for (const std::int32_t biome : biomes) {
             output.writeInt(biome);
         }
@@ -360,7 +387,8 @@ void Link578::splitEquipment(MutablePacket& packet) const {
         protocol::varInt::write(body, entityId);
         protocol::varInt::write(body, slots[index].first);
         body.writeBytes(slots[index].second);
-        packet.extras.emplace_back(packets().toOlder(ProtocolState::Play, packet.id), body.toVector());
+        packet.continued.push_back(
+            {packets().toOlder(ProtocolState::Play, packet.id), play::SetEquipmentPacket::kId, body.toVector()});
     }
 }
 

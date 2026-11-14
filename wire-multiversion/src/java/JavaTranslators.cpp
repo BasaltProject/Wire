@@ -5,9 +5,12 @@
 #include <basalt/wire/multiversion/java/Link109.hpp>
 #include <basalt/wire/multiversion/java/Link110.hpp>
 #include <basalt/wire/multiversion/java/Link210.hpp>
+#include <basalt/wire/multiversion/java/Link338.hpp>
 #include <basalt/wire/multiversion/java/Link340.hpp>
 #include <basalt/wire/multiversion/java/Link404.hpp>
 #include <basalt/wire/multiversion/java/Link47.hpp>
+#include <basalt/wire/multiversion/java/Link485.hpp>
+#include <basalt/wire/multiversion/java/Link490.hpp>
 #include <basalt/wire/multiversion/java/Link498.hpp>
 #include <basalt/wire/multiversion/java/Link578.hpp>
 #include <basalt/wire/multiversion/java/Link736.hpp>
@@ -43,6 +46,7 @@
 #include <basalt/wire/multiversion/java/Link768Up.hpp>
 #include <basalt/wire/multiversion/java/Link769.hpp>
 #include <basalt/wire/multiversion/java/Link769Up.hpp>
+#include <basalt/wire/multiversion/java/Link770.hpp>
 #include <basalt/wire/multiversion/java/Link770Up.hpp>
 #include <basalt/wire/multiversion/java/Link772.hpp>
 #include <basalt/wire/multiversion/java/Link772Up.hpp>
@@ -55,7 +59,9 @@
 #include <basalt/wire/multiversion/java/Link776.hpp>
 #include <basalt/wire/multiversion/java/Link776Up.hpp>
 #include <basalt/wire/multiversion/java/LoginRewriter.hpp>
+#include <basalt/wire/multiversion/java/Registries764.hpp>
 #include <basalt/wire/multiversion/java/RenumberingLink.hpp>
+#include <basalt/wire/multiversion/java/Stacks113.hpp>
 #include <basalt/wire/multiversion/java/Tables107.hpp>
 #include <basalt/wire/multiversion/java/Tables108.hpp>
 #include <basalt/wire/multiversion/java/Tables109.hpp>
@@ -140,7 +146,7 @@ constexpr std::array<LinkEntry, 49> kLinks = {{
     {protocolVersions::kV1_21_9, &tables773, &plain<Link773>},
     {protocolVersions::kV1_21_7, &tables772, &plain<Link772>},
     {protocolVersions::kV1_21_6, &tables771, &plain<RenumberingLink>},
-    {protocolVersions::kV1_21_5, &tables770, &plain<RenumberingLink>},
+    {protocolVersions::kV1_21_5, &tables770, &plain<Link770>},
     {protocolVersions::kV1_21_4, &tables769, &plain<Link769>},
     {protocolVersions::kV1_21_2, &tables768, &plain<Link768>},
     {protocolVersions::kV1_21, &tables767, &plain<Link767>},
@@ -165,15 +171,15 @@ constexpr std::array<LinkEntry, 49> kLinks = {{
     {protocolVersions::kV1_15_1, &tables575, &plain<RenumberingLink>},
     {protocolVersions::kV1_15, &tables573, &plain<RenumberingLink>},
     {protocolVersions::kV1_14_4, &tables498, &plain<Link498>},
-    {protocolVersions::kV1_14_3, &tables490, &plain<RenumberingLink>},
-    {protocolVersions::kV1_14_2, &tables485, &plain<RenumberingLink>},
+    {protocolVersions::kV1_14_3, &tables490, &plain<Link490>},
+    {protocolVersions::kV1_14_2, &tables485, &plain<Link485>},
     {protocolVersions::kV1_14_1, &tables480, &plain<RenumberingLink>},
     {protocolVersions::kV1_14, &tables477, &plain<RenumberingLink>},
     {protocolVersions::kV1_13_2, &tables404, &plain<Link404>},
     {protocolVersions::kV1_13_1, &tables401, &plain<RenumberingLink>},
     {protocolVersions::kV1_13, &tables393, &plain<RenumberingLink>},
     {protocolVersions::kV1_12_2, &tables340, &plain<Link340>},
-    {protocolVersions::kV1_12_1, &tables338, &plain<RenumberingLink>},
+    {protocolVersions::kV1_12_1, &tables338, &plain<Link338>},
     {protocolVersions::kV1_12, &tables335, &plain<RenumberingLink>},
     {protocolVersions::kV1_11_1, &tables316, &plain<RenumberingLink>},
     {protocolVersions::kV1_11, &tables315, &plain<RenumberingLink>},
@@ -199,6 +205,15 @@ public:
         composed_ = std::make_unique<ComposedTables>(tables);
         content_ = std::make_unique<ContentRewriter>(*composed_, labels, protocol, std::move(versions));
         login_ = std::make_unique<LoginRewriter>(protocol);
+        PacketContentRewriter* tail = login_.get();
+        if (protocol == protocolVersions::kV1_13 || protocol == protocolVersions::kV1_13_1) {
+            stacks_ = std::make_unique<Stacks113>(protocol, *login_);
+            tail = stacks_.get();
+        }
+        if (protocol == protocolVersions::kV1_20_2 || protocol == protocolVersions::kV1_20_3) {
+            registries_ = std::make_unique<Registries764>(*login_);
+            tail = registries_.get();
+        }
         links_.reserve(used.size());
         std::vector<std::reference_wrapper<ProtocolLink>> refs;
         refs.reserve(used.size());
@@ -206,7 +221,7 @@ public:
             links_.push_back(entry.make(entry.tables(), *composed_));
             refs.emplace_back(*links_.back());
         }
-        chain_ = std::make_unique<ProtocolChain>(std::move(refs), content_.get(), login_.get());
+        chain_ = std::make_unique<ProtocolChain>(std::move(refs), content_.get(), tail);
     }
 
     [[nodiscard]] const ProtocolChain& chain() const override { return *chain_; }
@@ -215,6 +230,8 @@ private:
     std::unique_ptr<ComposedTables> composed_;
     std::unique_ptr<ContentRewriter> content_;
     std::unique_ptr<LoginRewriter> login_;
+    std::unique_ptr<Stacks113> stacks_;
+    std::unique_ptr<Registries764> registries_;
     std::vector<std::unique_ptr<ProtocolLink>> links_;
     std::unique_ptr<ProtocolChain> chain_;
 };

@@ -12,9 +12,21 @@ basalt_module(wire-multiversion
         src/SubstitutionLabels.cpp
         src/java/AdvancementLayouts.cpp
         src/java/ContentRewriter.cpp
+        src/java/EntitySpawns.cpp
+        src/java/OlderPaintings.cpp
         src/java/MapLayouts.cpp
         src/java/Stack765.cpp
         src/java/Stack769.cpp
+        src/java/Stacks113.cpp
+        src/java/BlockEntityStates.cpp
+        src/java/BlockEntityTypes.cpp
+        src/java/NamedBlockEntities.cpp
+        src/java/ChatShapes.cpp
+        src/java/MerchantShapes.cpp
+        src/java/NativeParticles.cpp
+        src/java/PlayerInfoActions.cpp
+        src/java/Registries764.cpp
+        src/java/RecipeDisplays.cpp
         src/java/RegistryMembers.cpp
         src/java/RegistryMembersLookup.cpp
         src/java/JavaTranslators.cpp
@@ -72,8 +84,11 @@ basalt_module(wire-multiversion
         src/java/Link109.cpp
         src/java/Link110.cpp
         src/java/Link210.cpp
+        src/java/Link338.cpp
         src/java/Link340.cpp
         src/java/Link404.cpp
+        src/java/Link485.cpp
+        src/java/Link490.cpp
         src/java/Link498.cpp
         src/java/Link578.cpp
         src/java/Link736.cpp
@@ -93,6 +108,7 @@ basalt_module(wire-multiversion
         src/java/Link767.cpp
         src/java/Link768.cpp
         src/java/Link769.cpp
+        src/java/Link770.cpp
         src/java/Link772.cpp
         src/java/Link773.cpp
         src/java/Link774.cpp
@@ -135,10 +151,17 @@ basalt_module(wire-multiversion
         src/java/LongMaskLight.cpp
         src/java/LoginFields.cpp
         src/java/LoginRewriter.cpp
+        src/java/EntityDataExtras.cpp
         src/java/EntityDataIndexes.cpp
         src/java/EntityDataRewriter.cpp
         src/java/EntityDataTypes.cpp
         src/java/LegacyStacks.cpp
+        src/java/LegacyItemTags.cpp
+        src/java/OlderCommands.cpp
+        src/java/OlderParticles.cpp
+        src/java/OlderComponents.cpp
+        src/java/OlderBlockEntities.cpp
+        src/java/StackComponents1_21_4.cpp
         src/VersionTables.cpp
     DEPENDS basalt::wire-common basalt::wire-io basalt::wire-nbt basalt::wire-protocol basalt::wire-text
 )

@@ -14,6 +14,7 @@ public:
 
 private:
     static void dropPortalCooldown(MutablePacket& packet, bool afterLogin);
+    static void trustChunkEdges(MutablePacket& packet);
 };
 
 } // namespace basalt::wire::multiversion::java

@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <charconv>
 #include <cstdint>
+#include <mutex>
 
 namespace basalt::wire::multiversion {
 namespace {
@@ -30,7 +31,16 @@ std::vector<std::string_view> split(std::string_view text, char separator) {
 
 } // namespace
 
+std::mutex& ParsedFlag::lock() noexcept {
+    static std::mutex shared;
+    return shared;
+}
+
 void IdMap::parse() const {
+    const std::scoped_lock guard{ParsedFlag::lock()};
+    if (parsed_) {
+        return;
+    }
     const std::string_view encoded{encoded_};
     const std::size_t pipe = encoded.find('|');
     const std::string_view runs = pipe == std::string_view::npos ? encoded : encoded.substr(0, pipe);
@@ -142,6 +152,10 @@ const IdMap& IdMap::identity() {
 }
 
 void NameIdMap::parse() const {
+    const std::scoped_lock guard{ParsedFlag::lock()};
+    if (parsed_) {
+        return;
+    }
     for (const std::string_view entry : split(encoded_, ';')) {
         const std::size_t colon = entry.rfind(':');
         names_.emplace_back(entry.substr(0, colon));
@@ -186,6 +200,10 @@ const NameIdMap& NameIdMap::empty_() {
 }
 
 void NameSet::parse() const {
+    const std::scoped_lock guard{ParsedFlag::lock()};
+    if (parsed_) {
+        return;
+    }
     for (const std::string_view name : split(encoded_, ';')) {
         names_.emplace_back(name);
     }

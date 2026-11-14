@@ -435,6 +435,7 @@ void potionContentsOlder(Buffer& in, Buffer& out) {
     opt<vi>(in, out);
     opt<int4>(in, out);
     list<mobEffect>(in, out);
+    pv::writeBoolean(out, false);
 }
 
 struct Entry {
@@ -485,10 +486,10 @@ constexpr std::array<Entry, 67> kEntries = {{
     {kNoComponent, vi},
     {kNoComponent, list<nestedStack>},
     {kNoComponent, list<nestedStack>},
-    {kNoComponent, potionContents},
+    {53, potionContents},
     {kNoComponent, list<stewEffect>},
-    {kNoComponent, list<filterableString>},
-    {kNoComponent, writtenBook},
+    {56, list<filterableString>},
+    {57, writtenBook},
     {kNoComponent, trim},
     {kNoComponent, nbtTag},
     {kNoComponent, nbtTag},
@@ -568,7 +569,7 @@ bool lookup(std::int32_t id, Entry& entry) {
         } else if (oldest && index == kAttributeModifiersIndex) {
             entry = Entry{kNoComponent, attributeModifiersOldest};
         } else if (index == kPotionContents) {
-            entry = Entry{kNoComponent, potionContentsOlder};
+            entry = Entry{53, potionContentsOlder};
         } else if (index == kInstrument) {
             entry = Entry{kNoComponent, instrumentOlder};
         }

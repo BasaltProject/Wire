@@ -17,6 +17,8 @@ public:
 private:
     /// The simulation distance is 1.18's, and a client of 1.17.1 reads what follows it instead.
     static void dropSimulationDistance(MutablePacket& packet);
+
+    [[nodiscard]] static bool nameBlockEntity(MutablePacket& packet);
 };
 
 } // namespace basalt::wire::multiversion::java

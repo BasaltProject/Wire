@@ -1,7 +1,19 @@
 #include <basalt/wire/multiversion/ProtocolVersions.hpp>
 #include <basalt/wire/multiversion/java/AdvancementLayouts.hpp>
+#include <basalt/wire/multiversion/java/BlockEntityStates.hpp>
+#include <basalt/wire/multiversion/java/BlockEntityTypes.hpp>
 #include <basalt/wire/multiversion/java/ContentRewriter.hpp>
+#include <basalt/wire/multiversion/java/LegacyItemTags.hpp>
+#include <basalt/wire/multiversion/java/LegacyStacks.hpp>
 #include <basalt/wire/multiversion/java/MapLayouts.hpp>
+#include <basalt/wire/multiversion/java/NativeParticles.hpp>
+#include <basalt/wire/multiversion/java/OlderBlockEntities.hpp>
+#include <basalt/wire/multiversion/java/OlderCommands.hpp>
+#include <basalt/wire/multiversion/java/OlderComponents.hpp>
+#include <basalt/wire/multiversion/java/OlderParticles.hpp>
+#include <basalt/wire/multiversion/java/RecipeDisplays.hpp>
+#include <basalt/wire/multiversion/java/Stack769.hpp>
+#include <basalt/wire/multiversion/java/StackComponents1_21_4.hpp>
 #include <basalt/wire/protocol/ProtocolBuffer.hpp>
 #include <basalt/wire/protocol/VarInt.hpp>
 #include <basalt/wire/protocol/configuration/ConfigurationPackets.hpp>
@@ -11,6 +23,7 @@
 #include <basalt/wire/protocol/play/EntityPackets.hpp>
 #include <basalt/wire/protocol/play/ItemComponent.hpp>
 #include <basalt/wire/protocol/play/MapPackets.hpp>
+#include <basalt/wire/protocol/play/PlayPackets.hpp>
 #include <basalt/wire/protocol/play/PlayerStatePackets.hpp>
 #include <basalt/wire/protocol/play/RecipePackets.hpp>
 #include <basalt/wire/protocol/play/SimplePackets.hpp>
@@ -22,6 +35,12 @@
 
 namespace basalt::wire::multiversion::java {
 namespace {
+
+// parity: ClientboundGameEventPacket, the newest event each of these versions has.
+constexpr std::uint8_t kGuardianCurse = 10;
+constexpr std::uint8_t kImmediateRespawn = 11;
+constexpr std::uint8_t kLimitedCrafting = 12;
+constexpr std::uint8_t kLevelChunksLoadStart = 13;
 
 constexpr std::int32_t kSetCursorItem = 98;
 constexpr std::int32_t kSetPlayerInventory = 110;
@@ -42,81 +61,61 @@ void encode(MutablePacket& packet, Write&& write) {
     packet.body = output.toVector();
 }
 
-/// An entity nothing announced the type of: only its shared fields can be placed.
-constexpr std::int32_t kUnknownType = -1;
-
 constexpr std::int32_t kStone = 1;
-
-std::optional<play::ItemComponent> olderTemplateComponent(const play::ItemComponent& component,
-                                                          const ComposedTables& tables, std::int32_t farEnd) {
-    constexpr std::int32_t kTooltipDisplay = 18;
-    constexpr std::int32_t kPotDecorations = 76;
-    constexpr std::int32_t kBrick = 1142;
-    if (farEnd >= protocolVersions::kNative ||
-        (component.id() != kTooltipDisplay && component.id() != kPotDecorations)) {
-        return component;
-    }
-    io::ByteBuffer payload;
-    component.writePayload(payload);
-    io::ByteBuffer output;
-    if (component.id() == kTooltipDisplay) {
-        protocol::writeBoolean(output, protocol::readBoolean(payload));
-        std::vector<std::int32_t> hidden;
-        const std::int32_t count = protocol::readCollectionSize(payload);
-        for (std::int32_t i = 0; i < count && !payload.failed(); ++i) {
-            const std::int32_t id = tables.dataComponentType.map(protocol::varInt::read(payload));
-            if (id != IdMap::kNone) {
-                hidden.push_back(id);
-            }
-        }
-        protocol::varInt::write(output, static_cast<std::int32_t>(hidden.size()));
-        for (const std::int32_t id : hidden) {
-            protocol::varInt::write(output, id);
-        }
-    } else {
-        // Before 26.3 decorations were four item ids, not four optional ItemStackTemplates.
-        protocol::varInt::write(output, 4);
-        for (std::size_t side = 0; side < 4 && !payload.failed(); ++side) {
-            std::int32_t item = kBrick;
-            if (protocol::readBoolean(payload)) {
-                item = protocol::varInt::read(payload);
-                static_cast<void>(protocol::varInt::read(payload)); // Count.
-                const std::int32_t added = protocol::readCollectionSize(payload, 2);
-                const std::int32_t removed = protocol::readCollectionSize(payload);
-                for (std::int32_t i = 0; i < added && !payload.failed(); ++i) {
-                    const std::int32_t id = protocol::varInt::read(payload);
-                    if (!play::ItemComponent::readPayload(payload, id, std::nullopt).has_value()) {
-                        payload.markFailed();
-                    }
-                }
-                for (std::int32_t i = 0; i < removed && !payload.failed(); ++i) {
-                    static_cast<void>(protocol::varInt::read(payload));
-                }
-            }
-            const std::int32_t mapped = tables.item.map(item);
-            protocol::varInt::write(output, mapped == IdMap::kNone ? tables.item.map(kBrick) : mapped);
-        }
-    }
-    if (payload.failed() || payload.readableBytes() != 0) {
-        return std::nullopt;
-    }
-    return play::ItemComponent{component.id(), play::ItemComponent::Raw{output.toVector()}};
-}
 
 } // namespace
 
 ContentRewriter::ContentRewriter(const ComposedTables& tables, const SubstitutionLabels* labels, std::int32_t farEnd,
                                  std::vector<std::int32_t> links, bool backendCountsFluids)
     : tables_(&tables), labels_(labels), farEnd_(farEnd),
-      entityData_(farEnd, std::move(links),
-                  [this](const std::optional<play::WireItemStack>& item) { return stack(item); }),
+      entityData_(
+          farEnd, std::move(links), [this](const std::optional<play::WireItemStack>& item) { return stack(item); },
+          [this](std::int32_t state) { return blockState(state); }),
+      spawns_(tables, labels, farEnd, entityData_), paintings_(farEnd), countsFluids_(backendCountsFluids),
       chunks_(tables.blockStates, ChunkRewriter::Options{.olderDirectBits = tables.blockStateDirectBits(),
                                                          .fluidCount = tables.fluidCountInSections(),
                                                          .readsFluidCount = backendCountsFluids}) {}
 
 bool ContentRewriter::clientbound(ProtocolState state, MutablePacket& packet) {
+    if (state != ProtocolState::Play || !paintings_.holding()) {
+        return rewriteClientbound(state, packet);
+    }
+    if (const std::optional<std::int32_t> motive = paintings_.motiveIn(packet)) {
+        rewriteEntityData(packet);
+        std::vector<std::uint8_t> data = std::move(packet.body);
+        paintings_.spawn(packet, *motive);
+        io::ByteBuffer entries = io::ByteBuffer::wrap(data);
+        static_cast<void>(protocol::varInt::read(entries));
+        if (entries.readable().size() > 1) {
+            packet.extras.emplace_back(play::SetEntityDataPacket::kId, std::move(data));
+        }
+        return true;
+    }
+    std::optional<MutablePacket::Continued> held = paintings_.release(packet);
+    const bool kept = rewriteClientbound(state, packet);
+    if (!held.has_value()) {
+        return kept;
+    }
+    if (!kept) {
+        packet.reset(held->id, held->nativeId, std::move(held->body));
+        packet.spawn = held->spawn;
+        return true;
+    }
+    packet.continued.push_back(*std::move(held));
+    return true;
+}
+
+bool ContentRewriter::rewriteClientbound(ProtocolState state, MutablePacket& packet) {
     if (state == ProtocolState::Configuration && packet.nativeId() == protocol::configuration::TagsPacket::kId) {
         return rewriteTags(packet);
+    }
+    if (state == ProtocolState::Configuration &&
+        packet.nativeId() == protocol::configuration::RegistryDataPacket::kId && farEnd_ < protocolVersions::kV1_20_5) {
+        paintings_.learn(packet.body);
+        if (auto names = legacyItemTags::enchantmentNames(packet.body)) {
+            enchantments_ = *std::move(names);
+        }
+        return true;
     }
     if (state != ProtocolState::Play) {
         return true;
@@ -130,14 +129,51 @@ bool ContentRewriter::clientbound(ProtocolState state, MutablePacket& packet) {
         if (!chunk.has_value()) {
             return true;
         }
+        const BlockEntityStates::Chunk states{chunk->chunkData, countsFluids_};
+        std::erase_if(chunk->blockEntities, [&](play::ChunkBlockEntityInfo& blockEntity) {
+            const std::optional<std::int32_t> state = olderBlockEntities::readsState(blockEntity.typeId, farEnd_)
+                                                          ? states.at(blockEntity.packedXZ, blockEntity.y)
+                                                          : std::nullopt;
+            if (farEnd_ < protocolVersions::kV1_20_5) {
+                olderBlockEntities::rewrite(blockEntity.typeId, blockEntity.tag, farEnd_, state);
+            }
+            if (!renumbersBlockEntities()) {
+                return false;
+            }
+            blockEntity.typeId = blockEntityTypes::idAt(farEnd_, blockEntity.typeId);
+            return blockEntity.typeId == blockEntityTypes::kNone;
+        });
         chunk->chunkData = chunks_.rewrite(chunk->chunkData);
         encode(packet, [&](io::ByteBuffer& out) { chunk->write(out); });
+        break;
+    }
+    case play::BlockEntityDataPacket::kId: {
+        if (!renumbersBlockEntities() && farEnd_ >= protocolVersions::kV1_20_5) {
+            break;
+        }
+        auto data = decode(packet, [](io::ByteBuffer& in) { return play::BlockEntityDataPacket::read(in); });
+        if (!data.has_value()) {
+            return true;
+        }
+        if (farEnd_ < protocolVersions::kV1_20_5) {
+            olderBlockEntities::rewrite(data->typeId, data->tag, farEnd_, placed_.at(data->pos.pack()));
+        }
+        if (renumbersBlockEntities()) {
+            data->typeId = blockEntityTypes::idAt(farEnd_, data->typeId);
+        }
+        if (data->typeId == blockEntityTypes::kNone) {
+            return false;
+        }
+        encode(packet, [&](io::ByteBuffer& out) { data->write(out); });
         break;
     }
     case play::ClientboundBlockUpdatePacket::kId: {
         auto update = decode(packet, [](io::ByteBuffer& in) { return play::ClientboundBlockUpdatePacket::read(in); });
         if (!update.has_value()) {
             return true;
+        }
+        if (farEnd_ < protocolVersions::kV1_13) {
+            placed_.remember(update->pos.pack(), update->blockStateId);
         }
         update->blockStateId = blockState(update->blockStateId);
         encode(packet, [&](io::ByteBuffer& out) { update->write(out); });
@@ -149,6 +185,10 @@ bool ContentRewriter::clientbound(ProtocolState state, MutablePacket& packet) {
             return true;
         }
         for (play::SectionBlocksUpdatePacket::Change& change : update->changes) {
+            if (farEnd_ < protocolVersions::kV1_13) {
+                placed_.remember(update->sectionX, update->sectionY, update->sectionZ, change.position,
+                                 change.blockStateId);
+            }
             change.blockStateId = blockState(change.blockStateId);
         }
         encode(packet, [&](io::ByteBuffer& out) { update->write(out); });
@@ -167,6 +207,9 @@ bool ContentRewriter::clientbound(ProtocolState state, MutablePacket& packet) {
         encode(packet, [&](io::ByteBuffer& out) { event->write(out); });
         break;
     }
+    case play::GameEventPacket::kId:
+        // A client drops the whole connection on an event it has no number for.
+        return packet.body.empty() || packet.body.front() <= newestGameEvent();
     case play::LevelEventPacket::kId: {
         auto event = decode(packet, [](io::ByteBuffer& in) { return play::LevelEventPacket::read(in); });
         if (!event.has_value() || event->event != play::LevelEventPacket::kParticlesDestroyBlock) {
@@ -185,6 +228,9 @@ bool ContentRewriter::clientbound(ProtocolState state, MutablePacket& packet) {
         const std::int32_t mapped = tables_->particleType.map(nativeType);
         if (mapped == IdMap::kNone) {
             return false;
+        }
+        if (farEnd_ < protocolVersions::kV26_1) {
+            return olderParticle(packet, nativeType, mapped);
         }
         encode(packet, [&](io::ByteBuffer& out) {
             protocol::varInt::write(out, mapped);
@@ -216,19 +262,29 @@ bool ContentRewriter::clientbound(ProtocolState state, MutablePacket& packet) {
         encode(packet, [&](io::ByteBuffer& out) { explode->write(out); });
         break;
     }
-    case play::SpawnEntityPacket::kId:
-        return rewriteSpawn(packet);
-    case play::RemoveEntitiesPacket::kId: {
-        if (!entityTypes_.empty()) {
-            const auto gone = decode(packet, [](io::ByteBuffer& in) { return play::RemoveEntitiesPacket::read(in); });
-            if (gone.has_value()) {
-                for (const std::int32_t entityId : gone->entityIds) {
-                    entityTypes_.erase(entityId);
-                }
-            }
+    case play::LoginPlayPacket::kId: {
+        io::ByteBuffer input = io::ByteBuffer::wrap(packet.body);
+        const std::int32_t entityId = input.readInt();
+        if (!input.failed()) {
+            spawns_.player(entityId);
         }
         break;
     }
+    case play::SpawnEntityPacket::kId:
+        paintings_.hold(packet);
+        return spawns_.spawn(packet);
+    case play::RemoveEntitiesPacket::kId: {
+        const auto gone = decode(packet, [](io::ByteBuffer& in) { return play::RemoveEntitiesPacket::read(in); });
+        if (gone.has_value()) {
+            spawns_.forget(gone->entityIds);
+        }
+        break;
+    }
+    case play::RecipeBookAddPacket::kId:
+        if (farEnd_ != protocolVersions::kNative) {
+            recipeDisplays::rewriteBookAdd(packet, *tables_);
+        }
+        break;
     case play::UpdateRecipesPacket::kId:
         return rewriteRecipes(packet);
     case play::UpdateAttributesPacket::kId: {
@@ -381,24 +437,6 @@ bool ContentRewriter::clientbound(ProtocolState state, MutablePacket& packet) {
     return true;
 }
 
-bool ContentRewriter::rewriteSpawn(MutablePacket& packet) {
-    auto spawn = decode(packet, [](io::ByteBuffer& in) { return play::SpawnEntityPacket::read(in); });
-    if (!spawn.has_value()) {
-        return true;
-    }
-    const std::int32_t type = tables_->entityType.map(spawn->entityType);
-    if (type == IdMap::kNone) {
-        return spawn->entityType == tables_->nativePlayerEntityType();
-    }
-    entityTypes_[spawn->entityId] = spawn->entityType;
-    if (tables_->entityType.substitutes(spawn->entityType)) {
-        nameOver(packet, spawn->entityId, spawn->entityType);
-    }
-    spawn->entityType = type;
-    encode(packet, [&](io::ByteBuffer& out) { spawn->write(out); });
-    return true;
-}
-
 bool ContentRewriter::rewriteRecipes(MutablePacket& packet) const {
     const auto recipes = decode(packet, [](io::ByteBuffer& in) { return play::UpdateRecipesPacket::read(in); });
     if (!recipes.has_value()) {
@@ -465,7 +503,7 @@ bool ContentRewriter::rewriteRecipes(MutablePacket& packet) const {
 }
 
 void ContentRewriter::rewriteEntityData(MutablePacket& packet) const {
-    auto data = decode(packet, [](io::ByteBuffer& in) { return play::SetEntityDataPacket::read(in); });
+    auto data = decode(packet, [](io::ByteBuffer& in) { return EntityDataRewriter::read(in); });
     if (!data.has_value()) {
         return;
     }
@@ -474,14 +512,8 @@ void ContentRewriter::rewriteEntityData(MutablePacket& packet) const {
             item->stack = stack(item->stack);
         }
     }
-    const auto found = entityTypes_.find(data->entityId);
-    const std::int32_t nativeType = found == entityTypes_.end() ? kUnknownType : found->second;
-    if (nativeType >= 0 && tables_->entityType.substitutes(nativeType)) {
-        std::erase_if(data->entries, [](const play::SetEntityDataPacket::Entry& entry) {
-            return entry.index > play::SetEntityDataPacket::kLastSharedIndex;
-        });
-    }
-    if (auto translated = entityData_.rewrite(*data, nativeType)) {
+    const std::int32_t nativeType = spawns_.typeOf(data->entityId);
+    if (auto translated = entityData_.rewrite(*data, nativeType, spawns_.lastKept(nativeType))) {
         packet.body = *std::move(translated);
         return;
     }
@@ -489,31 +521,36 @@ void ContentRewriter::rewriteEntityData(MutablePacket& packet) const {
 }
 
 bool ContentRewriter::rewriteCommands(MutablePacket& packet) const {
-    if (tables_->missingRegistries().empty()) {
+    const bool older = farEnd_ != protocolVersions::kNative;
+    if (tables_->missingRegistries().empty() && !older) {
         return true;
     }
     auto commands = decode(packet, [](io::ByteBuffer& in) { return play::CommandsPacket::read(in); });
     if (!commands.has_value()) {
         return true;
     }
-    bool changed = false;
-    for (play::CommandNodeData& node : commands->nodes) {
-        if (!node.parser.has_value()) {
-            continue;
-        }
-        const auto* registry = node.parser->as<play::ArgumentParser::RegistryProperties>();
-        if (registry == nullptr || !tables_->missingRegistries().contains(registry->registry)) {
-            continue;
-        }
-        changed = true;
-        node.parser =
-            play::ArgumentParser{play::argumentType::kBrigadierString,
-                                 play::ArgumentParser::StringProperties{play::ArgumentParser::StringKind::SingleWord}};
-    }
-    if (!changed) {
+    const auto missing = [this](const std::string& registry) {
+        return tables_->missingRegistries().contains(registry);
+    };
+    if (older) {
+        packet.body = olderCommands::write(*commands, farEnd_, missing);
+        packet.becomes(olderCommands::kTranslatedCommands);
         return true;
     }
-    encode(packet, [&](io::ByteBuffer& out) { commands->write(out); });
+    bool changed = false;
+    for (play::CommandNodeData& node : commands->nodes) {
+        const auto* registry =
+            node.parser.has_value() ? node.parser->as<play::ArgumentParser::RegistryProperties>() : nullptr;
+        if (registry != nullptr && missing(registry->registry)) {
+            changed = true;
+            node.parser = play::ArgumentParser{
+                play::argumentType::kBrigadierString,
+                play::ArgumentParser::StringProperties{play::ArgumentParser::StringKind::SingleWord}};
+        }
+    }
+    if (changed) {
+        encode(packet, [&](io::ByteBuffer& out) { commands->write(out); });
+    }
     return true;
 }
 
@@ -567,15 +604,40 @@ bool ContentRewriter::serverbound(ProtocolState state, MutablePacket& packet) {
         return true;
     }
     auto creative =
-        decode(packet, [](io::ByteBuffer& in) { return play::ServerboundSetCreativeModeSlotPacket::read(in); });
-    if (!creative.has_value() || !creative->item.has_value() || creative->item->count <= 0) {
+        decode(packet, [this](io::ByteBuffer& in) -> std::optional<play::ServerboundSetCreativeModeSlotPacket> {
+            if (farEnd_ < protocolVersions::kV1_20_5 || farEnd_ >= protocolVersions::kV1_21_5) {
+                return play::ServerboundSetCreativeModeSlotPacket::read(in);
+            }
+            // Before 1.21.5 a client sent its components without lengths, each in that version's own shape.
+            const std::int16_t slot = in.readShort();
+            io::ByteBuffer native;
+            const stack769::SourceScope source{stack769::sourceFor(farEnd_)};
+            if (!stack769::convert(in, native) || in.readableBytes() != 0) {
+                return std::nullopt;
+            }
+            return play::ServerboundSetCreativeModeSlotPacket{slot, play::WireItemStack::read(native)};
+        });
+    if (!creative.has_value()) {
+        return farEnd_ < protocolVersions::kV1_20_5 || farEnd_ >= protocolVersions::kV1_21_5;
+    }
+    if (!creative->item.has_value() || creative->item->count <= 0) {
+        encode(packet, [&](io::ByteBuffer& out) { creative->write(out); });
         return true;
     }
-    const std::int32_t id = tables_->item.unmap(creative->item->itemId);
+    std::int32_t id = tables_->item.unmap(creative->item->itemId);
+    std::int32_t data = 0;
+    if (id == IdMap::kNone && farEnd_ < protocolVersions::kV1_13) {
+        // A data value no variant claims is the damage of the item it sits beside.
+        data = static_cast<std::int32_t>(static_cast<std::uint32_t>(creative->item->itemId) >> 16);
+        id = tables_->item.unmap(creative->item->itemId & 0xFFFF);
+    }
     if (id == IdMap::kNone) {
         return false;
     }
     creative->item->itemId = id;
+    if (farEnd_ < protocolVersions::kV1_20_5) {
+        legacyItemTags::fromStack(*creative->item, data, farEnd_, enchantments_);
+    }
     encode(packet, [&](io::ByteBuffer& out) { creative->write(out); });
     return true;
 }
@@ -595,21 +657,43 @@ void ContentRewriter::rewriteAdvancements(MutablePacket& packet) const {
     encode(packet, [&](io::ByteBuffer& out) { advancementLayouts::write(out, *advancements, farEnd_); });
 }
 
+std::uint8_t ContentRewriter::newestGameEvent() const noexcept {
+    if (farEnd_ >= protocolVersions::kV1_20_3) {
+        return kLevelChunksLoadStart;
+    }
+    if (farEnd_ >= protocolVersions::kV1_20_2) {
+        return kLimitedCrafting;
+    }
+    return farEnd_ >= protocolVersions::kV1_15 ? kImmediateRespawn : kGuardianCurse;
+}
+
 std::int32_t ContentRewriter::blockState(std::int32_t id) const {
-    const std::int32_t mapped = tables_->blockStates.map(id);
-    return mapped == IdMap::kNone ? 0 : mapped;
+    return tables_->blockStates.map(id) == IdMap::kNone ? 0 : tables_->blockStates.map(id);
 }
 
 std::optional<play::WireItemStack> ContentRewriter::stack(const std::optional<play::WireItemStack>& source) const {
     if (!source.has_value() || source->count <= 0) {
         return source;
     }
-    const std::int32_t id = tables_->item.map(source->itemId);
+    std::int32_t id = tables_->item.map(source->itemId);
+    if (id == IdMap::kNone && farEnd_ < protocolVersions::kV1_9 && legacyItemTags::isPotion(source->itemId)) {
+        // 1.8 throws a potion by its data value, not by a separate item.
+        id = tables_->item.map(legacyItemTags::kPotion);
+    }
     if (id == IdMap::kNone) {
         return std::nullopt;
     }
     play::WireItemStack item = labelled(*source);
     item.itemId = id;
+    if (farEnd_ < protocolVersions::kV1_20_5) {
+        return legacyItemTags::toStack(std::move(item), source->itemId, farEnd_, enchantments_);
+    }
+    const bool hideTooltip =
+        farEnd_ < protocolVersions::kV1_21_5 &&
+        stackComponents1_21_4::rewrite(item, farEnd_, [this](const auto& held) { return stack(held); });
+    if (farEnd_ >= protocolVersions::kV1_21_5 && farEnd_ < protocolVersions::kV26_1) {
+        stackComponents1_21_4::nestedStacks(item, farEnd_, [this](const auto& held) { return stack(held); });
+    }
     std::vector<play::ItemComponent> components;
     components.reserve(item.components.size());
     for (const play::ItemComponent& component : item.components) {
@@ -617,7 +701,7 @@ std::optional<play::WireItemStack> ContentRewriter::stack(const std::optional<pl
         if (moved == IdMap::kNone) {
             continue;
         }
-        const auto converted = olderTemplateComponent(component, *tables_, farEnd_);
+        const auto converted = olderComponents::template26_2(component, *tables_, farEnd_);
         if (!converted.has_value()) {
             continue;
         }
@@ -628,6 +712,9 @@ std::optional<play::WireItemStack> ContentRewriter::stack(const std::optional<pl
         io::ByteBuffer payload;
         converted->writePayload(payload);
         components.emplace_back(moved, play::ItemComponent::Raw{payload.toVector()});
+    }
+    if (hideTooltip) {
+        components.emplace_back(stackComponents1_21_4::hideTooltipId(farEnd_), play::ItemComponent::Raw{});
     }
     item.components = std::move(components);
     std::vector<std::int32_t> removed;
@@ -640,6 +727,29 @@ std::optional<play::WireItemStack> ContentRewriter::stack(const std::optional<pl
     }
     item.removedComponents = std::move(removed);
     return item;
+}
+
+bool ContentRewriter::olderParticle(MutablePacket& packet, std::int32_t nativeType, std::int32_t mapped) const {
+    auto particle = decode(packet, [nativeType](io::ByteBuffer& in) {
+        return play::LevelParticlesPacket::read(in, nativeParticles::shapeOf(nativeType));
+    });
+    if (farEnd_ < protocolVersions::kV1_13 || !particle.has_value()) {
+        return false;
+    }
+    auto body = olderParticles::write(
+        *particle, mapped, farEnd_, [this](std::int32_t state) { return blockState(state); },
+        [this](io::ByteBuffer& out, const play::ParticleOptions::Item& item) {
+            legacyStacks::write(
+                out,
+                stack(play::WireItemStack{.itemId = item.itemId, .count = item.count, .components = item.components}),
+                farEnd_);
+        });
+    if (!body.has_value()) {
+        return false;
+    }
+    packet.body = *std::move(body);
+    packet.becomes(olderParticles::kTranslatedParticles);
+    return true;
 }
 
 play::WireItemStack ContentRewriter::labelled(play::WireItemStack item) const {
@@ -658,31 +768,6 @@ play::WireItemStack ContentRewriter::labelled(play::WireItemStack item) const {
     }
     item.components.emplace_back(play::dataComponent::kCustomName, play::ItemComponent::Text{*std::move(label)});
     return item;
-}
-
-void ContentRewriter::nameOver(MutablePacket& packet, std::int32_t entityId, std::int32_t nativeType) const {
-    if (labels_ == nullptr) {
-        return;
-    }
-    std::optional<text::Component> label = labels_->entityLabel(nativeType);
-    if (!label.has_value()) {
-        return;
-    }
-    play::SetEntityDataPacket named;
-    named.entityId = entityId;
-    named.entries.push_back(
-        {play::SetEntityDataPacket::kCustomNameIndex, play::SetEntityDataPacket::OptionalTextValue{*std::move(label)}});
-    named.entries.push_back(
-        {play::SetEntityDataPacket::kCustomNameVisibleIndex, play::SetEntityDataPacket::BoolValue{true}});
-    std::vector<std::uint8_t> body;
-    if (auto translated = entityData_.rewrite(named, nativeType)) {
-        body = *std::move(translated);
-    } else {
-        io::ByteBuffer output;
-        named.write(output);
-        body = output.toVector();
-    }
-    packet.extras.emplace_back(play::SetEntityDataPacket::kId, std::move(body));
 }
 
 } // namespace basalt::wire::multiversion::java

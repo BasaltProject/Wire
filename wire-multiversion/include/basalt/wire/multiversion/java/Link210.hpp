@@ -10,6 +10,8 @@ public:
     using RenumberingLink::RenumberingLink;
 
     [[nodiscard]] bool clientbound(protocol::ProtocolState state, MutablePacket& packet) override;
+
+    [[nodiscard]] bool serverbound(protocol::ProtocolState state, MutablePacket& packet) override;
 };
 
 } // namespace basalt::wire::multiversion::java

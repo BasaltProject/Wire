@@ -1,4 +1,6 @@
+#include <basalt/wire/multiversion/java/ChatShapes.hpp>
 #include <basalt/wire/multiversion/java/Link760.hpp>
+#include <basalt/wire/multiversion/java/PlayerInfoActions.hpp>
 #include <basalt/wire/protocol/ProtocolBuffer.hpp>
 #include <basalt/wire/protocol/VarInt.hpp>
 #include <basalt/wire/protocol/play/HudPackets.hpp>
@@ -32,6 +34,8 @@ bool Link760::clientbound(protocol::ProtocolState state, MutablePacket& packet) 
     }
     switch (packet.nativeId()) {
     case play::PlayerInfoUpdatePacket::kId: {
+        // The names were made json for 1.20.2 above; this version names no one in the tab list by them.
+        playerInfoActions::drop(packet, play::PlayerInfoUpdatePacket::kUpdateDisplayName, true);
         const auto info = decode(packet, [](io::ByteBuffer& in) { return play::PlayerInfoUpdatePacket::read(in); });
         if (!info.has_value()) {
             return true;
@@ -141,6 +145,13 @@ bool Link760::writeOneAction(MutablePacket& packet, const play::PlayerInfoUpdate
         return true;
     }
     return false;
+}
+
+bool Link760::serverbound(protocol::ProtocolState state, MutablePacket& packet) {
+    if (state == protocol::ProtocolState::Play) {
+        chatShapes::to1_19_3(packet);
+    }
+    return true;
 }
 
 } // namespace basalt::wire::multiversion::java

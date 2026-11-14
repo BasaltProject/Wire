@@ -1,5 +1,6 @@
 #include <basalt/wire/multiversion/CompactBitStorage.hpp>
 #include <basalt/wire/multiversion/java/Link47.hpp>
+#include <basalt/wire/multiversion/java/NamedNbt.hpp>
 #include <basalt/wire/protocol/ProtocolBuffer.hpp>
 #include <basalt/wire/protocol/VarInt.hpp>
 #include <basalt/wire/protocol/play/EntityData.hpp>
@@ -10,6 +11,7 @@
 #include <basalt/wire/protocol/play/WorldPackets.hpp>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdint>
 #include <string>
@@ -18,6 +20,22 @@ namespace basalt::wire::multiversion::java {
 namespace {
 
 namespace play = protocol::play;
+
+constexpr std::int16_t kEmptySlot = -1;
+/// parity: ClientboundMoveEntityPacket, numbered as this server does.
+constexpr std::int32_t kMoveEntityPos = 54;
+constexpr std::int32_t kMoveEntityPosRot = 55;
+constexpr double kMoveUnits = 4096.0;
+constexpr std::int64_t kUnitsPerFixed = 128;
+constexpr std::int32_t kTeleportEntity47 = 0x18;
+constexpr std::uint8_t kEffectVisible = 2;
+
+[[nodiscard]] constexpr std::int64_t floorDiv(std::int64_t value, std::int64_t divisor) {
+    return value >= 0 ? value / divisor : -((-value + divisor - 1) / divisor);
+}
+
+constexpr std::uint8_t kUseInAir = 255;
+constexpr std::size_t kCursorBytes = 3;
 using protocol::ProtocolState;
 
 constexpr std::int32_t kSections = 16;
@@ -29,6 +47,8 @@ constexpr std::size_t kVelocityBytes = 6;
 constexpr std::size_t kPositionHeadBytes = 8 * 3 + 4 * 2 + 1;
 
 constexpr std::int32_t kAddEntity = 0x00;
+constexpr std::int32_t kAddExperienceOrb = 0x01;
+constexpr std::int32_t kAddGlobalEntity = 0x02;
 constexpr std::int32_t kAddMob = 0x03;
 constexpr std::int32_t kAddPlayer = 0x05;
 constexpr std::int32_t kNamedSound47 = 0x19;
@@ -97,6 +117,18 @@ bool Link47::clientbound(ProtocolState state, MutablePacket& packet) {
         return true;
     }
     switch (packet.nativeId()) {
+    case play::UpdateMobEffectPacket::kId:
+        // 1.9 replaced whether to hide the particles with flags, showing them being the second bit.
+        if (!packet.body.empty()) {
+            packet.body.back() = (packet.body.back() & kEffectVisible) != 0 ? 0 : 1;
+        }
+        break;
+    case kMoveEntityPos:
+        moveEntity(packet, false);
+        break;
+    case kMoveEntityPosRot:
+        moveEntity(packet, true);
+        break;
     case play::MapChunkPacket::kId:
         return rewriteChunk(packet);
     case play::ForgetLevelChunkPacket::kId:
@@ -141,7 +173,46 @@ bool Link47::serverbound(ProtocolState state, MutablePacket& packet) {
         });
         return true;
     }
-    return packet.nativeId() != play::ServerboundUseItemOnPacket::kId;
+    if (packet.nativeId() == play::ServerboundUseItemOnPacket::kId) {
+        return splitPlacement(packet);
+    }
+    if (packet.nativeId() == play::ServerboundPositionLookPacket::kId && teleport_.has_value()) {
+        // 1.8 answers a teleport with a move; from 1.9 the answer is a confirmation of its id.
+        io::ByteBuffer accept;
+        protocol::varInt::write(accept, *teleport_);
+        teleport_.reset();
+        packet.reset(play::AcceptTeleportationPacket::kId, play::AcceptTeleportationPacket::kId, accept.toVector());
+    }
+    return true;
+}
+
+bool Link47::splitPlacement(MutablePacket& packet) {
+    // 1.8 sends one packet for both, a face of 255 meaning the item was used in the air; 1.9 has a packet each.
+    io::ByteBuffer input = io::ByteBuffer::wrap(packet.body);
+    const std::int64_t pos = input.readLong();
+    const std::uint8_t face = input.readByte();
+    if (input.readShort() != kEmptySlot) {
+        static_cast<void>(input.readByte());
+        static_cast<void>(input.readShort());
+        static_cast<void>(readNamedNbt(input));
+    }
+    const std::span<const std::uint8_t> cursor = input.readSpan(kCursorBytes);
+    if (input.failed()) {
+        return false;
+    }
+    if (face == kUseInAir) {
+        io::ByteBuffer use;
+        protocol::varInt::write(use, kMainHand);
+        packet.reset(play::ServerboundUseItemPacket::kId, play::ServerboundUseItemPacket::kId, use.toVector());
+        return true;
+    }
+    encode(packet, [&](io::ByteBuffer& output) {
+        output.writeLong(pos);
+        protocol::varInt::write(output, face);
+        protocol::varInt::write(output, kMainHand);
+        output.writeBytes(cursor);
+    });
+    return true;
 }
 
 bool Link47::rewriteChunk(MutablePacket& packet) const {
@@ -207,8 +278,34 @@ void Link47::emptyChunk(MutablePacket& packet) {
 bool Link47::rewriteSpawn(MutablePacket& packet) {
     io::ByteBuffer input = io::ByteBuffer::wrap(packet.body);
     const std::int32_t entityId = protocol::varInt::read(input);
+    if (packet.id == kAddExperienceOrb || packet.id == kAddGlobalEntity) {
+        const std::uint8_t kind = packet.id == kAddGlobalEntity ? input.readByte() : 0;
+        const double x = input.readDouble();
+        const double y = input.readDouble();
+        const double z = input.readDouble();
+        remember(entityId, x, y, z, 0, 0);
+        const std::vector<std::uint8_t> rest = input.readBytes(input.readable().size());
+        encode(packet, [&](io::ByteBuffer& output) {
+            protocol::varInt::write(output, entityId);
+            if (packet.id == kAddGlobalEntity) {
+                output.writeByte(kind);
+            }
+            writeFixed(output, x, y, z);
+            output.writeBytes(rest);
+        });
+        return true;
+    }
     const std::int64_t mostSignificant = input.readLong();
     const std::int64_t leastSignificant = input.readLong();
+    if (packet.spawn == MutablePacket::Spawn::kPainting) {
+        // 1.9 gave a painting its uuid; the rest is as 1.8 reads it.
+        const std::span<const std::uint8_t> rest = input.readable();
+        encode(packet, [&](io::ByteBuffer& output) {
+            protocol::varInt::write(output, entityId);
+            output.writeBytes(rest);
+        });
+        return true;
+    }
     switch (packet.id) {
     case kAddEntity: {
         const std::uint8_t type = input.readByte();
@@ -218,6 +315,7 @@ bool Link47::rewriteSpawn(MutablePacket& packet) {
         const std::uint8_t pitch = input.readByte();
         const std::uint8_t yaw = input.readByte();
         const std::int32_t data = input.readInt();
+        remember(entityId, x, y, z, yaw, pitch);
         const std::span<const std::uint8_t> readable = input.readable();
         const std::vector<std::uint8_t> velocity{readable.begin(), readable.end()};
         encode(packet, [&](io::ByteBuffer& output) {
@@ -242,6 +340,7 @@ bool Link47::rewriteSpawn(MutablePacket& packet) {
         const std::uint8_t pitch = input.readByte();
         const std::uint8_t headPitch = input.readByte();
         const std::vector<std::uint8_t> velocity = input.readBytes(kVelocityBytes);
+        remember(entityId, x, y, z, yaw, pitch);
         encode(packet, [&](io::ByteBuffer& output) {
             protocol::varInt::write(output, entityId);
             output.writeByte(type);
@@ -260,6 +359,7 @@ bool Link47::rewriteSpawn(MutablePacket& packet) {
         const double z = input.readDouble();
         const std::uint8_t yaw = input.readByte();
         const std::uint8_t pitch = input.readByte();
+        remember(entityId, x, y, z, yaw, pitch);
         encode(packet, [&](io::ByteBuffer& output) {
             protocol::varInt::write(output, entityId);
             output.writeLong(mostSignificant);
@@ -278,12 +378,83 @@ bool Link47::rewriteSpawn(MutablePacket& packet) {
     return true;
 }
 
+void Link47::remember(std::int32_t entityId, double x, double y, double z, std::uint8_t yaw, std::uint8_t pitch) {
+    positions_[entityId] = Tracked{{static_cast<std::int64_t>(std::llround(x * kMoveUnits)),
+                                    static_cast<std::int64_t>(std::llround(y * kMoveUnits)),
+                                    static_cast<std::int64_t>(std::llround(z * kMoveUnits))},
+                                   yaw,
+                                   pitch};
+}
+
+void Link47::moveEntity(MutablePacket& packet, bool rotates) {
+    // 1.9 widened a relative move from a 32nd of a block in a byte to a 4096th in a short.
+    io::ByteBuffer input = io::ByteBuffer::wrap(packet.body);
+    const std::int32_t entityId = protocol::varInt::read(input);
+    std::array<std::int64_t, 3> delta{};
+    for (std::int64_t& axis : delta) {
+        axis = input.readShort();
+    }
+    const std::uint8_t yaw = rotates ? input.readByte() : 0;
+    const std::uint8_t pitch = rotates ? input.readByte() : 0;
+    const std::uint8_t onGround = input.readByte();
+    if (input.failed()) {
+        return;
+    }
+    const auto found = positions_.find(entityId);
+    std::array<std::int32_t, 3> step{};
+    std::array<std::int32_t, 3> fixed{};
+    bool far = false;
+    for (std::size_t axis = 0; axis < 3; ++axis) {
+        const std::int64_t before = found == positions_.end() ? 0 : found->second.position[axis];
+        const std::int64_t after = before + delta[axis];
+        fixed[axis] = static_cast<std::int32_t>(floorDiv(after, kUnitsPerFixed));
+        step[axis] = static_cast<std::int32_t>(floorDiv(after, kUnitsPerFixed) - floorDiv(before, kUnitsPerFixed));
+        far = far || step[axis] < INT8_MIN || step[axis] > INT8_MAX;
+        if (found != positions_.end()) {
+            found->second.position[axis] = after;
+        }
+    }
+    if (found != positions_.end() && rotates) {
+        found->second.yaw = yaw;
+        found->second.pitch = pitch;
+    }
+    if (far && found != positions_.end()) {
+        // parity: EntityTrackerEntry, which sends a teleport when a move does not fit a byte.
+        packet.overrideId(kTeleportEntity47);
+        encode(packet, [&](io::ByteBuffer& output) {
+            protocol::varInt::write(output, entityId);
+            for (const std::int32_t axis : fixed) {
+                output.writeInt(axis);
+            }
+            output.writeByte(found->second.yaw);
+            output.writeByte(found->second.pitch);
+            output.writeByte(onGround);
+        });
+        return;
+    }
+    encode(packet, [&](io::ByteBuffer& output) {
+        protocol::varInt::write(output, entityId);
+        for (const std::int32_t axis : step) {
+            output.writeByte(static_cast<std::uint8_t>(std::clamp(axis, INT8_MIN, INT8_MAX)));
+        }
+        if (rotates) {
+            output.writeByte(yaw);
+            output.writeByte(pitch);
+        }
+        output.writeByte(onGround);
+    });
+}
+
 void Link47::fixedPointTeleport(MutablePacket& packet) {
     io::ByteBuffer input = io::ByteBuffer::wrap(packet.body);
     const std::int32_t entityId = protocol::varInt::read(input);
     const double x = input.readDouble();
     const double y = input.readDouble();
     const double z = input.readDouble();
+    const std::span<const std::uint8_t> rotation = input.readable();
+    if (rotation.size() >= 2) {
+        remember(entityId, x, y, z, rotation[0], rotation[1]);
+    }
     encode(packet, [&](io::ByteBuffer& output) {
         protocol::varInt::write(output, entityId);
         writeFixed(output, x, y, z);
@@ -323,6 +494,10 @@ void Link47::dropCategory(MutablePacket& packet) {
 void Link47::dropTeleportId(MutablePacket& packet) {
     io::ByteBuffer input = io::ByteBuffer::wrap(packet.body);
     const std::vector<std::uint8_t> head = input.readBytes(kPositionHeadBytes);
+    const std::int32_t teleportId = protocol::varInt::read(input);
+    if (!input.failed()) {
+        teleport_ = teleportId;
+    }
     encode(packet, [&](io::ByteBuffer& out) { out.writeBytes(head); });
 }
 

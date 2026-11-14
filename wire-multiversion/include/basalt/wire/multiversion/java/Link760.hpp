@@ -11,6 +11,8 @@ public:
 
     [[nodiscard]] bool clientbound(protocol::ProtocolState state, MutablePacket& packet) override;
 
+    [[nodiscard]] bool serverbound(protocol::ProtocolState state, MutablePacket& packet) override;
+
 private:
     /// Writes the one action a 1.19.1 client can read out of what this server sent.
     [[nodiscard]] static bool writeOneAction(MutablePacket& packet, const protocol::play::PlayerInfoUpdatePacket& info);

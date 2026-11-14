@@ -1,10 +1,17 @@
+#include <basalt/wire/multiversion/java/LegacyStacks.hpp>
 #include <basalt/wire/multiversion/java/Link763.hpp>
 #include <basalt/wire/multiversion/java/LoginFields.hpp>
+#include <basalt/wire/multiversion/java/MerchantShapes.hpp>
+#include <basalt/wire/multiversion/java/NamedNbt.hpp>
 #include <basalt/wire/protocol/ProtocolBuffer.hpp>
 #include <basalt/wire/protocol/VarInt.hpp>
 #include <basalt/wire/protocol/configuration/ConfigurationPackets.hpp>
+#include <basalt/wire/protocol/play/BlockEntityPackets.hpp>
+#include <basalt/wire/protocol/play/EntityPackets.hpp>
+#include <basalt/wire/protocol/play/InventoryPackets.hpp>
 #include <basalt/wire/protocol/play/PlayPackets.hpp>
 #include <basalt/wire/protocol/play/PlayerStatePackets.hpp>
+#include <basalt/wire/protocol/play/WorldPackets.hpp>
 
 #include <algorithm>
 #include <array>
@@ -20,6 +27,101 @@ constexpr std::string_view kDimensionType = "minecraft:dimension_type";
 constexpr std::string_view kChatType = "minecraft:chat_type";
 
 constexpr std::array<std::string_view, 3> kCodecRegistries = {kDimensionType, "minecraft:worldgen/biome", kChatType};
+
+constexpr std::int32_t kContinues = 0x80;
+
+using legacyStacks::Root;
+
+template <typename Reshape>
+void reshape(MutablePacket& packet, Reshape&& body) {
+    io::ByteBuffer input = io::ByteBuffer::wrap(packet.body);
+    io::ByteBuffer output;
+    if (body(input, output) && !input.failed()) {
+        output.writeBytes(input.readable());
+        packet.body = output.toVector();
+    }
+}
+
+/// Below 1.20.2 the root of every NBT value carries a name, always empty.
+void nameRoots(MutablePacket& packet) {
+    switch (packet.nativeId()) {
+    case play::ContainerSetSlotPacket::kId:
+        reshape(packet, [](io::ByteBuffer& in, io::ByteBuffer& out) {
+            out.writeByte(in.readByte());
+            protocol::varInt::write(out, protocol::varInt::read(in));
+            out.writeShort(in.readShort());
+            return legacyStacks::copyFlagged(in, out, Root::kUnnamed, Root::kNamed);
+        });
+        break;
+    case play::ContainerSetContentPacket::kId:
+        reshape(packet, [](io::ByteBuffer& in, io::ByteBuffer& out) {
+            out.writeByte(in.readByte());
+            protocol::varInt::write(out, protocol::varInt::read(in));
+            const std::int32_t count = protocol::varInt::read(in);
+            protocol::varInt::write(out, count);
+            for (std::int32_t i = 0; i <= count; ++i) {
+                if (!legacyStacks::copyFlagged(in, out, Root::kUnnamed, Root::kNamed)) {
+                    return false;
+                }
+            }
+            return true;
+        });
+        break;
+    case play::MerchantOffersPacket::kId:
+        merchantShapes::reshape(packet, merchantShapes::k1_19, merchantShapes::k1_19,
+                                [](io::ByteBuffer& in, io::ByteBuffer& out) {
+                                    return legacyStacks::copyFlagged(in, out, Root::kUnnamed, Root::kNamed);
+                                });
+        break;
+    case play::MapChunkPacket::kId:
+        reshape(packet, [](io::ByteBuffer& in, io::ByteBuffer& out) {
+            out.writeInt(in.readInt());
+            out.writeInt(in.readInt());
+            if (!legacyStacks::copyTag(in, out, Root::kUnnamed, Root::kNamed)) {
+                return false;
+            }
+            const std::int32_t sectionBytes = protocol::varInt::read(in);
+            protocol::varInt::write(out, sectionBytes);
+            out.writeBytes(in.readSpan(static_cast<std::size_t>(sectionBytes < 0 ? 0 : sectionBytes)));
+            const std::int32_t blockEntities = protocol::varInt::read(in);
+            protocol::varInt::write(out, blockEntities);
+            for (std::int32_t i = 0; i < blockEntities; ++i) {
+                out.writeByte(in.readByte());
+                out.writeShort(in.readShort());
+                protocol::varInt::write(out, protocol::varInt::read(in));
+                if (!legacyStacks::copyTag(in, out, Root::kUnnamed, Root::kNamed)) {
+                    return false;
+                }
+            }
+            return true;
+        });
+        break;
+    case play::BlockEntityDataPacket::kId:
+        reshape(packet, [](io::ByteBuffer& in, io::ByteBuffer& out) {
+            out.writeLong(in.readLong());
+            protocol::varInt::write(out, protocol::varInt::read(in));
+            return legacyStacks::copyTag(in, out, Root::kUnnamed, Root::kNamed);
+        });
+        break;
+    case play::SetEquipmentPacket::kId:
+        reshape(packet, [](io::ByteBuffer& in, io::ByteBuffer& out) {
+            protocol::varInt::write(out, protocol::varInt::read(in));
+            for (;;) {
+                const std::uint8_t marker = in.readByte();
+                out.writeByte(marker);
+                if (!legacyStacks::copyFlagged(in, out, Root::kUnnamed, Root::kNamed)) {
+                    return false;
+                }
+                if ((marker & kContinues) == 0) {
+                    return true;
+                }
+            }
+        });
+        break;
+    default:
+        break;
+    }
+}
 
 [[nodiscard]] std::pair<std::string, nbt::NbtCompound> defaultChatType() {
     nbt::NbtCompound decoration;
@@ -48,6 +150,7 @@ bool Link763::clientbound(ProtocolState state, MutablePacket& packet) {
     if (state != ProtocolState::Play) {
         return true;
     }
+    nameRoots(packet);
     if (packet.nativeId() == play::RespawnPacket::kId) {
         io::ByteBuffer input = io::ByteBuffer::wrap(packet.body);
         const LoginFields::SpawnFields spawn = LoginFields::SpawnFields::read(input, false);
@@ -86,7 +189,7 @@ bool Link763::clientbound(ProtocolState state, MutablePacket& packet) {
         for (const std::string& name : login.worldNames) {
             protocol::writeString(output, name);
         }
-        protocol::writeAnonymousNbt(output, nbt::NbtTag::ofCompound(codec()));
+        writeNamedNbt(output, nbt::NbtTag::ofCompound(codec()));
         protocol::writeString(output, dimensionTypeName(login.spawn.dimension));
         protocol::writeString(output, login.spawn.dimensionName);
         output.writeLong(login.spawn.hashedSeed);
@@ -160,6 +263,16 @@ std::string Link763::dimensionTypeName(std::int32_t index) const {
         return "minecraft:overworld";
     }
     return found->second[static_cast<std::size_t>(index)].first;
+}
+
+bool Link763::serverbound(ProtocolState state, MutablePacket& packet) {
+    if (state == ProtocolState::Play && packet.nativeId() == play::ServerboundSetCreativeModeSlotPacket::kId) {
+        reshape(packet, [](io::ByteBuffer& in, io::ByteBuffer& out) {
+            out.writeShort(in.readShort());
+            return legacyStacks::copyFlagged(in, out, Root::kNamed, Root::kUnnamed);
+        });
+    }
+    return true;
 }
 
 } // namespace basalt::wire::multiversion::java

@@ -9,10 +9,11 @@ const VersionTables& tables108() {
         VersionTables built;
         built.older = 108;
         built.blockStates = IdMap{"0:4084:0|"};
+        built.entityType = IdMap{"1:3:0;9:2:0;50:24:0;75:4:0;90:12:0;120:1:0|"};
+        built.objectType = IdMap{"1:3:0;10:1:0;50:2:0;60:8:0;70:4:0;75:4:0;90:2:0;93:1:0|"};
         built.item = IdMap{"1:7:0;12:14:0;27:5:0;33:1:0;35:1:0;37:6:0;44:7:0;52:3:0;56:3:0;60:2:0;65:3:0;69:2:0;72:2:0;"
                            "76:7:0;84:6:0;91:1:0;95:9:0;106:9:0;116:1:0;120:4:0;126:1:0;128:4:0;133:7:0;143:1:0;145:4:"
                            "0;151:25:0;179:2:0;182:11:0;198:6:0;205:2:0;208:1:0;210:2:0;256:193:0;2256:12:0|"};
-        built.entityType = IdMap{"1:3:0;12:1:0;48:21:0;71:8:0;90:12:0;120:1:0|"};
         built.mobEffect = IdMap{"1:27:0|"};
         built.staticBiomes = NameIdMap{
             "minecraft:badlands:37;minecraft:badlands_plateau:39;minecraft:beach:16;minecraft:birch_forest:27;"

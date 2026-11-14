@@ -96,6 +96,27 @@ void WireItemStack::writeOptional(io::ByteBuffer& buffer, const std::optional<Wi
     }
 }
 
+void WireItemStack::writeDelimited(io::ByteBuffer& buffer, const std::optional<WireItemStack>& stack) {
+    if (!stack || stack->count <= 0) {
+        varInt::write(buffer, 0);
+        return;
+    }
+    varInt::write(buffer, stack->count);
+    varInt::write(buffer, stack->itemId);
+    varInt::write(buffer, static_cast<std::int32_t>(stack->components.size()));
+    varInt::write(buffer, static_cast<std::int32_t>(stack->removedComponents.size()));
+    for (const ItemComponent& component : stack->components) {
+        io::ByteBuffer payload;
+        component.writePayload(payload);
+        varInt::write(buffer, component.id());
+        varInt::write(buffer, static_cast<std::int32_t>(payload.readableBytes()));
+        buffer.writeBytes(payload.readable());
+    }
+    for (const std::int32_t id : stack->removedComponents) {
+        varInt::write(buffer, id);
+    }
+}
+
 std::optional<WireItemStack> WireItemStack::read(io::ByteBuffer& buffer) {
     const std::int32_t count = varInt::read(buffer);
     if (buffer.failed() || count <= 0) {
@@ -239,7 +260,7 @@ std::optional<ServerboundContainerClickPacket> ServerboundContainerClickPacket::
 
 void ServerboundSetCreativeModeSlotPacket::write(io::ByteBuffer& buffer) const {
     buffer.writeShort(slot);
-    WireItemStack::writeOptional(buffer, item);
+    WireItemStack::writeDelimited(buffer, item);
 }
 
 std::optional<ServerboundSetCreativeModeSlotPacket> ServerboundSetCreativeModeSlotPacket::read(io::ByteBuffer& buffer) {

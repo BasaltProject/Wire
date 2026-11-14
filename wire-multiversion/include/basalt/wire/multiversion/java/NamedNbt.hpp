@@ -47,6 +47,12 @@ struct NamedNbt {
     return NamedNbt{std::move(parsed->tag), in.readSpan(header + parsed->bytesConsumed - 1)};
 }
 
+/// The tag alone; a malformed value fails the buffer and reads as an empty tag.
+[[nodiscard]] inline nbt::NbtTag readNamedTag(io::ByteBuffer& in) {
+    std::optional<NamedNbt> named = readNamedNbt(in);
+    return named.has_value() ? std::move(named->tag) : nbt::NbtTag{};
+}
+
 inline void writeNamedNbt(io::ByteBuffer& out, const nbt::NbtTag& tag) {
     const std::vector<std::uint8_t> bytes = nbt::nbtIO::writeAnonymous(tag);
     out.writeByte(bytes[0]);

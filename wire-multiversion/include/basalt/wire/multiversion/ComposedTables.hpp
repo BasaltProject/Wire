@@ -38,6 +38,8 @@ public:
     ComposedIdMap item;
     ComposedIdMap particleType;
     ComposedIdMap entityType;
+    /// The same walk for an object, which below 1.14 is numbered apart from the mobs.
+    ComposedIdMap objectType;
     ComposedIdMap attribute;
     ComposedIdMap dataComponentType;
     ComposedIdMap menu;

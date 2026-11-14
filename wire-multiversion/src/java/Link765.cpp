@@ -1,10 +1,14 @@
+#include <basalt/wire/multiversion/java/ChatShapes.hpp>
 #include <basalt/wire/multiversion/java/LegacyStacks.hpp>
 #include <basalt/wire/multiversion/java/Link765.hpp>
+#include <basalt/wire/multiversion/java/MerchantShapes.hpp>
 #include <basalt/wire/protocol/ProtocolBuffer.hpp>
 #include <basalt/wire/protocol/VarInt.hpp>
 #include <basalt/wire/protocol/login/LoginPackets.hpp>
+#include <basalt/wire/protocol/play/ChatPackets.hpp>
 #include <basalt/wire/protocol/play/EntityPackets.hpp>
 #include <basalt/wire/protocol/play/InventoryPackets.hpp>
+#include <basalt/wire/protocol/play/ItemComponent.hpp>
 
 #include <algorithm>
 #include <cstdint>
@@ -15,6 +19,12 @@ namespace basalt::wire::multiversion::java {
 namespace {
 
 namespace play = protocol::play;
+
+/// parity: ClientboundServerDataPacket, numbered as this server does.
+constexpr std::int32_t kServerData = 88;
+
+/// The distance flag, position, offsets, speed and count that sit before the particle from 1.20.5.
+constexpr std::size_t kParticleHeadBytes = 1 + 3 * sizeof(double) + 4 * sizeof(float) + sizeof(std::int32_t);
 using protocol::ProtocolState;
 
 constexpr std::int32_t kContinues = 0x80;
@@ -33,6 +43,40 @@ bool Link765::clientbound(ProtocolState state, MutablePacket& packet) {
         return true;
     }
     switch (packet.nativeId()) {
+    case play::PlayerChatPacket::kId:
+    case play::DisguisedChatPacket::kId:
+        chatShapes::chatTypeAsIndex(packet);
+        break;
+    case play::LevelParticlesPacket::kId: {
+        // Before 1.20.5 the particle came first and its options last.
+        io::ByteBuffer input = io::ByteBuffer::wrap(packet.body);
+        const std::span<const std::uint8_t> head = input.readSpan(kParticleHeadBytes);
+        const std::int32_t type = protocol::varInt::read(input);
+        if (input.failed()) {
+            return false;
+        }
+        io::ByteBuffer output;
+        protocol::varInt::write(output, type);
+        output.writeBytes(head);
+        output.writeBytes(input.readable());
+        packet.body = output.toVector();
+        break;
+    }
+    case kServerData:
+        // 1.20.5 moved whether chat must be signed from here into the login.
+        packet.body.push_back(0);
+        break;
+    case play::UpdateMobEffectPacket::kId:
+        // 1.20.5 made the amplifier a varint and dropped the factor data that followed the flags.
+        rewrite(packet, [](io::ByteBuffer& input, io::ByteBuffer& output) {
+            protocol::varInt::write(output, protocol::varInt::read(input));
+            protocol::varInt::write(output, protocol::varInt::read(input));
+            output.writeByte(static_cast<std::uint8_t>(protocol::varInt::read(input)));
+            protocol::varInt::write(output, protocol::varInt::read(input));
+            output.writeByte(input.readByte());
+            protocol::writeBoolean(output, false);
+        });
+        break;
     case play::UpdateAttributesPacket::kId:
         nameAttributes(packet);
         break;
@@ -72,6 +116,9 @@ bool Link765::clientbound(ProtocolState state, MutablePacket& packet) {
         });
         break;
     }
+    case play::MerchantOffersPacket::kId:
+        merchantShapes::toFlaggedStacks(packet, older());
+        break;
     case play::SetEquipmentPacket::kId: {
         const auto equipment = decode(packet, [](io::ByteBuffer& in) { return play::SetEquipmentPacket::read(in); });
         if (!equipment.has_value()) {
@@ -96,6 +143,9 @@ bool Link765::clientbound(ProtocolState state, MutablePacket& packet) {
 }
 
 bool Link765::serverbound(ProtocolState state, MutablePacket& packet) {
+    if (state == ProtocolState::Play) {
+        chatShapes::to1_20_5(packet);
+    }
     if (state != ProtocolState::Play || packet.nativeId() != play::ServerboundSetCreativeModeSlotPacket::kId) {
         return true;
     }
@@ -110,12 +160,23 @@ bool Link765::serverbound(ProtocolState state, MutablePacket& packet) {
     }
     const std::int32_t itemId = protocol::varInt::read(input);
     const std::int32_t count = input.readByte();
+    const nbt::NbtTag tag = protocol::readAnonymousNbt(input);
+    const auto* compound = tag.get<nbt::NbtCompound>();
+    const bool tagged = compound != nullptr && !compound->empty();
     encode(packet, [&](io::ByteBuffer& output) {
         output.writeShort(slot);
         protocol::varInt::write(output, count);
         protocol::varInt::write(output, itemId);
+        protocol::varInt::write(output, tagged ? 1 : 0);
         protocol::varInt::write(output, 0);
-        protocol::varInt::write(output, 0);
+        if (tagged) {
+            // The whole tag rides as custom data, in the delimited shape the native packet reads.
+            io::ByteBuffer payload;
+            protocol::writeAnonymousNbt(payload, tag);
+            protocol::varInt::write(output, play::dataComponent::kCustomData);
+            protocol::varInt::write(output, static_cast<std::int32_t>(payload.readableBytes()));
+            output.writeBytes(payload.readable());
+        }
     });
     return true;
 }

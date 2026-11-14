@@ -1,4 +1,5 @@
 #include <basalt/wire/multiversion/java/Link498.hpp>
+#include <basalt/wire/multiversion/java/NamedNbt.hpp>
 #include <basalt/wire/protocol/ProtocolBuffer.hpp>
 #include <basalt/wire/protocol/VarInt.hpp>
 #include <basalt/wire/protocol/play/EntityData.hpp>
@@ -70,7 +71,7 @@ void Link498::foldBiomesIn(MutablePacket& packet) {
     const std::int32_t z = input.readInt();
     const std::uint8_t fullChunk = input.readByte();
     const std::int32_t mask = protocol::varInt::read(input);
-    const nbt::NbtTag heightmaps = protocol::readAnonymousNbt(input);
+    const nbt::NbtTag heightmaps = readNamedTag(input);
     std::vector<std::int32_t> biomes;
     biomes.reserve(kBiomesInChunk);
     for (std::int32_t i = 0; i < kBiomesInChunk && !input.failed(); ++i) {
@@ -86,7 +87,7 @@ void Link498::foldBiomesIn(MutablePacket& packet) {
         output.writeInt(z);
         output.writeByte(fullChunk);
         protocol::varInt::write(output, mask);
-        protocol::writeAnonymousNbt(output, heightmaps);
+        writeNamedNbt(output, heightmaps);
         protocol::varInt::write(output, static_cast<std::int32_t>(sections.size()) +
                                             kColumns * static_cast<std::int32_t>(sizeof(std::int32_t)));
         output.writeBytes(sections);

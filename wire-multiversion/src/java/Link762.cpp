@@ -1,4 +1,6 @@
 #include <basalt/wire/multiversion/java/Link762.hpp>
+#include <basalt/wire/multiversion/java/NamedBlockEntities.hpp>
+#include <basalt/wire/multiversion/java/NamedNbt.hpp>
 #include <basalt/wire/protocol/ProtocolBuffer.hpp>
 #include <basalt/wire/protocol/VarInt.hpp>
 #include <basalt/wire/protocol/play/BlockEntityPackets.hpp>
@@ -14,6 +16,21 @@ namespace basalt::wire::multiversion::java {
 namespace {
 
 namespace play = protocol::play;
+
+void writeOneSided(io::ByteBuffer& input, io::ByteBuffer& output) {
+    nbt::NbtTag tag = readNamedTag(input);
+    if (auto* entity = tag.get<nbt::NbtCompound>()) {
+        static_cast<void>(namedBlockEntities::signAsOneSide(*entity));
+    }
+    writeNamedNbt(output, tag);
+}
+
+void copyNamed(io::ByteBuffer& input, io::ByteBuffer& output) {
+    if (const std::optional<NamedNbt> tag = readNamedNbt(input)) {
+        output.writeBytes(tag->raw);
+    }
+}
+
 using protocol::ProtocolState;
 
 struct LoginHead {
@@ -27,16 +44,38 @@ struct LoginHead {
 
 } // namespace
 
+void Link762::trustChunkEdges(MutablePacket& packet) {
+    io::ByteBuffer input = io::ByteBuffer::wrap(packet.body);
+    io::ByteBuffer output;
+    output.writeInt(input.readInt());
+    output.writeInt(input.readInt());
+    copyNamed(input, output);
+    const std::int32_t sectionBytes = protocol::varInt::read(input);
+    protocol::varInt::write(output, sectionBytes);
+    output.writeBytes(input.readSpan(static_cast<std::size_t>(sectionBytes < 0 ? 0 : sectionBytes)));
+    const std::int32_t blockEntities = protocol::varInt::read(input);
+    protocol::varInt::write(output, blockEntities);
+    for (std::int32_t i = 0; i < blockEntities && !input.failed(); ++i) {
+        output.writeByte(input.readByte());
+        output.writeShort(input.readShort());
+        protocol::varInt::write(output, protocol::varInt::read(input));
+        writeOneSided(input, output);
+    }
+    // The light that follows opened with whether to trust the edges until 1.20.
+    protocol::writeBoolean(output, true);
+    output.writeBytes(input.readable());
+    if (!input.failed()) {
+        packet.body = output.toVector();
+    }
+}
+
 bool Link762::clientbound(ProtocolState state, MutablePacket& packet) {
     if (state != ProtocolState::Play) {
         return true;
     }
     switch (packet.nativeId()) {
     case play::MapChunkPacket::kId:
-        encode(packet, [&](io::ByteBuffer& output) {
-            output.writeBytes(packet.body);
-            protocol::writeBoolean(output, true);
-        });
+        trustChunkEdges(packet);
         break;
     case play::UpdateLightPacket::kId: {
         io::ByteBuffer input = io::ByteBuffer::wrap(packet.body);
@@ -60,6 +99,13 @@ bool Link762::clientbound(ProtocolState state, MutablePacket& packet) {
         });
         break;
     }
+    case play::BlockEntityDataPacket::kId:
+        rewrite(packet, [](io::ByteBuffer& input, io::ByteBuffer& output) {
+            output.writeLong(input.readLong());
+            protocol::varInt::write(output, protocol::varInt::read(input));
+            writeOneSided(input, output);
+        });
+        break;
     case play::OpenSignEditorPacket::kId: {
         io::ByteBuffer input = io::ByteBuffer::wrap(packet.body);
         const std::int64_t position = input.readLong();
@@ -114,7 +160,7 @@ void Link762::dropPortalCooldown(MutablePacket& packet, bool afterLogin) {
         for (std::int32_t i = 0; i < worlds && !input.failed(); ++i) {
             head.worlds.push_back(protocol::readString(input));
         }
-        head.codec = protocol::readAnonymousNbt(input);
+        head.codec = readNamedTag(input);
     }
     const std::string dimensionType = protocol::readString(input);
     const std::string worldName = protocol::readString(input);
@@ -151,7 +197,7 @@ void Link762::dropPortalCooldown(MutablePacket& packet, bool afterLogin) {
             for (const std::string& world : head.worlds) {
                 protocol::writeString(output, world);
             }
-            protocol::writeAnonymousNbt(output, head.codec);
+            writeNamedNbt(output, head.codec);
         }
         protocol::writeString(output, dimensionType);
         protocol::writeString(output, worldName);
