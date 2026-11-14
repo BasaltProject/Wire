@@ -16,6 +16,7 @@ struct HostBody {
     std::function<std::int32_t(LuaArgs&)> immediate;
     LuaCall::Arrange arrange;
     LuaCall::ArrangeWith arrangeWith;
+    LuaCall::Refuse refuse;
     std::string name;
 };
 
@@ -83,6 +84,11 @@ struct CallAccess {
         LuaCall* call = of(thread);
         if (call == nullptr) {
             return luaL_error(thread, "'%s' cannot be used from here: it needs to be able to wait", body->name.c_str());
+        }
+        if (body->refuse) {
+            if (const std::optional<std::string> refusal = body->refuse(); refusal.has_value()) {
+                return luaL_error(thread, "%s", refusal->c_str());
+            }
         }
         call->arranged_ = true;
         LuaCall::Resume resume = [held = call->shared_from_this()] {
@@ -185,6 +191,17 @@ void installHostFunction(LuaSandbox& sandbox, const std::string& name, std::func
 void installWaitingFunction(LuaSandbox& sandbox, const std::string& name, LuaCall::Arrange arrange) {
     installBody(sandbox, name,
                 HostBody{.immediate = {}, .arrange = std::move(arrange), .arrangeWith = {}, .name = name},
+                &CallAccess::waiting);
+}
+
+void installWaitingFunction(LuaSandbox& sandbox, const std::string& name, LuaCall::Refuse refuse,
+                            LuaCall::Arrange arrange) {
+    installBody(sandbox, name,
+                HostBody{.immediate = {},
+                         .arrange = std::move(arrange),
+                         .arrangeWith = {},
+                         .refuse = std::move(refuse),
+                         .name = name},
                 &CallAccess::waiting);
 }
 
