@@ -27,6 +27,7 @@ void sleepFor(std::chrono::milliseconds duration);
 
 [[nodiscard]] std::optional<std::chrono::microseconds> processCpuTime();
 
+/// Logical cores this process may run on; on Linux it honours the affinity mask set by taskset or a cpuset.
 [[nodiscard]] std::optional<unsigned int> cpuCoreCount();
 
 /// Lets the thread give way to the others when every core is busy; background work like generation calls this.

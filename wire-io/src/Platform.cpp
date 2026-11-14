@@ -35,6 +35,7 @@
 #else
 #include <cstdio>
 #include <poll.h>
+#include <sched.h>
 #include <sys/resource.h>
 #include <sys/syscall.h>
 #include <termios.h>
@@ -160,6 +161,12 @@ void lowerCurrentThreadPriority() {
 }
 
 std::optional<unsigned int> cpuCoreCount() {
+#if defined(__linux__)
+    cpu_set_t allowed;
+    CPU_ZERO(&allowed);
+    if (sched_getaffinity(0, sizeof(allowed), &allowed) == 0 && CPU_COUNT(&allowed) > 0)
+        return static_cast<unsigned int>(CPU_COUNT(&allowed));
+#endif
     const unsigned int cores = std::thread::hardware_concurrency();
     return cores == 0 ? std::nullopt : std::optional{cores};
 }
