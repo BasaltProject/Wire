@@ -70,6 +70,9 @@ public:
 
     [[nodiscard]] bool resolve(std::optional<std::string_view> groupName, std::string_view node) const;
 
+    /// The most specific matching rule's answer, or nothing when no rule of the group chain matches the node.
+    [[nodiscard]] std::optional<bool> decide(std::optional<std::string_view> groupName, std::string_view node) const;
+
 private:
     [[nodiscard]] const PermissionGroup& at(std::size_t index) const noexcept;
 

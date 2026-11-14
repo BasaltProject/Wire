@@ -84,6 +84,10 @@ const PermissionGroup& GroupsConfig::get(std::optional<std::string_view> name) c
 }
 
 bool GroupsConfig::resolve(std::optional<std::string_view> groupName, std::string_view node) const {
+    return decide(groupName, node).value_or(false);
+}
+
+std::optional<bool> GroupsConfig::decide(std::optional<std::string_view> groupName, std::string_view node) const {
     const PermissionRule* best = nullptr;
     std::int32_t bestDepth = std::numeric_limits<std::int32_t>::max();
     std::int32_t depth = 0;
@@ -108,7 +112,9 @@ bool GroupsConfig::resolve(std::optional<std::string_view> groupName, std::strin
         current = current->inherits.has_value() ? find(*current->inherits) : nullptr;
         ++depth;
     }
-    return best != nullptr && best->granted();
+    if (best == nullptr)
+        return std::nullopt;
+    return best->granted();
 }
 
 std::expected<GroupsConfig, std::string> GroupsConfig::parse(const TomlTable& root, std::string_view pathName,
