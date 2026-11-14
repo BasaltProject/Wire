@@ -101,6 +101,12 @@ struct LoginRequest {
 
 [[nodiscard]] std::optional<LoginRequest> readLogin(io::ByteBuffer& buffer);
 
+/// The DER key Mojang signs the second link of a login chain with.
+[[nodiscard]] std::span<const std::uint8_t> mojangRootKey();
+
+/// A three-link chain whose second link is signed by `root`, each link by the key the one before named.
+[[nodiscard]] bool chainSignedBy(std::span<const std::string> entries, std::span<const std::uint8_t> root);
+
 enum class ResourcePackResponse : std::uint8_t {
     Refused = 1,
     SendPacks = 2,

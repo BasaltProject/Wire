@@ -59,6 +59,28 @@ std::optional<std::string> lastChainEntry(std::string_view certificateJson) {
     return *token;
 }
 
+std::optional<std::vector<std::uint8_t>> keyNamedBy(std::string_view json, std::string_view field) {
+    const auto text = jsonString(json, field);
+    return text ? common::base64::decode(*text) : std::nullopt;
+}
+
+std::vector<std::string> chainEntries(std::string_view certificateJson) {
+    std::vector<std::string> found;
+    const auto document = common::parseJson(certificateJson);
+    const auto* object = document ? document->get<common::JsonObject>() : nullptr;
+    const common::JsonValue* chain = object == nullptr ? nullptr : object->find("chain");
+    const auto* entries = chain == nullptr ? nullptr : chain->get<std::vector<common::JsonValue>>();
+    if (entries == nullptr) {
+        return found;
+    }
+    for (const common::JsonValue& entry : *entries) {
+        if (const auto* token = entry.get<std::string>(); token != nullptr) {
+            found.push_back(*token);
+        }
+    }
+    return found;
+}
+
 void readExtraData(std::string_view payload, LoginRequest& login) {
     const auto document = common::parseJson(payload);
     if (!document) {
@@ -149,6 +171,49 @@ void readSkin(std::string_view payload, LoginRequest& login) {
 
 } // namespace
 
+std::span<const std::uint8_t> mojangRootKey() {
+    static const std::vector<std::uint8_t> key =
+        common::base64::decode(
+            "MHYwEAYHKoZIzj0CAQYFK4EEACIDYgAECRXueJeTDqNRRgJi/vlRufByu/2G0i2Ebt6YMar5QX/R0DIIyrJMcUpruK4QveTfJSTp3Shl"
+            "q4Gk34cD/4GUWwkv0DVuzeuB+tXija7HBxii03NHDbPAD0AKnLr2wdAp")
+            .value_or(std::vector<std::uint8_t>{});
+    return key;
+}
+
+bool chainSignedBy(const std::span<const std::string> entries, const std::span<const std::uint8_t> root) {
+    if (entries.size() != 3 || root.empty()) {
+        return false;
+    }
+    std::vector<std::uint8_t> current;
+    for (std::size_t index = 0; index < entries.size(); index++) {
+        const auto parts = decodeJwt(entries[index]);
+        if (!parts) {
+            return false;
+        }
+        const auto named = keyNamedBy(parts->header, "x5u");
+        if (!named) {
+            return false;
+        }
+        if (index == 0) {
+            current = *named;
+        } else if (current != *named) {
+            return false;
+        }
+        if (!verifyJwt(*parts, current)) {
+            return false;
+        }
+        if (index == 1 && !std::ranges::equal(current, root)) {
+            return false;
+        }
+        const auto next = keyNamedBy(parts->payload, "identityPublicKey");
+        if (!next) {
+            return false;
+        }
+        current = *next;
+    }
+    return true;
+}
+
 std::optional<RequestNetworkSettings> readRequestNetworkSettings(io::ByteBuffer& buffer) {
     RequestNetworkSettings request;
     request.protocolVersion = buffer.readInt();
@@ -203,7 +268,10 @@ std::optional<LoginRequest> readLogin(io::ByteBuffer& buffer) {
             return std::nullopt;
         }
         readExtraData(parts->payload, login);
-        login.authenticated = !login.xuid.empty();
+        login.authenticated = !login.xuid.empty() && chainSignedBy(chainEntries(*certificate), mojangRootKey());
+        if (!login.authenticated) {
+            login.xuid.clear();
+        }
     } else if (const auto token = jsonString(auth, "Token"); token && !token->empty()) {
         const auto parts = decodeJwt(*token);
         if (!parts) {
@@ -221,6 +289,11 @@ std::optional<LoginRequest> readLogin(io::ByteBuffer& buffer) {
             return std::nullopt;
         }
         readExtraData(parts->payload, login);
+        const std::vector<std::string> links = chainEntries(auth);
+        login.authenticated = !login.xuid.empty() && chainSignedBy(links, mojangRootKey());
+        if (!login.authenticated) {
+            login.xuid.clear();
+        }
     }
 
     if (login.name.empty() || login.identityPublicKey.empty()) {

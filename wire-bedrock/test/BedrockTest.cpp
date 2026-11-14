@@ -426,7 +426,8 @@ TEST_CASE("a bedrock client gets from its first packet to the world") {
 
     harness.sendToServer(BedrockPacket::Login, harness.loginBody());
     CHECK(loggedInAs == "Steve");
-    CHECK(harness.connection.login().xuid == "2535000000000000");
+    CHECK(harness.connection.login().xuid.empty());
+    CHECK_FALSE(harness.connection.login().authenticated);
     CHECK(harness.connection.protocolVersion() == kNativeBedrockProtocol);
 
     const auto handshake = harness.take(BedrockPacket::ServerToClientHandshake);
@@ -780,4 +781,20 @@ TEST_CASE("a peer that keeps splits open or holds ordered frames back without en
         holding.receiveDatagram(datagramOf(frame, index), 0, messages);
     }
     CHECK(holding.closed());
+}
+
+TEST_CASE("a login chain counts as signed only when the root signed its second link") {
+    const auto client = EcKeyPair::generate();
+    const auto root = EcKeyPair::generate();
+    const auto identity = EcKeyPair::generate();
+    REQUIRE((client && root && identity));
+    const std::string first = *client->signJwt(R"({"identityPublicKey":")" + root->publicKeyBase64() + R"("})");
+    const std::string second = *root->signJwt(R"({"identityPublicKey":")" + identity->publicKeyBase64() + R"("})");
+    const std::string third =
+        *identity->signJwt(R"({"identityPublicKey":")" + client->publicKeyBase64() + R"(","extraData":{"XUID":"1"}})");
+    const std::vector<std::string> chain{first, second, third};
+    CHECK(chainSignedBy(chain, root->publicKeyDer()));
+    CHECK_FALSE(chainSignedBy(chain, client->publicKeyDer()));
+    CHECK_FALSE(chainSignedBy(std::span<const std::string>{chain}.first(2), root->publicKeyDer()));
+    CHECK_FALSE(mojangRootKey().empty());
 }
