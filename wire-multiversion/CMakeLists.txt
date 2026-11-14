@@ -200,5 +200,6 @@ basalt_test(wire-multiversion-test
 basalt_test(wire-multiversion-login-test
     SOURCES
         test/LoginShapesTest.cpp
+        test/TeleportAnswerTest.cpp
     DEPENDS basalt::wire-multiversion
 )

@@ -177,11 +177,13 @@ bool Link47::serverbound(ProtocolState state, MutablePacket& packet) {
         return splitPlacement(packet);
     }
     if (packet.nativeId() == play::ServerboundPositionLookPacket::kId && teleport_.has_value()) {
-        // 1.8 answers a teleport with a move; from 1.9 the answer is a confirmation of its id.
+        // 1.8 answers a teleport with a move; from 1.9 it confirms the id first, then moves.
         io::ByteBuffer accept;
         protocol::varInt::write(accept, *teleport_);
         teleport_.reset();
+        std::vector<std::uint8_t> move = std::move(packet.body);
         packet.reset(play::AcceptTeleportationPacket::kId, play::AcceptTeleportationPacket::kId, accept.toVector());
+        packet.extras.emplace_back(play::ServerboundPositionLookPacket::kId, std::move(move));
     }
     return true;
 }

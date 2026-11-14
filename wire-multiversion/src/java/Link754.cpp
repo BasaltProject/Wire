@@ -254,20 +254,13 @@ bool Link754::clientbound(ProtocolState state, MutablePacket& packet) {
         break;
     }
     case play::SectionBlocksUpdatePacket::kId: {
+        // The packet names the section by its own coordinate, not by its index in the column, so only the range moves.
         io::ByteBuffer input = io::ByteBuffer::wrap(packet.body);
         const std::int64_t packed = input.readLong();
-        const std::uint8_t suppressLight = input.readByte();
         const auto sectionY = static_cast<std::int32_t>((packed << 44) >> 44);
-        if (sectionY < kFirstSection || sectionY > kLastSection) {
+        if (input.failed() || sectionY < 0 || sectionY > kLastSection - kFirstSection) {
             return false;
         }
-        encode(packet, [&](io::ByteBuffer& output) {
-            output.writeLong(play::SectionBlocksUpdatePacket::packSection(
-                static_cast<std::int32_t>(packed >> 42), sectionY - kFirstSection,
-                static_cast<std::int32_t>((packed << 22) >> 42)));
-            output.writeByte(suppressLight);
-            output.writeBytes(input.readable());
-        });
         break;
     }
     default:

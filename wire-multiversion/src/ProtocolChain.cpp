@@ -356,18 +356,28 @@ void ProtocolChain::serverbound(protocol::ProtocolState state, std::int32_t id, 
 
     MutablePacket packet;
     packet.reset(current, current, std::vector<std::uint8_t>{body.begin(), body.end()});
-    for (auto link = links_.rbegin(); link != links_.rend(); ++link) {
-        if (!link->get().serverbound(state, packet)) {
-            return;
-        }
-    }
-    if (content_ != nullptr && !content_->serverbound(state, packet)) {
-        return;
-    }
+    serverboundThrough(state, 0, packet, emit);
+}
 
-    emit(packet.id, packet.body);
-    for (const auto& [extraId, extraBody] : packet.extras) {
-        emit(extraId, extraBody);
+void ProtocolChain::serverboundThrough(protocol::ProtocolState state, std::size_t from, MutablePacket& packet,
+                                       const Emit& emit) const {
+    // A link's extras still cross the links after it, so a newer link can pair them as its own client would send.
+    std::vector<std::pair<std::size_t, std::pair<std::int32_t, std::vector<std::uint8_t>>>> later;
+    bool kept = true;
+    for (std::size_t step = from; step < links_.size() && kept; ++step) {
+        kept = links_[links_.size() - 1 - step].get().serverbound(state, packet);
+        for (auto& extra : packet.extras) {
+            later.emplace_back(step + 1, std::move(extra));
+        }
+        packet.extras.clear();
+    }
+    if (kept && (content_ == nullptr || content_->serverbound(state, packet))) {
+        emit(packet.id, packet.body);
+    }
+    for (auto& [next, extra] : later) {
+        MutablePacket more;
+        more.reset(extra.first, extra.first, std::move(extra.second));
+        serverboundThrough(state, next, more, emit);
     }
 }
 

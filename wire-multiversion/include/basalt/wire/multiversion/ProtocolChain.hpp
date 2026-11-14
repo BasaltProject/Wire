@@ -150,6 +150,8 @@ private:
                        bool resumed = false, MutablePacket::Spawn spawn = MutablePacket::Spawn::kObject) const;
     void serverboundStepwise(protocol::ProtocolState state, std::size_t remaining, std::int32_t id,
                              std::span<const std::uint8_t> body, const Emit& emit) const;
+    void serverboundThrough(protocol::ProtocolState state, std::size_t from, MutablePacket& packet,
+                            const Emit& emit) const;
 
     PacketContentRewriter* content_;
     PacketContentRewriter* tail_;
