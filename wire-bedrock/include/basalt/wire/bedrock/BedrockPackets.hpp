@@ -1065,6 +1065,9 @@ enum class BedrockPlayerAction : std::uint8_t {
 
 [[nodiscard]] std::optional<BedrockPlayerAction> readPlayerAction(io::ByteBuffer& buffer);
 
+/// The server telling a client it may finish a dimension change once the columns around it have arrived.
+void writeDimensionChangeAck(io::ByteBuffer& buffer, std::uint64_t runtimeEntityId);
+
 /// What a client answers with when somebody presses the button.
 [[nodiscard]] std::optional<RespawnState> readRespawn(io::ByteBuffer& buffer);
 

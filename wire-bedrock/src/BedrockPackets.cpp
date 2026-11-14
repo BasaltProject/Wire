@@ -2327,6 +2327,17 @@ std::optional<BedrockPlayerAction> readPlayerAction(io::ByteBuffer& buffer) {
     }
 }
 
+void writeDimensionChangeAck(io::ByteBuffer& buffer, const std::uint64_t runtimeEntityId) {
+    writeVarULong(buffer, runtimeEntityId);
+    writeVarInt(buffer, static_cast<std::int32_t>(BedrockPlayerAction::DimensionChanged));
+    for (int position = 0; position < 2; ++position) {
+        writeVarInt(buffer, 0);
+        writeVarUInt(buffer, 0);
+        writeVarInt(buffer, 0);
+    }
+    writeVarInt(buffer, 0);
+}
+
 std::optional<RespawnState> readRespawn(io::ByteBuffer& buffer) {
     static_cast<void>(readFloatLE(buffer));
     static_cast<void>(readFloatLE(buffer));
