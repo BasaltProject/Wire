@@ -23,12 +23,34 @@ struct DepthGuard {
 };
 
 using Providers = std::vector<std::shared_ptr<const Provider>>;
+using SharedProviders = std::shared_ptr<const Providers>;
+
+#if defined(__cpp_lib_atomic_shared_ptr) && __cpp_lib_atomic_shared_ptr >= 201711L
+using AtomicProviders = std::atomic<SharedProviders>;
+#else
+// Older libc++ lacks atomic<shared_ptr>, so publish through the shared_ptr atomic operations.
+class AtomicProviders {
+public:
+    explicit AtomicProviders(SharedProviders value) : value_(std::move(value)) {}
+
+    [[nodiscard]] SharedProviders load(std::memory_order order) const {
+        return std::atomic_load_explicit(&value_, order);
+    }
+
+    void store(SharedProviders value, std::memory_order order) {
+        std::atomic_store_explicit(&value_, std::move(value), order);
+    }
+
+private:
+    SharedProviders value_;
+};
+#endif
 
 } // namespace
 
 struct PermissionChain::State {
     std::mutex writer;
-    std::atomic<std::shared_ptr<const Providers>> snapshot{std::make_shared<const Providers>()};
+    AtomicProviders snapshot{std::make_shared<const Providers>()};
     std::atomic<bool> onlyDefault{true};
     std::atomic<std::uint64_t> version{0};
 

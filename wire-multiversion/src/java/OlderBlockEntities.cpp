@@ -241,9 +241,9 @@ void banner(nbt::NbtCompound& tag, std::int32_t farEnd, std::optional<std::int32
         if (pattern == nullptr) {
             continue;
         }
-        const auto* code =
+        const auto code =
             std::ranges::find(kPatterns, bare(*pattern), &std::pair<std::string_view, std::string_view>::first);
-        const auto* dye = std::ranges::find(kDyes, layer->getString("color", "white"));
+        const auto dye = std::ranges::find(kDyes, layer->getString("color", "white"));
         if (code == kPatterns.end() || dye == kDyes.end()) {
             continue;
         }
@@ -268,7 +268,7 @@ void spawner(nbt::NbtCompound& tag, std::int32_t farEnd) {
     nbt::NbtCompound inner = *entity;
     if (farEnd < versions::kV1_11) {
         const std::string_view id = bare(inner.getString("id"));
-        const auto* legacy =
+        const auto legacy =
             std::ranges::find(kEntityNamesBefore1_11, id, &std::pair<std::string_view, std::string_view>::first);
         const std::string name{legacy == kEntityNamesBefore1_11.end() ? std::string_view{"Pig"} : legacy->second};
         inner.putString("id", name);

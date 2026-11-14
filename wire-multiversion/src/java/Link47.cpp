@@ -437,7 +437,7 @@ void Link47::moveEntity(MutablePacket& packet, bool rotates) {
     encode(packet, [&](io::ByteBuffer& output) {
         protocol::varInt::write(output, entityId);
         for (const std::int32_t axis : step) {
-            output.writeByte(static_cast<std::uint8_t>(std::clamp(axis, INT8_MIN, INT8_MAX)));
+            output.writeByte(static_cast<std::uint8_t>(std::clamp<std::int32_t>(axis, INT8_MIN, INT8_MAX)));
         }
         if (rotates) {
             output.writeByte(yaw);

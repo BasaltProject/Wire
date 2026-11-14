@@ -121,7 +121,7 @@ bool EntitySpawns::spawn(MutablePacket& packet) {
         nameOver(packet, spawned->entityId, spawned->entityType);
     }
     if (farEnd_ < protocolVersions::kV1_14) {
-        const auto* minecart =
+        const auto minecart =
             std::ranges::find(kMinecartKinds, spawned->entityType, &std::pair<std::int32_t, std::int32_t>::first);
         if (minecart != kMinecartKinds.end()) {
             spawned->objectData = minecart->second;

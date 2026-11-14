@@ -238,7 +238,7 @@ void putEnchantments(nbt::NbtCompound& tag, const ItemComponent::Enchantments& e
         const std::string_view name = olderName(names[static_cast<std::size_t>(id)]);
         nbt::NbtCompound entry;
         if (numbered) {
-            const auto* known = std::ranges::find(kNumberedEnchantments, name, &NumberedEnchantment::name);
+            const auto known = std::ranges::find(kNumberedEnchantments, name, &NumberedEnchantment::name);
             if (known == kNumberedEnchantments.end()) {
                 continue;
             }
@@ -404,7 +404,7 @@ std::optional<std::int32_t> enchantmentId(const nbt::NbtTag* id, std::span<const
     if (const auto* text = id != nullptr ? id->get<std::string>() : nullptr) {
         name = bare(*text);
     } else if (const auto number = numberOf(id)) {
-        const auto* known = std::ranges::find(kNumberedEnchantments, *number, &NumberedEnchantment::id);
+        const auto known = std::ranges::find(kNumberedEnchantments, *number, &NumberedEnchantment::id);
         if (known == kNumberedEnchantments.end()) {
             return std::nullopt;
         }
@@ -593,7 +593,7 @@ std::vector<ItemComponent> toComponents(const nbt::NbtCompound& tag, std::int32_
         components.push_back(*std::move(stored));
     }
     const std::string_view potion = bare(tag.getString("Potion"));
-    const auto* known = std::ranges::find(kPotions, potion);
+    const auto known = std::ranges::find(kPotions, potion);
     const auto color = numberOf(tag.find("CustomPotionColor"));
     if (known != kPotions.end() || color.has_value()) {
         io::ByteBuffer payload;
@@ -663,7 +663,7 @@ void fromStack(WireItemStack& item, std::int32_t data, std::int32_t farEnd, std:
     if (farEnd < versions::kV1_9 && item.itemId == kPotion) {
         const bool splash = data >= 2 * kSplashBit;
         const std::int32_t base = splash ? data - kSplashBit : data;
-        const auto* known = std::ranges::find(kPotionDamage, static_cast<std::int16_t>(base));
+        const auto known = std::ranges::find(kPotionDamage, static_cast<std::int16_t>(base));
         if (splash) {
             item.itemId = kSplashPotion;
         }
