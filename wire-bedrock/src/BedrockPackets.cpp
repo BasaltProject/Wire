@@ -13,6 +13,7 @@
 
 #include <algorithm>
 #include <array>
+#include <chrono>
 #include <cmath>
 #include <set>
 #include <vector>
@@ -62,6 +63,14 @@ std::optional<std::string> lastChainEntry(std::string_view certificateJson) {
 std::optional<std::vector<std::uint8_t>> keyNamedBy(std::string_view json, std::string_view field) {
     const auto text = jsonString(json, field);
     return text ? common::base64::decode(*text) : std::nullopt;
+}
+
+bool withinWindow(std::string_view payload) {
+    const auto now = static_cast<double>(
+        std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now().time_since_epoch()).count());
+    const auto notBefore = jsonNumber(payload, "nbf");
+    const auto expires = jsonNumber(payload, "exp");
+    return (!notBefore || *notBefore <= now) && (!expires || *expires > now);
 }
 
 std::vector<std::string> chainEntries(std::string_view certificateJson) {
@@ -203,6 +212,9 @@ bool chainSignedBy(const std::span<const std::string> entries, const std::span<c
             return false;
         }
         if (index == 1 && !std::ranges::equal(current, root)) {
+            return false;
+        }
+        if (index > 0 && !withinWindow(parts->payload)) {
             return false;
         }
         const auto next = keyNamedBy(parts->payload, "identityPublicKey");
