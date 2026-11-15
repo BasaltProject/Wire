@@ -67,6 +67,63 @@ inflateWholeStream(std::span<const std::uint8_t> source, int windowBits, std::si
     }
 }
 
+struct ThreadDeflate {
+    z_stream stream{};
+    int level = 0;
+    bool ready = false;
+
+    ThreadDeflate() = default;
+    ThreadDeflate(const ThreadDeflate&) = delete;
+    ThreadDeflate& operator=(const ThreadDeflate&) = delete;
+
+    ~ThreadDeflate() { release(); }
+
+    void release() noexcept {
+        if (ready) {
+            deflateEnd(&stream);
+            ready = false;
+        }
+    }
+
+    int acquire(int wantedLevel) noexcept {
+        if (ready && level == wantedLevel) {
+            return deflateReset(&stream);
+        }
+        release();
+        stream = z_stream{};
+        const int result = deflateInit(&stream, wantedLevel);
+        if (result == Z_OK) {
+            ready = true;
+            level = wantedLevel;
+        }
+        return result;
+    }
+};
+
+struct ThreadInflate {
+    z_stream stream{};
+    bool ready = false;
+
+    ThreadInflate() = default;
+    ThreadInflate(const ThreadInflate&) = delete;
+    ThreadInflate& operator=(const ThreadInflate&) = delete;
+
+    ~ThreadInflate() {
+        if (ready) {
+            inflateEnd(&stream);
+        }
+    }
+
+    int acquire() noexcept {
+        if (ready) {
+            return inflateReset(&stream);
+        }
+        const int result = inflateInit(&stream);
+        ready = result == Z_OK;
+        return result;
+    }
+};
+
 } // namespace
 
 namespace zlib {
@@ -79,14 +136,23 @@ std::expected<void, CompressionError> compressInto(std::span<const std::uint8_t>
 
     const uLong bound = compressBound(static_cast<uLong>(source.size()));
     const std::span<std::uint8_t> tail = destination.writableTail(bound);
-    uLongf written = bound;
-    const int result = compress2(tail.data(), &written, source.data(), static_cast<uLong>(source.size()), level);
-    if (result != Z_OK) {
-        destination.trimTail(bound);
-        return std::unexpected{translate(result)};
+    thread_local ThreadDeflate deflater;
+    int result = deflater.acquire(level);
+    if (result == Z_OK) {
+        z_stream& stream = deflater.stream;
+        stream.next_in = const_cast<Bytef*>(source.data());
+        stream.avail_in = static_cast<uInt>(source.size());
+        stream.next_out = tail.data();
+        stream.avail_out = static_cast<uInt>(bound);
+        result = deflate(&stream, Z_FINISH);
+        if (result == Z_STREAM_END) {
+            destination.trimTail(bound - stream.total_out);
+            return {};
+        }
+        result = result == Z_OK ? Z_BUF_ERROR : result;
     }
-    destination.trimTail(bound - written);
-    return {};
+    destination.trimTail(bound);
+    return std::unexpected{translate(result)};
 }
 
 std::expected<void, CompressionError> decompressInto(std::span<const std::uint8_t> source, std::size_t uncompressedSize,
@@ -102,14 +168,27 @@ std::expected<void, CompressionError> decompressInto(std::span<const std::uint8_
     }
 
     const std::span<std::uint8_t> tail = destination.writableTail(uncompressedSize);
-    uLongf written = static_cast<uLongf>(uncompressedSize);
-    const int result = uncompress(tail.data(), &written, source.data(), static_cast<uLong>(source.size()));
-    if (result != Z_OK) {
-        destination.trimTail(uncompressedSize);
-        return std::unexpected{translate(result)};
+    thread_local ThreadInflate inflater;
+    int result = inflater.acquire();
+    if (result == Z_OK) {
+        z_stream& stream = inflater.stream;
+        stream.next_in = const_cast<Bytef*>(source.data());
+        stream.avail_in = static_cast<uInt>(source.size());
+        stream.next_out = tail.data();
+        stream.avail_out = static_cast<uInt>(uncompressedSize);
+        do {
+            result = inflate(&stream, Z_NO_FLUSH);
+        } while (result == Z_OK);
+        if (result == Z_STREAM_END) {
+            destination.trimTail(uncompressedSize - stream.total_out);
+            return {};
+        }
+        if (result == Z_NEED_DICT || (result == Z_BUF_ERROR && stream.avail_in == 0)) {
+            result = Z_DATA_ERROR;
+        }
     }
-    destination.trimTail(uncompressedSize - written);
-    return {};
+    destination.trimTail(uncompressedSize);
+    return std::unexpected{translate(result)};
 }
 
 std::expected<std::vector<std::uint8_t>, CompressionError> compress(std::span<const std::uint8_t> source, int level) {
