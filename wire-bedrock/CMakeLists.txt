@@ -35,6 +35,7 @@ basalt_module(wire-bedrock
         src/BedrockSoundNames.cpp
         src/BedrockSounds.cpp
         src/BedrockPackets.cpp
+        src/BedrockTokenKeys.cpp
         src/BedrockTypes.cpp
         src/RakFrame.cpp
         src/RakNet.cpp

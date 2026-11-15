@@ -8,6 +8,7 @@
 #include <basalt/wire/bedrock/BedrockItems.hpp>
 #include <basalt/wire/bedrock/BedrockKeys.hpp>
 #include <basalt/wire/bedrock/BedrockPackets.hpp>
+#include <basalt/wire/bedrock/BedrockTokenKeys.hpp>
 #include <basalt/wire/bedrock/BedrockTypes.hpp>
 #include <basalt/wire/bedrock/RakFrame.hpp>
 #include <basalt/wire/bedrock/RakNet.hpp>
@@ -797,4 +798,43 @@ TEST_CASE("a login chain counts as signed only when the root signed its second l
     CHECK_FALSE(chainSignedBy(chain, client->publicKeyDer()));
     CHECK_FALSE(chainSignedBy(std::span<const std::string>{chain}.first(2), root->publicKeyDer()));
     CHECK_FALSE(mojangRootKey().empty());
+}
+
+TEST_CASE("a token counts as verified only with a loaded key, the issuer and an unexpired claim") {
+    // Synthetic RS256 vectors from a throwaway key: one valid until 2100 and one expired in 1970.
+    constexpr std::string_view kPublic =
+        "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAzT9qNUOfVOHnsP7QY4UUCo/yS11dDsyz8YkcpaQBO5stcJ7ijDBsFk2mCg/"
+        "yq0lUic/"
+        "6W9tUqhKw4aXnPSjL4DPGKmXBF8DmnINLOBKbHfhEk9jEI4qZAF89jjUjNJapwO2HUosbzQnMhltRSpogDA3tsLdSTOGoqRujpMmcePyTiDJtH"
+        "Ndaw0WDH6CxJdbdPiP2360ZBSms9CllV5lYE7orYtzBwniTHkjzeSQCJrXUnKp8b8yiQslDWNJ0rxb098nKC99CGo1zGEp2m4kbBp79kgY9Z36"
+        "+MTMiPHmbcj2gaOikFZLmPuEmrvFQVNBAQ9KkhWb98uqzb8on+SJC5QIDAQAB";
+    constexpr std::string_view kGood =
+        "eyJhbGciOiJSUzI1NiIsImtpZCI6ImsxIn0."
+        "eyJpc3MiOiJodHRwczovL2lzc3VlciIsImF1ZCI6ImFwaTovL2F1dGgtbWluZWNyYWZ0LXNlcnZpY2VzL211bHRpcGxheWVyIiwiZXhwIjo0MT"
+        "AyNDQ0ODAwfQ.Zeq-voCEgrUUimr7XUT_56B9FKy7tUmv40IIs3VsGXkTTvbZstkmebs0e50tgrj24jBE9JHbfsjI04yU7bqw_Pgup_"
+        "kwlU9pXHuICQDui84YkbnwUcxrQfL0it2WnZqOaovS8qVk0N5NSb6GjOW1Oornwzwwfru3iUHwaPsY1WJWJ7fOao5O_bx2T9x0c-j89OfO4t-"
+        "vwB6H1yVGlGL656JDsI4tEqphirEZkA0uzMWbYXRrSZlhLlONWUKW6TYWwuIBoSWNY-"
+        "NwuDjOOPEFoleMsCcaU0MOKjWnFlNNJAijN4GQdPXsqjAOcTLLV8HnLbloK3ooHqu3KAfhp1LPNw";
+    constexpr std::string_view kExpired =
+        "eyJhbGciOiJSUzI1NiIsImtpZCI6ImsxIn0."
+        "eyJpc3MiOiJodHRwczovL2lzc3VlciIsImF1ZCI6ImFwaTovL2F1dGgtbWluZWNyYWZ0LXNlcnZpY2VzL211bHRpcGxheWVyIiwiZXhwIjoxfQ"
+        ".sIbVURpLqwcASk5J8EJYhEBCzqzsODuWbpKxoYjVLgCmHPYT4k89cathK6k4lI5nTGezIEkH3Ogazj7XWDWkWZOjpBxhmjxPJbC4fmTdz742Z"
+        "mvzoMqiqtyF2c7PLG72K3vTvWMnESI3ml54gmSkLPuBrMmZ3nqvW2CPdC1XvblU1vRBTdJMjUUeJpHBJgqxXCPMvZEo1USVNJ4WtxW2vuGg-"
+        "vh95Xiz0UhxqKCm4ZfVqKe216IUcwhkb6UjmlpqF6lPMhaj1UTM75MHYER2rKUicUI-QB87kEsHGPlV-IKXDvTkADoXGCnodWptj7-"
+        "bAUrvYhWnf8cFAhdH0aX27g";
+
+    const auto key = common::base64::decode(kPublic);
+    REQUIRE(key);
+    const auto good = decodeJwt(kGood);
+    const auto expired = decodeJwt(kExpired);
+    REQUIRE((good && expired));
+
+    auto& keys = MojangTokenKeys::instance();
+    keys.install("", {});
+    CHECK_FALSE(keys.verify(*good));
+    keys.install("https://other", {{"k1", *key}});
+    CHECK_FALSE(keys.verify(*good));
+    keys.install("https://issuer", {{"k1", *key}});
+    CHECK(keys.verify(*good));
+    CHECK_FALSE(keys.verify(*expired));
 }

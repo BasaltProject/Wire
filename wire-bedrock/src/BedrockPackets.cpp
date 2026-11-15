@@ -6,6 +6,7 @@
 #include <basalt/wire/bedrock/BedrockNbt.hpp>
 #include <basalt/wire/bedrock/BedrockPackets.hpp>
 #include <basalt/wire/bedrock/BedrockSounds.hpp>
+#include <basalt/wire/bedrock/BedrockTokenKeys.hpp>
 #include <basalt/wire/bedrock/BedrockTypes.hpp>
 #include <basalt/wire/common/Base64.hpp>
 #include <basalt/wire/common/SafeInt.hpp>
@@ -290,7 +291,10 @@ std::optional<LoginRequest> readLogin(io::ByteBuffer& buffer) {
             return std::nullopt;
         }
         readTokenClaims(parts->payload, login);
-        login.authenticated = !login.xuid.empty();
+        login.authenticated = !login.xuid.empty() && MojangTokenKeys::instance().verify(*parts);
+        if (!login.authenticated) {
+            login.xuid.clear();
+        }
     } else {
         const auto entry = lastChainEntry(auth);
         if (!entry) {
