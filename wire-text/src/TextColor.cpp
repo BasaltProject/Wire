@@ -31,7 +31,8 @@ constexpr std::array<std::pair<std::string_view, TextColor>, 16> kNamed = {{
 } // namespace
 
 std::string TextColor::toHexString() const {
-    static constexpr char kDigits[] = "0123456789abcdef";
+    // parity: TextColor.formatValue writes uppercase hex
+    static constexpr char kDigits[] = "0123456789ABCDEF";
     std::string out = "#000000";
     for (int i = 0; i < 6; ++i) {
         out[static_cast<std::size_t>(6 - i)] = kDigits[(rgb_ >> (i * 4)) & 0xF];
