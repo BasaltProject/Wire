@@ -121,4 +121,24 @@ std::optional<std::string> mojangUuidOf(const std::string& name, const MojangSes
     return id.has_value() ? std::optional{dashed(*id)} : std::nullopt;
 }
 
+std::optional<SessionProfile> mojangProfileOf(const std::string& uuid, const MojangSessionService::Fetch& fetch) {
+    const MojangSessionService::Fetch get = fetch ? fetch : MojangSessionService::Fetch{[](std::string_view url) {
+        return httpsGetBounded(url, kMaxSessionProfileBytes,
+                               {.deadline = std::chrono::steady_clock::now() + std::chrono::seconds{10}});
+    }};
+    std::string bare;
+    for (const char character : uuid) {
+        if (character != '-') {
+            bare.push_back(character);
+        }
+    }
+    const std::expected<HttpsResponse, HttpsError> answered =
+        get("https://sessionserver.mojang.com/session/minecraft/profile/" + encodeQueryValue(bare) + "?unsigned=false");
+    if (!answered.has_value() || answered->status != 200 || answered->body.empty() ||
+        answered->body.size() > kMaxSessionProfileBytes) {
+        return std::nullopt;
+    }
+    return profileFrom(answered->text());
+}
+
 } // namespace basalt::wire::auth

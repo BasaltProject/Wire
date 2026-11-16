@@ -27,4 +27,7 @@ private:
 [[nodiscard]] std::optional<std::string> mojangUuidOf(const std::string& name,
                                                       const MojangSessionService::Fetch& fetch = {});
 
+[[nodiscard]] std::optional<SessionProfile> mojangProfileOf(const std::string& uuid,
+                                                            const MojangSessionService::Fetch& fetch = {});
+
 } // namespace basalt::wire::auth
