@@ -20,7 +20,7 @@ public:
     /// Idempotent: starts the background fetch of the signing keys, which retries until it works.
     void start();
 
-    /// Needs start() to have run; false whenever the keys are not loaded, so a login is never refused over the key service being down.
+    /// Needs start() first; false while the keys are not loaded, so a login is never refused over the key service.
     [[nodiscard]] bool verify(const JwtParts& token);
 
     void install(std::string issuer, std::vector<std::pair<std::string, std::vector<std::uint8_t>>> keys);
