@@ -27,6 +27,12 @@ std::string LuaArgs::checkString(std::int32_t index) const {
     return std::string{text, length};
 }
 
+std::string_view LuaArgs::checkView(std::int32_t index) const {
+    std::size_t length = 0;
+    const char* text = luaL_checklstring(state_, index, &length);
+    return std::string_view{text, length};
+}
+
 std::int64_t LuaArgs::checkInteger(std::int32_t index) const {
     return static_cast<std::int64_t>(luaL_checkinteger(state_, index));
 }

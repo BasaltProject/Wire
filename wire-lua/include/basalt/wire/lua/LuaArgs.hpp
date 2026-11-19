@@ -21,6 +21,9 @@ public:
     [[nodiscard]] bool isNumber(std::int32_t index) const;
 
     [[nodiscard]] std::string checkString(std::int32_t index) const;
+
+    /// Valid until the value leaves the stack.
+    [[nodiscard]] std::string_view checkView(std::int32_t index) const;
     [[nodiscard]] std::int64_t checkInteger(std::int32_t index) const;
     [[nodiscard]] double checkNumber(std::int32_t index) const;
 
