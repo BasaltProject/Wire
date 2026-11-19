@@ -13,7 +13,8 @@ extern "C" {
 
 namespace basalt::wire::lua {
 namespace {
-constexpr int kHookStep = 1000;
+constexpr lua_Integer kBudgetStep = 333;
+constexpr std::int64_t kBudgetPerStep = 1000;
 
 constexpr const char* kSandboxKey = "basalt.sandbox";
 
@@ -49,7 +50,7 @@ struct SandboxAccess {
         return moved;
     }
 
-    static void countHook(lua_State* state, lua_Debug*) {
+    static void budgetStep(lua_State* state) {
         LuaSandbox* sandbox = of(state);
         if (sandbox == nullptr) {
             return;
@@ -68,7 +69,8 @@ struct SandboxAccess {
         if (profiling) {
             sandbox->profile_.sample(state);
         }
-        const std::int64_t left = sandbox->budget_.fetch_sub(kHookStep, std::memory_order_relaxed) - kHookStep;
+        const std::int64_t left =
+            sandbox->budget_.fetch_sub(kBudgetPerStep, std::memory_order_relaxed) - kBudgetPerStep;
         if (left <= 0) {
             luaL_error(state, "%s", failureMessages::kBudget.data());
         }
@@ -198,7 +200,7 @@ void LuaSandbox::install(std::uint64_t seed) {
         }
     }
     lua_pop(state_, 1);
-    lua_sethook(state_, &SandboxAccess::countHook, LUA_MASKCOUNT, kHookStep);
+    lua_setbudget(state_, kBudgetStep, &SandboxAccess::budgetStep);
 }
 
 void LuaSandbox::strip() {

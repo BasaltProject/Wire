@@ -12,6 +12,7 @@ vcpkg_extract_source_archive(
     PATCHES
         vs2015-impl-c99.patch
         uwp-no-popen.diff
+        budget.patch
 )
 file(COPY "${CMAKE_CURRENT_LIST_DIR}/CMakeLists.txt" DESTINATION "${SOURCE_PATH}")
 

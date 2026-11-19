@@ -82,6 +82,19 @@ TEST_CASE("a runaway plugin is stopped by its instruction budget") {
         run(*sandbox, "local total = 0 for i = 1, 10 do total = total + i end assert(total == 55)").has_value());
 }
 
+TEST_CASE("every shape of endless loop runs out of budget") {
+    for (const char* code :
+         {"repeat until false", "for i = 1, 1e18 do end", "for i = 1.0, 1e18 do end", "::top:: goto top",
+          "local function f() return f() end f()", "local function g() end while true do g() end"}) {
+        const std::unique_ptr<LuaSandbox> sandbox =
+            LuaSandbox::create("arena", LuaLimits{.instructionsPerTurn = 20000});
+        REQUIRE(sandbox != nullptr);
+        const std::optional<LuaFailure> failure = run(*sandbox, code);
+        REQUIRE(failure.has_value());
+        CHECK(failure->outOfBudget());
+    }
+}
+
 TEST_CASE("a plugin cannot take more memory than it is allowed") {
     const std::unique_ptr<LuaSandbox> sandbox =
         LuaSandbox::create("arena", LuaLimits{.instructionsPerTurn = 100000000, .memoryBytes = 512 * 1024});
