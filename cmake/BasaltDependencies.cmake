@@ -2,7 +2,6 @@
 
 find_package(c-ares CONFIG REQUIRED)
 find_package(doctest CONFIG REQUIRED)
-find_package(unofficial-lua CONFIG REQUIRED)
 find_package(MbedTLS CONFIG REQUIRED)
 find_package(monocypher CONFIG REQUIRED)
 find_package(simdjson CONFIG REQUIRED)
@@ -32,12 +31,6 @@ if(NOT TARGET basalt::doctest)
         endif()
     endforeach()
     add_library(basalt::doctest ALIAS basalt_doctest)
-endif()
-
-if(NOT TARGET basalt::lua)
-    add_library(basalt_lua INTERFACE)
-    target_link_libraries(basalt_lua INTERFACE unofficial::lua::lua)
-    add_library(basalt::lua ALIAS basalt_lua)
 endif()
 
 if(NOT TARGET basalt::mbedtls)

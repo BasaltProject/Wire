@@ -83,7 +83,7 @@ public:
 struct PluginPacket {
     PacketAddress address;
 
-    /// The vanilla name, filled only when a Lua listener is about to see the packet.
+    /// The vanilla name, filled only when a listener is about to see the packet.
     std::string name;
 
     std::uint64_t connection = 0;

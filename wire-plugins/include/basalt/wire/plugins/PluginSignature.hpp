@@ -18,7 +18,7 @@ using PublicKey = std::array<std::uint8_t, 32>;
 using Seed = std::array<std::uint8_t, 32>;
 using Signature = std::array<std::uint8_t, 64>;
 
-/// The manifest and every `.luac` under `src/`, each as path, length and bytes, in path order.
+/// The manifest and every `.wasm`, each as path, length and bytes, in path order.
 [[nodiscard]] std::vector<std::uint8_t> payload(const PluginPackage& package);
 
 [[nodiscard]] PublicKey publicKeyOf(const Seed& seed);
@@ -32,10 +32,10 @@ using Signature = std::array<std::uint8_t, 64>;
 /// The text a package carries as `plugin.sig`.
 [[nodiscard]] std::string render(const PublicKey& key, const Signature& signature);
 
-/// The key that signed this package, if it is one of `trusted` and the signature holds for the bytecode in it.
+/// The key that signed this package, if it is one of `trusted` and the signature holds for the modules in it.
 [[nodiscard]] std::expected<PublicKey, std::string> verify(const PluginPackage& package,
                                                            std::span<const PublicKey> trusted);
 
-/// Whether the package carries any bytecode, which only a verified signature lets load.
-[[nodiscard]] bool hasBytecode(const PluginPackage& package);
+/// Whether the package ships a `plugin.sig`, which a WebAssembly plugin must then satisfy.
+[[nodiscard]] bool carriesSignature(const PluginPackage& package);
 } // namespace basalt::wire::plugins::signature

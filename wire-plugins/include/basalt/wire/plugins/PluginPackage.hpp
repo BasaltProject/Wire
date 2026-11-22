@@ -18,14 +18,11 @@ struct PluginLoadError {
 
 namespace packageLayout {
 inline constexpr std::string_view kManifest = PluginManifest::kFileName;
-inline constexpr std::string_view kSource = "src/";
 inline constexpr std::string_view kResources = "resources/";
 inline constexpr std::string_view kConfigFile = "resources/config.toml";
 inline constexpr std::string_view kConfigDirectory = "resources/config/";
 inline constexpr std::string_view kLang = "resources/lang/";
 inline constexpr std::string_view kAssets = "resources/assets/";
-
-[[nodiscard]] std::optional<std::string> moduleFile(std::string_view module);
 } // namespace packageLayout
 
 class PluginPackage {

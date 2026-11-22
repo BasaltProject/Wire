@@ -1,8 +1,7 @@
 #pragma once
 
-#include <basalt/wire/lua/LuaArgs.hpp>
-
 #include <cstdint>
+#include <functional>
 #include <map>
 #include <optional>
 #include <string>
@@ -10,7 +9,7 @@
 
 namespace basalt::wire::plugins {
 
-/// A plugin's `lang/<locale>.toml` files: `@key` names a line and `{name}` takes a field of the table of arguments.
+/// A plugin's `lang/<locale>.toml` files: `@key` names a line and `{name}` takes a field.
 class PluginText {
 public:
     PluginText(std::string folder, std::string defaultLocale)
@@ -18,9 +17,14 @@ public:
 
     void load();
 
-    [[nodiscard]] std::string resolve(std::string_view message, lua::LuaArgs* lua, std::int32_t arguments) const;
+    using Fields = std::function<std::optional<std::string>(std::string_view name)>;
+
+    [[nodiscard]] std::string resolve(std::string_view message, const Fields& fields = {}) const;
 
     [[nodiscard]] std::optional<std::string> translation(std::string_view key) const;
+
+    /// The line without copying it, or null; it stays valid until the next load().
+    [[nodiscard]] const std::string* find(std::string_view key) const;
 
     [[nodiscard]] std::size_t localeCount() const noexcept { return locales_.size(); }
 

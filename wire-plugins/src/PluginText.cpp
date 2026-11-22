@@ -62,21 +62,26 @@ void PluginText::load() {
     }
 }
 
-std::optional<std::string> PluginText::translation(std::string_view key) const {
+const std::string* PluginText::find(std::string_view key) const {
     if (const auto preferred = locales_.find(defaultLocale_); preferred != locales_.end()) {
         if (const auto found = preferred->second.find(key); found != preferred->second.end()) {
-            return found->second;
+            return &found->second;
         }
     }
     for (const auto& [locale, entries] : locales_) {
         if (const auto found = entries.find(key); found != entries.end()) {
-            return found->second;
+            return &found->second;
         }
     }
-    return std::nullopt;
+    return nullptr;
 }
 
-std::string PluginText::resolve(std::string_view message, lua::LuaArgs* lua, std::int32_t arguments) const {
+std::optional<std::string> PluginText::translation(std::string_view key) const {
+    const std::string* found = find(key);
+    return found == nullptr ? std::nullopt : std::optional<std::string>{*found};
+}
+
+std::string PluginText::resolve(std::string_view message, const Fields& fields) const {
     std::string text;
     if (message.starts_with('@')) {
         const std::string_view key = message.substr(1);
@@ -84,7 +89,7 @@ std::string PluginText::resolve(std::string_view message, lua::LuaArgs* lua, std
     } else {
         text = std::string{message};
     }
-    if (text.find('{') == std::string::npos || lua == nullptr || arguments == 0 || !lua->isTable(arguments)) {
+    if (text.find('{') == std::string::npos || !fields) {
         return text;
     }
 
@@ -103,7 +108,7 @@ std::string PluginText::resolve(std::string_view message, lua::LuaArgs* lua, std
             break;
         }
         const std::string name = text.substr(index + 1, close - index - 1);
-        const std::optional<std::string> value = lua->fieldAsText(arguments, name);
+        const std::optional<std::string> value = fields(name);
         out += value.value_or("{" + name + "}");
         index = close + 1;
     }

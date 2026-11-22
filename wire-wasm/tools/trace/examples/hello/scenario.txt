@@ -1,0 +1,23 @@
+enable
+join Steve
+join Alex
+command Steve coins
+command Steve coins Alex
+command Steve coins Nobody
+command console coins
+command console coins Steve
+command Steve coins top 5
+command Steve coins top 99
+command Steve unknown
+placeholder coins Steve
+placeholder coins none
+placeholder missing none
+click 1 13 Steve
+click 1 99 Steve
+tick 25
+tick 40
+leave Alex
+command Alex coins
+join Alex
+command Steve coins top
+disable

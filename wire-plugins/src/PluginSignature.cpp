@@ -13,8 +13,8 @@ void appendLength(std::vector<std::uint8_t>& out, std::uint64_t value) {
 
 [[nodiscard]] std::vector<std::string> signedPaths(const PluginPackage& package) {
     std::vector<std::string> paths{std::string{packageLayout::kManifest}};
-    for (const std::string& path : package.list(packageLayout::kSource)) {
-        if (path.ends_with(".luac")) {
+    for (const std::string& path : package.list("")) {
+        if (path.ends_with(".wasm")) {
             paths.push_back(path);
         }
     }
@@ -120,15 +120,12 @@ std::string render(const PublicKey& key, const Signature& value) {
     return "key = \"" + toHex(key) + "\"\nsignature = \"" + toHex(value) + "\"\n";
 }
 
-bool hasBytecode(const PluginPackage& package) {
-    const std::vector<std::string> files = package.list(packageLayout::kSource);
-    return std::ranges::any_of(files, [](const std::string& path) { return path.ends_with(".luac"); });
-}
+bool carriesSignature(const PluginPackage& package) { return package.exists(kFile); }
 
 std::expected<PublicKey, std::string> verify(const PluginPackage& package, const std::span<const PublicKey> trusted) {
     const std::optional<std::string> text = package.readText(kFile);
     if (!text.has_value()) {
-        return std::unexpected(std::string{"the package has bytecode and no "} + std::string{kFile});
+        return std::unexpected(std::string{"the package has no "} + std::string{kFile});
     }
     const auto key = fromHex(valueOf(*text, "key").value_or(""), 32);
     const auto value = fromHex(valueOf(*text, "signature").value_or(""), 64);
@@ -138,12 +135,12 @@ std::expected<PublicKey, std::string> verify(const PluginPackage& package, const
     PublicKey signer{};
     std::ranges::copy(*key, signer.begin());
     if (std::ranges::find(trusted, signer) == trusted.end()) {
-        return std::unexpected("the bytecode is signed with key " + toHex(signer) +
+        return std::unexpected("the modules are signed with key " + toHex(signer) +
                                ", which the operator does not trust");
     }
     const std::vector<std::uint8_t> message = payload(package);
     if (crypto_ed25519_check(value->data(), signer.data(), message.data(), message.size()) != 0) {
-        return std::unexpected(std::string{"the signature does not match the bytecode in the package"});
+        return std::unexpected(std::string{"the signature does not match the modules in the package"});
     }
     return signer;
 }

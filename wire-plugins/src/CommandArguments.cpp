@@ -59,18 +59,4 @@ std::optional<std::vector<CommandValue>> parseCommandWords(const CommandSpec& sp
     return values;
 }
 
-void pushCommandValue(lua::LuaArgs& lua, const CommandValue& value) {
-    if (const auto* flag = std::get_if<bool>(&value)) {
-        lua.pushBoolean(*flag);
-    } else if (const auto* whole = std::get_if<std::int64_t>(&value)) {
-        lua.pushInteger(*whole);
-    } else if (const auto* real = std::get_if<double>(&value)) {
-        lua.pushNumber(*real);
-    } else if (const auto* text = std::get_if<std::string>(&value)) {
-        lua.pushString(*text);
-    } else {
-        lua.pushNil();
-    }
-}
-
 } // namespace basalt::wire::plugins

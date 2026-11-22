@@ -5,19 +5,14 @@ basalt_module(wire-plugins
         src/EventPriority.cpp
         src/PacketNaming.cpp
         src/PacketRegistry.cpp
-        src/PacketView.cpp
-        src/PluginData.cpp
+        src/PluginFailure.cpp
         src/PluginFolder.cpp
-        src/PluginListeners.cpp
         src/PluginManifest.cpp
         src/PluginOrder.cpp
         src/PluginPackage.cpp
-        src/PluginScheduling.cpp
         src/PluginSignature.cpp
         src/PluginText.cpp
-        src/PluginToml.cpp
-        src/PluginValue.cpp
-    DEPENDS basalt::wire-common basalt::wire-io basalt::wire-lua basalt::wire-protocol
+    DEPENDS basalt::wire-common basalt::wire-io basalt::wire-protocol
     PRIVATE_DEPENDS basalt::monocypher
 )
 

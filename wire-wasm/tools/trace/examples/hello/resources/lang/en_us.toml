@@ -1,0 +1,8 @@
+welcome = "Welcome, {player}!"
+coins-self = "You have {coins} coins"
+coins-other = "{player} has {coins} coins"
+console-only = "Name a player from the console"
+no-such-player = "{player} is not online"
+top-row = "#{rank} {player}: {coins}"
+bought = "You bought {item}"
+ticking = "Tick task number {n}"

@@ -42,7 +42,7 @@ the protocol to keep correct.
 | `wire-auth` | Encrypted handshake, Mojang sessions, profiles |
 | `wire-multiversion` | Translation for older Java clients |
 | `wire-bedrock` | NetherNet, RakNet, Bedrock sessions and codecs |
-| `wire-lua`, `wire-plugins` | The sandboxed Lua runtime and plugin packages |
+| `wire-plugins` | Plugin manifests, packages and shared plugin types |
 | `wire-sqlite` | SQLite access, compiled into the binary |
 
 ## Using it

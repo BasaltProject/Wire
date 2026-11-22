@@ -1,7 +1,9 @@
 #pragma once
 
+#include <array>
 #include <cstdint>
 #include <expected>
+#include <functional>
 #include <optional>
 #include <set>
 #include <string>
@@ -19,6 +21,9 @@ enum class PluginPermission : std::uint8_t { Packets, Network, Commands };
 
 [[nodiscard]] std::optional<PluginPermission> permissionOf(std::string_view name);
 
+inline constexpr std::array<std::string_view, 8> kKnownCapabilities{"storage", "players_data", "commands", "files",
+                                                                    "network", "packets",      "worldgen", "datapacks"};
+
 struct PluginCapabilities {
     bool storage = false;
     bool playersData = false;
@@ -26,6 +31,9 @@ struct PluginCapabilities {
     std::vector<std::string> files;
     std::vector<std::string> network;
     bool packets = false;
+    std::set<std::string, std::less<>> declared;
+
+    [[nodiscard]] bool has(std::string_view name) const { return declared.contains(name); }
 
     [[nodiscard]] std::set<PluginPermission> asks() const;
 };
@@ -51,6 +59,7 @@ struct PluginDependency {
 
 struct PluginManifest {
     static constexpr std::int32_t kApi = 1;
+    static constexpr std::int32_t kWasmAbi = 1;
     static constexpr std::string_view kFileName = "plugin.toml";
 
     std::string id;
@@ -58,6 +67,7 @@ struct PluginManifest {
     std::string version;
     std::vector<std::string> authors;
     std::int32_t api = 0;
+    std::int32_t abi = 0;
     std::string main;
     std::vector<PluginDependency> dependencies;
     PluginCapabilities capabilities;
@@ -65,6 +75,8 @@ struct PluginManifest {
     std::vector<std::string> privateResources;
 
     [[nodiscard]] std::vector<PluginDependency> hardDependencies() const;
+
+    [[nodiscard]] bool isWasm() const { return main.ends_with(".wasm"); }
 
     [[nodiscard]] static std::expected<PluginManifest, ManifestError> parse(std::string_view text);
 };

@@ -43,6 +43,8 @@ void write(const std::string& path, std::string_view text) {
 constexpr std::string_view kManifestText = R"(id = "arena"
 version = "1.0.0"
 api = 1
+abi = 1
+main = "plugin.wasm"
 
 [resources]
 # A pattern with a leading slash, which is the same pattern.

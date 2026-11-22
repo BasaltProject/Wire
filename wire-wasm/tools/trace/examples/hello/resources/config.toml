@@ -1,0 +1,5 @@
+[shop]
+price = 25
+rate = 1.5
+enabled = true
+name = "Sparkle Shop"

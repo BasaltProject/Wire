@@ -15,26 +15,6 @@ namespace {
 }
 } // namespace
 
-std::optional<std::string> packageLayout::moduleFile(std::string_view module) {
-    if (module.empty() || module.find('/') != std::string_view::npos || module.find('\\') != std::string_view::npos) {
-        return std::nullopt;
-    }
-    std::string path{kSource};
-    path.reserve(path.size() + module.size() + 4);
-    for (std::size_t index = 0; index < module.size(); ++index) {
-        const char letter = module[index];
-        if (letter != '.') {
-            path.push_back(letter);
-            continue;
-        }
-        if (index == 0 || index + 1 == module.size() || module[index - 1] == '.') {
-            return std::nullopt;
-        }
-        path.push_back('/');
-    }
-    return path + ".lua";
-}
-
 std::optional<std::string> PluginPackage::readText(std::string_view path) const {
     const std::optional<std::vector<std::uint8_t>> bytes = read(path);
     if (!bytes.has_value()) {

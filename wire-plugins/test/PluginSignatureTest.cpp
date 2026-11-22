@@ -11,23 +11,22 @@
 using namespace basalt::wire::plugins;
 namespace fileIO = basalt::wire::io::fileIO;
 
-TEST_CASE("bytecode loads only with a signature from a trusted key that still matches it") {
+TEST_CASE("a module loads only with a signature from a trusted key that still matches it") {
     const std::string root = (std::filesystem::path{BASALT_TEST_SCRATCH_DIR} / "signed_plugin").string();
     std::filesystem::remove_all(root);
-    fileIO::createDirectories(root + "/src");
+    fileIO::createDirectories(root);
     fileIO::writeText(root + "/plugin.toml", "id = \"demo\"\n");
-    fileIO::writeText(root + "/src/main.luac", "\x1bLua-one");
+    fileIO::writeText(root + "/plugin.wasm", "wasm-one");
 
     const signature::Seed seed{1, 2, 3};
     const signature::PublicKey key = signature::publicKeyOf(seed);
     const FolderPackage folder{root};
-    CHECK(signature::hasBytecode(folder));
     fileIO::writeText(root + "/plugin.sig", signature::render(key, signature::sign(seed, signature::payload(folder))));
 
     const signature::PublicKey stranger = signature::publicKeyOf(signature::Seed{9});
     CHECK(signature::verify(folder, std::span{&key, 1}).value() == key);
     CHECK_FALSE(signature::verify(folder, std::span{&stranger, 1}).has_value());
 
-    fileIO::writeText(root + "/src/main.luac", "\x1bLua-two");
+    fileIO::writeText(root + "/plugin.wasm", "wasm-two");
     CHECK_FALSE(signature::verify(folder, std::span{&key, 1}).has_value());
 }

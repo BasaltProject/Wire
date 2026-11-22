@@ -1,0 +1,9 @@
+id = "hello"
+name = "Hello"
+version = "1.0.0"
+api = 1
+abi = 1
+main = "plugin.wasm"
+
+[capabilities]
+players_data = true

@@ -21,7 +21,7 @@ namespace {
     built.id = std::move(id);
     built.version = std::move(version);
     built.api = api;
-    built.main = "src/main.lua";
+    built.main = "plugin.wasm";
     for (auto& [dependencyId, requirement] : depends) {
         built.dependencies.push_back(
             PluginDependency{.id = std::move(dependencyId), .requirement = std::move(requirement), .hard = true});

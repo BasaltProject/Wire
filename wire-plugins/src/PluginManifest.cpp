@@ -4,12 +4,11 @@
 #include <algorithm>
 #include <charconv>
 #include <cstdint>
+#include <utility>
 
 namespace basalt::wire::plugins {
 namespace {
 using wire::common::toml::TomlTable;
-
-constexpr std::string_view kDefaultMain = "src/main.lua";
 
 [[nodiscard]] bool isUsableId(std::string_view id) {
     if (id.empty() || id.front() < 'a' || id.front() > 'z') {
@@ -50,16 +49,41 @@ constexpr std::string_view kDefaultMain = "src/main.lua";
     return text;
 }
 
-[[nodiscard]] PluginCapabilities capabilitiesOf(const TomlTable* table) {
+[[nodiscard]] std::expected<PluginCapabilities, ManifestError> capabilitiesOf(const TomlTable* table) {
+    PluginCapabilities capabilities;
     if (table == nullptr) {
-        return PluginCapabilities{};
+        return capabilities;
     }
-    return PluginCapabilities{.storage = table->boolean("storage").value_or(false),
-                              .playersData = table->boolean("players_data").value_or(false),
-                              .commands = table->boolean("commands").value_or(false),
-                              .files = table->stringList("files"),
-                              .network = table->stringList("network"),
-                              .packets = table->boolean("packets").value_or(false)};
+    for (const std::string& key : table->keys()) {
+        if (std::find(kKnownCapabilities.begin(), kKnownCapabilities.end(), key) == kKnownCapabilities.end()) {
+            std::string known;
+            for (const std::string_view name : kKnownCapabilities) {
+                known += known.empty() ? std::string{name} : ", " + std::string{name};
+            }
+            return std::unexpected(
+                ManifestError{"unknown capability '" + key + "' in [capabilities]; known: " + known});
+        }
+    }
+    capabilities.storage = table->boolean("storage").value_or(false);
+    capabilities.playersData = table->boolean("players_data").value_or(false);
+    capabilities.commands = table->boolean("commands").value_or(false);
+    capabilities.files = table->stringList("files");
+    capabilities.network = table->stringList("network");
+    capabilities.packets = table->boolean("packets").value_or(false);
+    const auto declare = [&capabilities](std::string_view name, bool on) {
+        if (on) {
+            capabilities.declared.emplace(name);
+        }
+    };
+    declare("storage", capabilities.storage);
+    declare("players_data", capabilities.playersData);
+    declare("commands", capabilities.commands);
+    declare("files", !capabilities.files.empty());
+    declare("network", !capabilities.network.empty());
+    declare("packets", capabilities.packets);
+    declare("worldgen", table->boolean("worldgen").value_or(false));
+    declare("datapacks", table->boolean("datapacks").value_or(false));
+    return capabilities;
 }
 
 [[nodiscard]] PluginExports exportsOf(const TomlTable* table) {
@@ -198,6 +222,20 @@ std::expected<PluginManifest, ManifestError> PluginManifest::parse(std::string_v
     if (!api.has_value()) {
         return std::unexpected(ManifestError{std::string{*id} + " does not say which 'api' it was written for"});
     }
+    const std::optional<std::string_view> main = table->string("main");
+    if (!main.has_value() || !main->ends_with(".wasm")) {
+        return std::unexpected(ManifestError{std::string{*id} + " needs a 'main' naming its .wasm module"});
+    }
+    const std::int64_t abi = table->integer("abi").value_or(0);
+    if (abi != PluginManifest::kWasmAbi) {
+        return std::unexpected(ManifestError{
+            std::string{*id} + " is a WebAssembly plugin and needs abi = " + std::to_string(PluginManifest::kWasmAbi) +
+            " in plugin.toml" + (abi == 0 ? std::string{} : ", not " + std::to_string(abi))});
+    }
+    std::expected<PluginCapabilities, ManifestError> capabilities = capabilitiesOf(table->table("capabilities"));
+    if (!capabilities.has_value()) {
+        return std::unexpected(ManifestError{std::string{*id} + ": " + capabilities.error().message});
+    }
     const TomlTable* resources = table->table("resources");
     return PluginManifest{
         .id = std::string{*id},
@@ -205,9 +243,10 @@ std::expected<PluginManifest, ManifestError> PluginManifest::parse(std::string_v
         .version = std::string{*version},
         .authors = table->stringList("authors"),
         .api = static_cast<std::int32_t>(*api),
-        .main = std::string{table->string("main").value_or(kDefaultMain)},
+        .abi = static_cast<std::int32_t>(abi),
+        .main = std::string{*main},
         .dependencies = dependenciesOf(*table),
-        .capabilities = capabilitiesOf(table->table("capabilities")),
+        .capabilities = std::move(*capabilities),
         .exports = exportsOf(table->table("exports")),
         .privateResources = resources == nullptr ? std::vector<std::string>{} : resources->stringList("private"),
     };
