@@ -14,6 +14,7 @@ endif()
 
 if(CMAKE_SYSTEM_NAME STREQUAL "FreeBSD")
     set(WAMR_BUILD_PLATFORM freebsd)
+    set(WAMR_DISABLE_STACK_HW_BOUND_CHECK 1)
 elseif(APPLE)
     set(WAMR_BUILD_PLATFORM darwin)
 elseif(ANDROID)
