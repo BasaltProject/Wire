@@ -20,8 +20,12 @@
 # is appended to DECLARE, CALL, BODY_BEGIN and BODY_END by the function, because CMake splits arguments at semicolons.
 function(basalt_wasm_host_registry OUT_SOURCES)
     cmake_parse_arguments(ARG "" "DIR;PREFIX;OUTPUT;NAMESPACE;ENTRY;DECLARE;CALL;BODY_BEGIN;BODY_END" "INCLUDES" ${ARGN})
-    file(GLOB areaSources CONFIGURE_DEPENDS ${ARG_DIR}/${ARG_PREFIX}[A-Z]*.cpp)
+    file(GLOB areaSources CONFIGURE_DEPENDS ${ARG_DIR}/${ARG_PREFIX}*.cpp)
+    list(FILTER areaSources INCLUDE REGEX "/${ARG_PREFIX}[A-Z][^/]*\\.cpp$")
     list(SORT areaSources)
+    if(NOT areaSources)
+        message(FATAL_ERROR "basalt_wasm_host_registry: no ${ARG_PREFIX}<Area>.cpp in ${ARG_DIR}")
+    endif()
     set(includes "")
     foreach(include ${ARG_INCLUDES})
         if(EXISTS ${ARG_DIR}/${include})
