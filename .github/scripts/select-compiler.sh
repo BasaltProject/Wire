@@ -71,7 +71,7 @@ MINGW* | MSYS* | CYGWIN*)
         if [ "$arm64" = 1 ]; then
             installer="LLVM-$version-woa64.exe"
         fi
-        curl -fsSL --retry 5 --retry-all-errors --retry-delay 10 -o "$RUNNER_TEMP/llvm.exe" \
+        curl -fsSL --proto "=https" --tlsv1.2 --retry 5 --retry-all-errors --retry-delay 10 -o "$RUNNER_TEMP/llvm.exe" \
             "https://github.com/llvm/llvm-project/releases/download/llvmorg-$version/$installer"
         powershell -NoProfile -Command "Start-Process -FilePath '$(cygpath -w "$RUNNER_TEMP/llvm.exe")' -ArgumentList '/S','/D=C:\\LLVM' -Wait"
         export PATH="/c/LLVM/bin:$PATH"
