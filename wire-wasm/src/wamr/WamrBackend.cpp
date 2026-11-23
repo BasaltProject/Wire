@@ -7,6 +7,7 @@
 #include <cstring>
 #include <deque>
 #include <mutex>
+#include <thread>
 #include <utility>
 #include <wasm_export.h>
 
@@ -34,6 +35,7 @@ public:
 
 std::mutex gRuntimeMutex;
 std::size_t gRuntimeUsers = 0;
+std::thread::id gInitThread;
 std::deque<std::string> gSignatures;
 std::array<NativeSymbol, kMaxFunctions> gBasaltSymbols;
 std::array<NativeSymbol, kMaxFunctions> gWasiSymbols;
@@ -165,6 +167,7 @@ bool Runtime::acquire() {
         if (!wasm_runtime_full_init(&init)) {
             return false;
         }
+        gInitThread = std::this_thread::get_id();
         wasm_runtime_set_log_level(WASM_LOG_LEVEL_FATAL);
         gSignatures.clear();
         gBasaltCount = 0;
@@ -282,8 +285,26 @@ void Runtime::release() {
     return Failure{ErrorCode::Trap, std::move(text)};
 }
 
+struct ThreadEnv {
+    bool owned = false;
+
+    ThreadEnv() { owned = std::this_thread::get_id() != gInitThread && wasm_runtime_init_thread_env(); }
+
+    ~ThreadEnv() {
+        if (owned) {
+            wasm_runtime_destroy_thread_env();
+        }
+    }
+
+    ThreadEnv(const ThreadEnv&) = delete;
+    ThreadEnv& operator=(const ThreadEnv&) = delete;
+};
+
+void ensureThreadEnv() { thread_local const ThreadEnv env; }
+
 [[nodiscard]] Result<void> run(Instance::Impl& self, wasm_function_inst_t function, std::uint32_t* argv,
                                std::uint32_t argc) {
+    ensureThreadEnv();
     self.interrupted.store(false, std::memory_order_relaxed);
     wasm_runtime_clear_exception(self.instance);
     if (wasm_runtime_call_wasm(self.env, function, argc, argv)) {
@@ -341,6 +362,7 @@ Instance& Instance::operator=(Instance&&) noexcept = default;
 Instance::~Instance() = default;
 
 Result<Instance> Instance::create(const Module& module, const InstanceOptions& options) {
+    ensureThreadEnv();
     const Module::Impl& compiled = *module.impl_;
     auto impl = std::make_unique<Impl>(options.wasi);
     Impl& self = *impl;
