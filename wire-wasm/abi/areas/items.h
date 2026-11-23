@@ -10,7 +10,7 @@ extern "C" {
  *
  * Item stack value (a map, see basalt_values.h). Every import that reads a stack accepts it; unknown keys are ignored.
  *   "id"           string   item id, `minecraft:` prefix optional on input. Required, empty or missing is INVALID
- *   "count"        int      default 1, clamped to at least 1
+ *   "count"        int      default 1, clamped to 1..99
  *   "name"         string   custom name as MiniMessage text
  *   "lore"         list     of strings, one per line
  *   "damage"       int      durability already used, default 0
@@ -29,8 +29,8 @@ extern "C" {
  *            only (half of a double chest)
  *   ender    0..26, the player's ender chest
  *   window   the protocol numbers of the window the player has open; slot -1 is the item on the cursor
- *   entity   the slots of the entity inventory (chest minecart, mule, villager...), defined by entities.h
- * All inventory imports run on the owner thread of the thing they touch (the plugin thread today).
+ * No other entity has an inventory handle: inventory_of_entity only accepts a player entity and gives the player kind.
+ * All inventory imports run on the plugin thread.
  *
  * Other areas' handles: `player` is the v1 player handle and `entity` the handle defined by entities.h. */
 
@@ -51,10 +51,11 @@ BASALT_IMPORT(inventory_of_window) int32_t basalt_inventory_of_window(int32_t pl
 /* inventory_of_ender: the ender chest of an online player (27 slots). Returns a handle, STALE or INVALID for the player. */
 BASALT_IMPORT(inventory_of_ender) int32_t basalt_inventory_of_ender(int32_t player);
 
-/* inventory_of_entity: the inventory of a player entity (`entity` handle of entities.h, from entity_of_player). Returns
- * a handle; ABSENT when the entity is not a player, STALE for a removed entity, INVALID for a bad handle. The player
- * operations send_equipment and open_trades and the properties slot_limit and enchantment_seed are reached with
- * entity_call and entity_get/entity_set on the same entity handle. */
+/* inventory_of_entity: the inventory of a player entity (`entity` handle of entities.h, from entity_of_player); it
+ * is the same handle kind as inventory_of_player, with the player slot numbers above. Only a player entity works: for
+ * any other entity (a minecart, a horse, a villager) it answers ABSENT. STALE for a removed entity, INVALID for a bad
+ * handle. The player operations send_equipment and open_trades and the properties slot_limit and enchantment_seed are
+ * reached with entity_call and entity_get/entity_set on the same entity handle. */
 BASALT_IMPORT(inventory_of_entity) int32_t basalt_inventory_of_entity(int32_t entity);
 
 /* inventory_release: forgets the handle. OK, STALE when it was already released, INVALID when malformed. */
@@ -110,15 +111,19 @@ int32_t basalt_item_set_cooldown(int32_t player, const char *id, int32_t idlen, 
 
 /* registry_get: reads item related registry data by kind into `out` as a value (needed-length convention).
  * `kind` is one of (the argument `key` is the text after it):
- *   "item"           key = item id: map of what the registries know (max_stack_size, max_damage, food, tool rules...)
+ *   "item"           key = item id: map of what the registries know (max_stack_size, use_cooldown_ticks, max_damage,
+ *                    burn_ticks, and when they apply block, crafting_remainder, food, armor, weapon, tool, rarity,
+ *                    enchantable, repairable, composter_chance)
  *   "items"          key ignored: list of every item id in registry order
  *   "creative_tab"   key = tab (`building_blocks`): list of item ids in display order, empty for tabs without a list
  *   "enchantment"    key = enchantment id: the datapack definition as a map
  *   "enchantments"   key ignored: list of every enchantment id
- *   "tags"           key = registry (`enchantment`, `item`...): map of tag id to list of member ids
- *   "mob_effects"    key ignored: list of maps {id, protocol_id, colour}
- *   "potions"        key ignored: list of maps {id, effects}
- * ABSENT when the id of an "item" or "enchantment" is unknown, INVALID for an unknown kind. */
+ *   "tags"           key = registry: map of tag id to list of member ids. Only `enchantment` has data; any other
+ *                    registry answers an empty map
+ *   "mob_effects"    key ignored: list of maps {id, protocol_id, color}
+ *   "potions"        key ignored: list of maps {id, effects}, each effect {id, amplifier, duration}
+ * ABSENT for an "item" id that is malformed (a well formed id the server does not know answers the defaults) and for
+ * an unknown "enchantment"; INVALID for an unknown kind. */
 BASALT_IMPORT(registry_get)
 int32_t basalt_registry_get(const char *kind, int32_t klen, const char *key, int32_t keylen, char *out, int32_t cap);
 

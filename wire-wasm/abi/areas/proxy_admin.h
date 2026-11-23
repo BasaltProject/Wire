@@ -5,8 +5,9 @@
  * import says it is also asked from other threads.
  *
  * Capabilities (plugin.toml [capabilities]): storage gates store_get, store_set and store_top; players_data gates
- * player_data_get and player_data_set; commands gates console_run and also needs the operator to grant "commands" to
- * the plugin under [plugins.allow] in proxy.toml. An import without its capability returns BASALT_ERR_DENIED.
+ * player_data_get and player_data_set; commands gates console_run. The capabilities commands, network and packets (the
+ * last two in proxy_network.h) also need the operator to grant the same name to the plugin under [plugins.allow] in
+ * proxy.toml. An import without its capability, or without the grant where one is needed, returns BASALT_ERR_DENIED.
  *
  * ---- Permission providers -------------------------------------------------------------------------------------
  *
@@ -30,10 +31,11 @@ extern "C" {
 
 /* ---- Backends ------------------------------------------------------------------------------------------------- */
 
-/* servers_register: adds a backend `name` at host:port (1..65535) until the proxy stops, copying the settings (forwarding,
- * timeouts, protocol range) of the backend `like` ("" copies none). The names listed in basalt_proxy_servers_list are the
- * proxy's own, so register only a name that is not there. Returns OK, or INVALID with the reason (UTF-8, truncated to
- * `ecap`, not NUL terminated, the byte count is not returned) written to `err` when `ecap` is positive. */
+/* servers_register: adds a backend `name` at host:port (1..65535) until the proxy stops, copying the settings
+ * (forwarding, timeouts, protocol range) of the backend `like`; with `like` empty it copies the first backend of the
+ * default route. The names listed in basalt_proxy_servers_list are the proxy's own, so register only a name that is
+ * not there. Returns OK, or INVALID with the reason (UTF-8, truncated to `ecap`, not NUL terminated, the byte count is
+ * not returned) written to `err` when `ecap` is positive. */
 BASALT_PROXY_IMPORT(servers_register)
 int32_t basalt_proxy_servers_register(const char *name, int32_t nlen, const char *host, int32_t hlen, int32_t port,
                                       const char *like, int32_t llen, char *err, int32_t ecap);

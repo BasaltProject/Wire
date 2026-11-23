@@ -19,9 +19,8 @@ extern "C" {
  * properties carry, -1 for none): turn one into a handle with entity_by_id. A world is always its name, never a
  * handle. Players and their handles belong to the core; entity_of_player and entity_player convert between the two.
  *
- * Owner thread: every import reads or changes live world state, so it is valid only on the thread that owns the
- * entity's region (a task, a command, an event or a callback of this plugin). Called from anywhere else it answers
- * STALE and changes nothing. Imports that return a length follow the usual needed-length rule.
+ * Thread: every import reads or changes live world state and runs on the plugin thread (basalt_abi.h), inside a task,
+ * a command, an event or a callback of this plugin. Imports that return a length follow the usual needed-length rule.
  *
  * Property names (entity_get, entity_set) and operation names (entity_call) are the server's own tables; list them with
  * entity_properties and entity_operations. A name the entity does not know answers ABSENT. Values use the encoding of
@@ -136,14 +135,16 @@ BASALT_IMPORT(entity_set_rotation) int32_t basalt_entity_set_rotation(int32_t en
 /* ---- Properties and operations by name --------------------------------------------------------------------- */
 
 /* entity_get: one property by name, written as a value. Besides the table of entity_properties these base names
- * always exist: "id" "type" "world" "uuid" "alive" "x" "y" "z" "yaw" "pitch" "on_ground" "age" "width" "height"
- * "custom_name", "pos" and "velocity" (maps with keys x, y, z). A property that does not apply to this kind of entity
- * reads as null. Result: the needed length, ABSENT for an unknown name, STALE, INVALID. */
+ * always exist: "id" "type" "world" "uuid" "alive" "x" "y" "z" "yaw" "pitch" "health" "on_ground" "age" "width"
+ * "height", "pos" and "velocity" (maps with keys x, y, z); "custom_name" and the rest are in the table. A property that
+ * does not apply to this kind of entity reads as null. Result: the needed length, ABSENT for an unknown name, STALE,
+ * INVALID. */
 BASALT_IMPORT(entity_get) int32_t basalt_entity_get(int32_t entity, const char *name, int32_t nlen, char *out, int32_t cap);
 
 /* entity_set: writes one property by name from a value (a number, bool, string or list of strings as the property
- * wants; "velocity" takes a map with x, y, z; "yaw", "pitch" and "custom_name" are writable base names). OK, ABSENT
- * for an unknown name, INVALID for a read-only property or a value the entity refuses, STALE. */
+ * wants; "velocity" takes a map with x, y, z). Of the base names "yaw", "pitch" and "velocity" are writable, and so is
+ * "health" for every living entity; "custom_name" is writable through the table of entity_properties. OK, ABSENT for
+ * an unknown name, INVALID for a read-only property or a value the entity refuses, STALE. */
 BASALT_IMPORT(entity_set) int32_t basalt_entity_set(int32_t entity, const char *name, int32_t nlen, const char *value, int32_t vlen);
 
 /* entity_call: runs one named operation (damage, kill, add_effect, attribute, equipment, mount, move_to, find_path,
@@ -215,9 +216,11 @@ int32_t basalt_entity_mechanic(const char *name, int32_t nlen, const char *args,
 
 /* Mob goals and brain behaviours that a plugin owns are added with entity_call ("add_goal" key, priority, flags and
  * "brain_add_behavior" activity, priority, key) and decided in a callback registered with event_on("entity.goal", ...)
- * and event_on("entity.behavior", ...). Inside it, event_field_str(ctx, "key") and event_field_str(ctx, "phase")
- * ("can_use", "can_continue", "start", "stop", "tick") say what is asked, and the two imports below read the mob and
- * answer. At most 24 calls per mob per tick reach a plugin, and a callback that does not answer means false. */
+ * and event_on("entity.behavior", ...). The goal `flags` are one string of the names move, look, jump and target
+ * separated by commas, matched without regard to case; any other word is ignored. Inside the callback,
+ * event_field_str(ctx, "key") and event_field_str(ctx, "phase") ("can_use", "can_continue", "start", "stop", "tick")
+ * say what is asked, and the two imports below read the mob and answer. At most 24 calls per mob per tick reach a
+ * plugin, and a callback that does not answer means false. */
 
 /* entity_event_entity: the handle of the entity an entity.* event is about (its "entity_id" field). Result: the
  * handle, INVALID for a ctx that is not an event with an entity, ABSENT when that entity is gone, STALE once the

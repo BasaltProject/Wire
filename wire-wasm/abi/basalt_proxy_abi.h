@@ -49,7 +49,8 @@ extern "C" {
  *     is not connected yet (player.login) and for a console command.
  *   - A command source that is a player also answers basalt_event_player(ctx) inside the command callback.
  *   - Delays and periods of tasks are in ticks of 50 ms of wall time, since a proxy has no world tick.
- *   - Callbacks run on the single plugin thread, one at a time across all plugins, never inside another callback.
+ *   - Callbacks run on the single plugin thread, one at a time across all plugins, never inside another callback;
+ *     the exceptions are packet listeners and permission providers (see proxy_network.h and proxy_admin.h).
  */
 
 /* ---- Events (names for basalt_event_on) ----------------------------------------------------------------------------
@@ -65,6 +66,7 @@ extern "C" {
  *   player.login                      before the player is let in
  *   player.server_pre_connect         before a connection to a backend
  *   server.ping                       a server list ping, before the answer is sent
+ *   player.chat, player.command, player.kick   decided too, see proxy_events.h
  *
  * Fields read with basalt_event_field_str / basalt_event_field_i64 (ABSENT where the event does not have it):
  *   player_name, player_uuid           str   every player event

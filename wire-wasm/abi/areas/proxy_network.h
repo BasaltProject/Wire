@@ -4,7 +4,8 @@
  *
  * Capabilities declared in plugin.toml: "network" gates the channel imports and the antibot imports, "packets" gates
  * every packet import that listens, sends, receives or injects (packet_resolve and packet_names read facts of the
- * protocol and need nothing). An import without its capability answers DENIED.
+ * protocol and need nothing). Each one also needs the operator to grant the same name to the plugin under
+ * [plugins.allow] in proxy.toml, as "commands" does. An import without its capability or its grant answers DENIED.
  *
  * Threads. Channel messages and antibot events are queued and delivered on the single proxy plugin thread like every
  * other event, so their callbacks never nest and use the usual call budget. Packet listeners are different: they run
@@ -58,10 +59,12 @@ int32_t basalt_proxy_network_message_on(const char *filter, int32_t flen, int32_
 BASALT_PROXY_IMPORT(network_message_get)
 int32_t basalt_proxy_network_message_get(int32_t ctx, char *out, int32_t cap);
 
-/* network_message_send: sends `data` (up to 32768 bytes, either way) on `channel` for the player handle. toward_client 0 sends it to the player's current backend as if the proxy had written it, 1 to
- * the player's client. OK once handed over, ABSENT when the proxy could not hand it over (the player is not in play),
- * STALE for a handle of a player who left, INVALID for a bad channel, a payload over the limit, a toward_client other
- * than 0 or 1, or a BungeeCord channel, DENIED without the network capability. The data is not interpreted. */
+/* network_message_send: sends `data` (up to 32768 bytes, either way) on `channel` for the player handle. toward_client
+ * 0 sends it to the player's current backend as if the proxy had written it, 1 to the player's client. OK once handed
+ * over, ABSENT when the proxy could not hand it over (it is stopping or a connection queue is full; a player who is
+ * not in play drops it quietly and the call still answers OK), STALE for a handle of a player who left, INVALID for a
+ * bad channel, a payload over the limit, a toward_client other than 0 or 1, or a BungeeCord channel, DENIED without
+ * the network capability. The data is not interpreted. */
 BASALT_PROXY_IMPORT(network_message_send)
 int32_t basalt_proxy_network_message_send(int32_t player, const char *channel, int32_t clen, const char *data,
                                           int32_t dlen, int32_t toward_client);
@@ -132,8 +135,10 @@ int32_t basalt_proxy_packet_inject(int32_t ctx, const char *name, int32_t nlen, 
                                    int32_t intercept);
 
 /* packet_send: sends a clientbound packet to the player's client (handle from basalt_player_by_name and the like). OK
- * once handed over, ABSENT when the player cannot take it now, STALE for a handle of a player who left, INVALID for a
- * name that is not a clientbound packet or a body over the limit, DENIED without the packets capability. */
+ * once handed over, ABSENT when the proxy could not hand it over (it is stopping or a connection queue is full; a
+ * connection that cannot take it drops it quietly and the call still answers OK), STALE for a handle of a player who
+ * left, INVALID for a name that is not a clientbound packet or a body over the limit, DENIED without the packets
+ * capability. */
 BASALT_PROXY_IMPORT(packet_send)
 int32_t basalt_proxy_packet_send(int32_t player, const char *name, int32_t nlen, const char *body, int32_t len);
 

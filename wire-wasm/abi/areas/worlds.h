@@ -36,7 +36,8 @@
 extern "C" {
 #endif
 
-/* Flags shared by the calls that say they take them. */
+/* Flags shared by the calls that say they take them. Each is one bit and a call takes their sum: LOAD 1, NOTIFY 2,
+ * RESEND 4, GENERATE 8, SAVE 16, DISK 32, GLOBAL 64, BREAK 128, FIRE 256, FLUID 512, INDIRECT 1024, ENTITIES 2048. */
 #define BASALT_WORLD_LOAD 1       /* load (not generate) the chunk when it is not loaded */
 #define BASALT_WORLD_NOTIFY 2     /* tell the players that watch the change */
 #define BASALT_WORLD_RESEND 4     /* send the changed chunks again to their watchers */
@@ -50,7 +51,9 @@ extern "C" {
 #define BASALT_WORLD_INDIRECT 1024 /* shape updates reach the blocks next to the neighbours too */
 #define BASALT_WORLD_ENTITIES 2048 /* include entities */
 
-/* Effects a block change sets off, the bits of the `effects` argument. */
+/* Effects a block change sets off, the bits of the `effects` argument, added together: NEIGHBORS 1, SHAPES 2, LIGHT 4,
+ * ENTITIES 8, POI 16, TICKS 32, CLIENTS 64, PLACE 128, DEPARTURE 256, OUTPUT_SIGNAL 512. world_player_effect takes no
+ * flag bits: its `op` and positional `args` are all it reads. */
 #define BASALT_WORLD_EFFECT_NEIGHBORS 1  /* neighbours are told one of their neighbours changed */
 #define BASALT_WORLD_EFFECT_SHAPES 2     /* blocks around reshape to fit (fences join, stairs turn) */
 #define BASALT_WORLD_EFFECT_LIGHT 4
@@ -106,10 +109,12 @@ int32_t basalt_world_rule_get(int32_t world, const char *name, int32_t nlen, cha
 BASALT_IMPORT(world_rule_set)
 int32_t basalt_world_rule_set(int32_t world, const char *name, int32_t nlen, const char *value, int32_t vlen);
 
-/* world_create: creates a world from a map {name, dimension? (`minecraft:overworld`), type? (a world type name),
- * seed? (i64)} and returns its handle, or ABSENT when the server cannot create it. Needs `worldgen`. INVALID for a
- * missing name or a name that already exists. Making the world is slow server work and is not charged to the turn
- * budget, so call it alone in a turn. */
+/* world_create: creates a world from a map {name, dimension?, type?, seed? (i64)} and returns its handle, or ABSENT
+ * when the server cannot create it. `dimension` is `overworld` (the default), `nether` or `end`, with or without the
+ * `minecraft:` prefix (`the_nether` and `the_end` also work), in any case; `type` is `normal` (the default), `flat`,
+ * `void`, `amplified`, `large_biomes` or `debug`. An unknown dimension or type is ABSENT, not an overworld. Needs
+ * `worldgen`. INVALID for a missing name or a name that already exists. Making the world is slow server work and is
+ * not charged to the turn budget, so call it alone in a turn. */
 BASALT_IMPORT(world_create) int32_t basalt_world_create(const char *spec, int32_t slen);
 
 /* world_unload: takes a world that holds no player out of play, saving it first with BASALT_WORLD_SAVE. ABSENT when it
@@ -527,15 +532,20 @@ BASALT_IMPORT(block_state_text) int32_t basalt_block_state_text(int32_t state, c
 
 /* worlds_data: read-only tables of the game data by name, generated from the server's registries. `query` is the
  * table, `args` is a value (a map, or null) with what it needs. Tables: blocks (list of {id, first_state,
- * state_count}); block_properties (block: id; list of {name, values}); state_flags (state); block_hardness (block);
- * block_info (state); block_shape (state; collision boxes); block_outline (state, x, z); block_visual (state);
- * block_entity_types; block_sounds (state); block_instrument (state); tool_facts (item?, state); transform_state
- * (state, rotation 0 to 3, mirror 0 to 2); poi_type (state); poi_tickets (type); game_rules (list of {id, type,
- * default}); game_event_frequency (event); data_version; fix_nbt (kind, nbt bytes, from_version); fix_name (kind,
- * text, from_version); biomes (list of ids in registry order); items; entity_types; tags (registry); registry
- * (registry; list of ids); registry_data (registry, id; the entry as NBT bytes); `tables` lists the names above.
- * ABSENT for a table or entry the server does not have, INVALID for missing arguments. Result: the length of the
- * encoded value the full answer needs. */
+ * state_count}); block_properties (block: id; list of {name, values}); state_flags (state; an int of bits: 1 blocks
+ * motion, 2 solid render, 4 full cube, 8 replaceable, 16 has fluid, 32 has a collision shape, 64 conducts redstone,
+ * 128 ticks randomly, 256 is air, bits 9 to 12 the light emission, bits 13 to 16 the sky light opacity, 262144 has a
+ * block entity); block_hardness (block); block_info (state; a list of 11 numbers, not a map: friction, speed factor,
+ * jump factor, push reaction (0 normal, 1 destroy, 2 block, 3 ignore, 4 push only), map colour as 0xRRGGBB, ignite
+ * odds, burn odds, note block instrument (an index into the instruments of the game data), ignited by lava, signal
+ * source, analog output (the last three 0 or 1); an empty list for an unknown state); block_shape (state; collision
+ * boxes); block_outline (state, x, z); block_visual (state); block_entity_types; block_sounds (state);
+ * block_instrument (state); tool_facts (item?, state); transform_state (state, rotation 0 to 3, mirror 0 to 2);
+ * poi_type (state); poi_tickets (type); game_rules (list of {id, type, default}); game_event_frequency (event);
+ * data_version; fix_nbt (kind, nbt bytes, from_version); fix_name (kind, text, from_version); biomes (list of ids in
+ * registry order); items; entity_types; tags (registry); registry (registry; list of ids); registry_data (registry,
+ * id; the entry as NBT bytes); `tables` lists the names above. ABSENT for a table or entry the server does not have,
+ * INVALID for missing arguments. Result: the length of the encoded value the full answer needs. */
 BASALT_IMPORT(worlds_data)
 int32_t basalt_worlds_data(const char *query, int32_t qlen, const char *args, int32_t alen, char *out, int32_t cap);
 

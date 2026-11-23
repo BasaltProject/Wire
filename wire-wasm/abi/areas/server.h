@@ -3,9 +3,11 @@
  *
  * Conventions of the whole ABI apply (basalt_abi.h, basalt_values.h, core_values.h): text is pointer plus byte length,
  * handles are positive i32, a value is one encoded document, a buffer result is the length the full answer needs.
- * Every import in this area runs on the plugin thread, inside a plugin callback or in basalt_init, and never blocks.
- * Callbacks of this area never nest: a callback that would start inside another callback of the same plugin is queued
- * to run after it, or, for a provider asked from inside its own plugin's call, skipped (said per import below).
+ * Every import in this area runs on the plugin thread (see basalt_abi.h), inside a plugin callback or in basalt_init,
+ * and never blocks. Callbacks never nest: one that would start inside another callback of the same plugin is skipped
+ * and logged. So what the plugin asks for here (command_run, service_call, task_wait, request completions) is
+ * scheduled for a later tick instead of running inside the call, and a provider or completion asked from inside its
+ * own plugin's call is skipped as undecided or empty (said per import below).
  *
  * Capabilities (plugin.toml [capabilities]): `files` (a list of folders of the plugin folder, "." for all of it),
  * `storage` (store_* and data_*), `commands` (command_run), `datapacks` (the datapacks.* operations of server_call).
@@ -71,11 +73,13 @@ BASALT_IMPORT(permission_changed) int32_t basalt_permission_changed(void);
  * command_register (core) takes the grammar of the plugin docs. The imports below add what it lacks. */
 
 /* command_register_ex: like command_register and also lets the plugin change the command later: only a command
- * registered through this import can be aliased or unregistered. A non-negative `complete_token` also asks the
- * plugin for tab completions of the command's arguments: that callback runs with a command-kind ctx (command_source
- * and command_arg_* work) and command_complete_input gives the text typed so far for the current argument; the
- * callback adds candidates with command_complete_add. It runs on the thread that handles tab completion, only when
- * that is the plugin thread (otherwise nothing is offered) and never while the plugin is in another callback. A
+ * registered through this import can be aliased or unregistered. An empty `permission` means the command is open to
+ * everyone, exactly as in command_register; a permission node restricts it to whoever has the node. A non-negative
+ * `complete_token` also asks the plugin for tab completions of the command's arguments: that callback runs with a
+ * command-kind ctx and command_complete_input gives the text typed so far for the current argument; the callback adds
+ * candidates with command_complete_add. command_source works, but no command argument has a value yet (completion
+ * runs with an empty argument map, so command_arg_* answer ABSENT). The completion is handed to the plugin thread
+ * (a network thread waits up to 500 ms for it) and nothing is offered when the plugin is in another callback. A
  * negative `complete_token` means no completions. OK, INVALID for a malformed or already registered spec. */
 BASALT_IMPORT(command_register_ex)
 int32_t basalt_command_register_ex(const char *spec, int32_t slen, const char *permission, int32_t plen, int32_t token,
@@ -250,10 +254,11 @@ BASALT_IMPORT(files_capabilities) int32_t basalt_files_capabilities(const char *
 
 /* ---- Services shared between plugins -------------------------------------------------------------------------------
  * A provider plugin lists the service names in plugin.toml [exports] services and registers a handler; consumers call
- * it by name with one value and get one value back, later. Calls cross plugin lanes: the handler never runs inside the
- * caller's callback. ORDER: calls to one service run in the order service_call was made, each on the provider's own
- * thread on the next tick after the caller's current callback returned, and the caller's completion callback runs right
- * after the handler returned. TIMEOUT: a call the provider has not answered within `timeout` ticks (a disabled provider, a
+ * it by name with one value and get one value back, later. The handler never runs inside the caller's callback.
+ * ORDER: calls run in the order service_call was made, each in a task scheduled for the next tick after the caller's
+ * current callback returned; that task runs the handler and then the caller's completion callback, one after the
+ * other. Today every plugin shares one lane (server_info reports lanes: 1), so the handler runs on the same plugin
+ * thread as the caller. TIMEOUT: a call the provider has not answered within `timeout` ticks (a disabled provider, a
  * handler that failed) completes with {ok: false, error: "timeout"}; an answer after that is dropped. */
 
 /* service_register: offers `name` (it must be in this plugin's [exports] services, else DENIED; a taken name or an

@@ -8,9 +8,10 @@
  *  - Text is MiniMessage, or a lang key of the plugin when it starts with '@'; it is cut at 4096 bytes. Where a call
  *    has an `args` map, its entries are the {name} fields of every text of the call (the packed list of basalt_abi.h
  *    for the calls that take one).
- *  - OK means the proxy handed the change to the player's connection. BASALT_ERR_ABSENT means it could not: the
- *    player is not in the play state yet, is leaving, or is a client the proxy does not send HUD packets to (a
- *    legacy or Bedrock client). The effect reaches the client in connection order, like the title.
+ *  - OK means the proxy handed the change to the player's connection. BASALT_ERR_ABSENT means it could not hand it
+ *    over (the proxy is stopping or a connection queue is full). A player who is not in the play state yet, who is
+ *    leaving, or who is a client the proxy does not send HUD packets to (a legacy or Bedrock client) also answers
+ *    OK: the change is dropped quietly. The effect reaches the client in connection order, like the title.
  *  - A boss bar or a tab row is named by an id chosen by the plugin, 1 to 64 bytes, per player; the id space is shared
  *    by all plugins (the same id from two plugins is one bar). The player has one sidebar, one tab list and one list of
  *    links; the last plugin to set them wins. Nothing outlives the player's connection.

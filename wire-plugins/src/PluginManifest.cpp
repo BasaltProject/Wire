@@ -9,6 +9,7 @@
 namespace basalt::wire::plugins {
 namespace {
 using wire::common::toml::TomlTable;
+using wire::common::toml::TomlValue;
 
 [[nodiscard]] bool isUsableId(std::string_view id) {
     if (id.empty() || id.front() < 'a' || id.front() > 'z') {
@@ -62,6 +63,21 @@ using wire::common::toml::TomlTable;
             }
             return std::unexpected(
                 ManifestError{"unknown capability '" + key + "' in [capabilities]; known: " + known});
+        }
+    }
+    for (const std::string_view key : {"storage", "players_data", "commands", "packets", "worldgen", "datapacks"}) {
+        if (table->find(key) != nullptr && !table->boolean(key).has_value()) {
+            return std::unexpected(ManifestError{"capability '" + std::string{key} + "' must be true or false"});
+        }
+    }
+    for (const std::string_view key : {"files", "network"}) {
+        const TomlValue* value = table->find(key);
+        const auto* list = value != nullptr ? value->get<std::vector<TomlValue>>() : nullptr;
+        const bool strings = list != nullptr && std::all_of(list->begin(), list->end(), [](const TomlValue& element) {
+                                 return element.get<std::string>() != nullptr;
+                             });
+        if (value != nullptr && !strings) {
+            return std::unexpected(ManifestError{"capability '" + std::string{key} + "' must be a list of strings"});
         }
     }
     capabilities.storage = table->boolean("storage").value_or(false);

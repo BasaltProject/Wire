@@ -184,16 +184,19 @@ BASALT_IMPORT(hud_hologram_remove) int32_t basalt_hud_hologram_remove(int32_t ho
  */
 
 /* npc_create: spec keys world (default the default world), name (text), x, y, z, uuid (a fixed uuid), skin (a map
- * with texture and signature, or with name of an online player). `token` is the click callback, 0 for none. The new
- * NPC's handle (it has the attributes max_health and movement_speed); ABSENT for an unknown world; INVALID for a bad spec or when the server could not make it. */
+ * with texture and signature, or with name of an online player). `token` is the click callback, 0 for none; a spec
+ * with a fixed uuid and a click callback together is INVALID. The new NPC's handle (it has the attributes max_health
+ * and movement_speed); ABSENT for an unknown world; INVALID for a bad spec or when the server could not make it. */
 BASALT_IMPORT(hud_npc_create) int32_t basalt_hud_npc_create(const char *spec, int32_t slen, int32_t token);
 
 /* npc_set: spec keys name, x, y, z (a move), yaw and pitch (a look), looks_at_players (bool), skin (as in create),
- * audience (a list of names or uuids, or null), health, held_slot (0 to 8), flags (the shared flags byte), pose (the
- * Pose ordinal), attributes (a map from attribute name to base value) and equipment (a map from a Bukkit slot number
- * as a string, 0 to 8 hotbar, 36 to 39 feet to head, 40 off hand, to a map with item and count, or null to clear).
- * Keys are applied in that order and OK is returned when all applied. INVALID for the first one that fails (an
- * attribute the NPC lacks, an unknown item); STALE when the NPC is gone. */
+ * audience (a list of names or uuids, or null), health, held_slot (0 to 8), flags (the shared flags byte: 1 on fire, 2
+ * crouching, 8 sprinting, 16 swimming, 32 invisible, 64 glowing, 128 gliding, added together), pose (the Pose ordinal:
+ * 0 standing, 1 gliding, 2 sleeping, 3 swimming, 4 spin attack, 5 crouching), attributes (a map from attribute name to
+ * base value) and equipment (a map from a Bukkit slot number as a string, 0 to 8 hotbar, 36 to 39 feet to head, 40 off
+ * hand, to a map with item and count, or null to clear). Keys are applied in that order and OK is returned when all
+ * applied. INVALID for the first one that fails (an attribute the NPC lacks, an unknown item); STALE when the NPC is
+ * gone. */
 BASALT_IMPORT(hud_npc_set) int32_t basalt_hud_npc_set(int32_t npc, const char *spec, int32_t slen);
 
 /* npc_get: a map with id (the entity id), uuid, name, world, x, y, z, alive, audience, health, max_health, flags, pose
@@ -208,7 +211,8 @@ BASALT_IMPORT(hud_npc_item) int32_t basalt_hud_npc_item(int32_t npc, int32_t slo
 BASALT_IMPORT(hud_npc_attribute)
 int32_t basalt_hud_npc_attribute(int32_t npc, const char *name, int32_t nlen, double *out);
 
-/* npc_animate: plays an animation of the ClientboundAnimatePacket action id (0 swing main hand). OK; STALE. */
+/* npc_animate: plays an animation by the ClientboundAnimatePacket action id: 0 swing main hand, 3 swing off hand,
+ * 4 critical hit, 5 magic critical hit; 2 and any value not listed play wake up. OK; STALE. */
 BASALT_IMPORT(hud_npc_animate) int32_t basalt_hud_npc_animate(int32_t npc, int32_t action);
 
 /* npc_remove: OK; STALE. */
@@ -237,19 +241,32 @@ BASALT_IMPORT(hud_tab_entry) int32_t basalt_hud_tab_entry(int32_t viewer, int32_
  * A surface is a part of the screen several plugins may want: "sidebar", "boss_bar", "tab_list", "name_tag" and
  * "chat_format". A claim has a priority; the highest drawn content wins per player, a tie keeps the first claimer and
  * is logged, and an empty answer lets the next claim draw. Content is a map with title (text) and lines (a list of
- * text, at most 15 shown on the sidebar; for boss_bar the first line is the progress from 0 to 1). Text may use
- * %placeholders%, filled per player. The server redraws every 20 ticks.
+ * text). The server redraws every 20 ticks. Each surface reads the content its own way:
+ *
+ *   sidebar      title is the board title, lines are the rows top to bottom (at most 15 shown). Title and lines may
+ *                use %placeholders%, filled for the viewer.
+ *   boss_bar     title is the bar text and may use %placeholders%; the first line is the progress as a number from 0
+ *                to 1 (1 when absent). The bar is always white with the plain progress overlay.
+ *   tab_list     title is the header and the lines, joined by newlines, are the footer. No placeholders.
+ *   name_tag     title is the prefix and the first line is the suffix around the player's name. No placeholders. A
+ *                player who is on a team of the main board keeps the team's look and is not drawn by the claim.
+ *   chat_format  title is the format of a chat line, with {player} and {message} replaced. No placeholders.
+ *
+ * Only sidebar and boss_bar substitute %placeholders%; the others take the text as it is. Who the render callback is
+ * asked about depends on the surface: for sidebar, boss_bar and tab_list it is the viewer the content is drawn for;
+ * for name_tag it is the player whose tag is drawn and for chat_format the player who is speaking.
  */
 
 /* surface_claim: claims the surface. `spec` is the static content, or empty; `token` is a render callback, 0 for none.
- * The callback runs per player and redraw with a completion ctx whose value_result is a map with surface and player
- * (the name, for player_by_name); it answers with surface_answer, and not answering draws nothing for that player.
- * The claim's handle; INVALID for an unknown surface name. */
+ * When a callback is given the static content is ignored (surface_update then has no visible effect). The callback
+ * runs per player and redraw with a completion ctx whose value_result is a map with surface and player (the name, for
+ * player_by_name; see the table above for whose name it is); it answers with surface_answer, and not answering draws
+ * nothing for that player. The claim's handle; INVALID for an unknown surface name. */
 BASALT_IMPORT(hud_surface_claim)
 int32_t basalt_hud_surface_claim(const char *surface, int32_t slen, int32_t priority, const char *spec, int32_t cslen,
                                  int32_t token);
 
-/* surface_update: replaces the static content. OK; STALE. */
+/* surface_update: replaces the static content of a claim made without a render callback. OK; STALE. */
 BASALT_IMPORT(hud_surface_update) int32_t basalt_hud_surface_update(int32_t claim, const char *spec, int32_t slen);
 
 /* surface_release: lets go of the surface. OK; STALE. */

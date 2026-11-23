@@ -4,8 +4,9 @@
  *
  * Player handles are the ones of basalt_player_by_name, basalt_players_online, basalt_event_player and
  * basalt_proxy_players_on. A call that targets a player answers STALE once the player left. "Handed over" calls answer
- * OK when the proxy accepted the request for the player's connection and INVALID when it could not (the player is in a
- * phase that cannot show it, or the proxy has no such facility), like the other player calls of the proxy profile.
+ * OK when the proxy handed the request to the player's connection and INVALID when it could not (the proxy is
+ * stopping or a connection queue is full). A legacy or Bedrock client, or a player in a phase that cannot show it,
+ * drops the change quietly and the call still answers OK.
  * Text arguments are MiniMessage, a leading '@' is a lang key of the plugin, and a text is cut at 4096 bytes.
  *
  * ---- Observed events -------------------------------------------------------------------------------------------
@@ -45,12 +46,12 @@ int32_t basalt_proxy_interaction_watch(const char *name, int32_t nlen, int32_t t
  *                        entries; a button runs its command as the player when clicked, there is no callback
  *   can_close_with_escape  bool, default true
  * Unknown keys are ignored. OK once handed over; STALE for a player who left; INVALID for a value that is not a map, a
- * kind that is none of the three, a title that is not a string, a body or button of another shape, or a refused
- * request. */
+ * kind that is none of the three, a title that is not a string, a body or button of another shape, or a request the
+ * proxy could not hand over. */
 BASALT_PROXY_IMPORT(dialog_show)
 int32_t basalt_proxy_dialog_show(int32_t player, const char *value, int32_t vlen);
 
-/* dialog_clear: closes any dialog the proxy showed. OK, STALE, INVALID when it could not be handed over. */
+/* dialog_clear: closes any dialog the proxy showed. OK, STALE, INVALID when the proxy could not hand it over. */
 BASALT_PROXY_IMPORT(dialog_clear) int32_t basalt_proxy_dialog_clear(int32_t player);
 
 /* ---- Resource packs --------------------------------------------------------------------------------------------- */
@@ -60,36 +61,38 @@ BASALT_PROXY_IMPORT(dialog_clear) int32_t basalt_proxy_dialog_clear(int32_t play
  * (string: a UUID, or any other text that becomes the name-based UUID of "basalt:resource_pack:<text>"; the default is
  * the url). The pack id as UUID text is written to `out` with the needed-length convention (the status of the call
  * when it fails: STALE for a player who left, INVALID for a missing url, a hash that is not 40 hex digits, a bad value
- * or a refused request). The client answers with player.resource_pack events carrying that id. */
+ * or a request the proxy could not hand over). The client answers with player.resource_pack events carrying that id. */
 BASALT_PROXY_IMPORT(resource_pack_push)
 int32_t basalt_proxy_resource_pack_push(int32_t player, const char *value, int32_t vlen, char *out, int32_t cap);
 
 /* resource_pack_remove: pops one pack by id (the same id rule: UUID text, or text hashed to a UUID). OK, STALE,
- * INVALID when the request was refused. */
+ * INVALID when the proxy could not hand it over. */
 BASALT_PROXY_IMPORT(resource_pack_remove)
 int32_t basalt_proxy_resource_pack_remove(int32_t player, const char *id, int32_t idlen);
 
-/* resource_pack_clear: removes every pack the proxy pushed. OK, STALE, INVALID when refused. */
+/* resource_pack_clear: removes every pack the proxy pushed. OK, STALE, INVALID when the proxy could not hand it
+ * over. */
 BASALT_PROXY_IMPORT(resource_pack_clear) int32_t basalt_proxy_resource_pack_clear(int32_t player);
 
 /* ---- Cookies and transfer --------------------------------------------------------------------------------------- */
 
 /* cookie_set: stores `data` (arbitrary bytes, at most 5120) under the cookie key (an identifier such as
  * "plugin:session", at most 256 bytes) in the client for its next connection. OK, STALE, INVALID for an empty or over
- * long key or data over the limit, or a refused request. */
+ * long key or data over the limit, or a request the proxy could not hand over. */
 BASALT_PROXY_IMPORT(cookie_set)
 int32_t basalt_proxy_cookie_set(int32_t player, const char *key, int32_t klen, const char *data, int32_t dlen);
 
 /* cookie_request: asks the client for the cookie `key`. Returns a request handle (positive) and later calls
- * basalt_callback(token, ctx), whose basalt_value_result is the cookie as bytes, or null when the client has none or
- * never answered within the proxy's wait. The handle is STALE after the callback and can be dropped with
- * basalt_request_cancel. Errors: STALE for a player who left, INVALID for an empty key or a refused request, and
- * ABSENT when too many requests of the plugin are pending. */
+ * basalt_callback(token, ctx), whose basalt_value_result is the cookie as bytes, or null when the client has none,
+ * cannot be asked (a legacy or Bedrock client, a player not in play) or never answered within the proxy's wait. The
+ * handle is STALE after the callback and can be dropped with basalt_request_cancel. Errors: STALE for a player who
+ * left, INVALID for an empty key or a request the proxy could not hand over, and ABSENT when too many requests of the
+ * plugin are pending. */
 BASALT_PROXY_IMPORT(cookie_request)
 int32_t basalt_proxy_cookie_request(int32_t player, const char *key, int32_t klen, int32_t token);
 
 /* player_transfer: tells the client to reconnect to host:port (the transfer packet; port 1..65535, 25565 is the
- * usual one). OK, STALE, INVALID for an empty host, a port out of range or a refused request. */
+ * usual one). OK, STALE, INVALID for an empty host, a port out of range or a request the proxy could not hand over. */
 BASALT_PROXY_IMPORT(player_transfer)
 int32_t basalt_proxy_player_transfer(int32_t player, const char *host, int32_t hlen, int32_t port);
 

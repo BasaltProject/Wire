@@ -55,7 +55,11 @@ extern "C" {
  *                                             only until the callback returns
  *
  * A token is any integer the plugin picked when it registered; the plugin maps it back to its own function.
- * Callbacks run on the owner of what they touch and must not block.
+ * Callbacks run one at a time, for all plugins together, on the plugin thread of the host (on the server the one that
+ * owns the global scheduler) and must not block. A callback that would start inside another callback of the same
+ * plugin is skipped, not queued, so what a plugin's own calls cause never reaches its own listeners; tasks and
+ * requests are scheduled by the host for a later turn instead. Packet and channel listeners of the server are the
+ * exception: they run on the thread that carries the packet (see areas/packets.h).
  */
 
 /* ---- Arguments lists -----------------------------------------------------------------------------------------
@@ -147,8 +151,9 @@ BASALT_IMPORT_SHARED(task_cancel) int32_t basalt_task_cancel(int32_t task);
 
 /* ---- Imports: placeholders ------------------------------------------------------------------------------------
  *
- * The name is what appears in "%name%". In the callback, placeholder_player is the player it is resolved for (0 for
- * none) and the plugin answers with placeholder_result.
+ * The host registers the placeholder as `<plugin id>_<name>`, so `coins` of the plugin `example` appears as
+ * "%example_coins%". In the callback, placeholder_player is the player it is resolved for (0 for none) and the plugin
+ * answers with placeholder_result.
  */
 BASALT_IMPORT(placeholder_register) int32_t basalt_placeholder_register(const char *name, int32_t nlen, int32_t token);
 BASALT_IMPORT(placeholder_player) int32_t basalt_placeholder_player(int32_t ctx);

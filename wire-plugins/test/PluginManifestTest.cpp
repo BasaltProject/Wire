@@ -71,4 +71,6 @@ TEST_CASE("capabilities are a closed set of known names") {
     CHECK(ok->capabilities.has("network"));
     CHECK_FALSE(ok->capabilities.has("commands"));
     CHECK_FALSE(parse("teleport = true\n").has_value());
+    CHECK_FALSE(parse("network = true\n").has_value());
+    CHECK_FALSE(parse("storage = \"yes\"\n").has_value());
 }

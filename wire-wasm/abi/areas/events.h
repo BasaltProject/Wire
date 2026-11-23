@@ -4,7 +4,10 @@
  *
  * An event ctx is the handle basalt_callback receives for a decision listener (basalt_event_on) or a listener of this
  * area (basalt_event_on_ex). It is valid until the callback returns: afterwards every event_* call answers STALE.
- * Callbacks run on the plugin thread and must not block. Fields are the ones the server declares for that event, by
+ * Callbacks run on the plugin thread and must not block. A listener that would start inside another callback of the
+ * same plugin is skipped, so an event caused by one of the plugin's own calls never reaches its own listeners (other
+ * plugins' listeners still run). An event the server raises on a thread other than the plugin thread is skipped for
+ * plugins too, unless the server hands it over first. Fields are the ones the server declares for that event, by
  * name (basalt_event_describe lists them); a field is null, bool, i64, f64 or string as the server fires it.
  *
  * Player handles are the ones of basalt_player_by_name; they are STALE once the player left. Every player import
@@ -65,8 +68,10 @@ BASALT_IMPORT(event_names) int32_t basalt_event_names(char *out, int32_t cap);
 BASALT_IMPORT(event_cancelled) int32_t basalt_event_cancelled(int32_t ctx);
 
 /* event_cancel_with: cancels the event and keeps a message for whoever caused it: `text` is a lang key when it starts
- * with '@', else MiniMessage, with arguments as in basalt_player_send. OK; INVALID when the event cannot be cancelled
- * or this is a post listener; ABSENT when the lang key does not exist. */
+ * with '@', else MiniMessage, with arguments as in basalt_player_send. The message is always kept (event_cancel_message
+ * reads it back) but the server shows it only for player.login (the disconnect reason), server.command (printed on
+ * the console) and server.remote_command (the reply to the sender); every other event is cancelled silently. OK;
+ * INVALID when the event cannot be cancelled or this is a post listener; ABSENT when the lang key does not exist. */
 BASALT_IMPORT(event_cancel_with)
 int32_t basalt_event_cancel_with(int32_t ctx, const char *text, int32_t tlen, const char *args, int32_t alen);
 
@@ -157,9 +162,10 @@ int32_t basalt_player_effect(int32_t player, const char *effect, int32_t elen, i
 
 /* player_open_inventory: opens a window of `kind` for the player. `spec` is one value (ptr 0 and len 0 for none).
  * Kinds: "merchant" ({title: string JSON text component, offers: string SNBT}), "trades" ({entity: i64 entity id of a
- * villager}), "sign" ({x, y, z: i64, front: bool}), "book" ({item: string SNBT of the written book}). The player's own
- * chest windows are menus (basalt_menu_open). OK; ABSENT when the server could not open it; INVALID for an unknown
- * kind or spec; STALE. */
+ * villager}), "sign" ({x, y, z: i64, front: bool}), "book" ({item: string holding the binary NBT bytes, not SNBT, of
+ * the written book: a compound with id, count and components}). Opening the editor of a real sign first fires
+ * player.sign_open (cause "plugin"), which a listener can cancel. The player's own chest windows are menus
+ * (basalt_menu_open). OK; ABSENT when the server could not open it; INVALID for an unknown kind or spec; STALE. */
 BASALT_IMPORT(player_open_inventory)
 int32_t basalt_player_open_inventory(int32_t player, const char *kind, int32_t klen, const char *spec, int32_t slen);
 

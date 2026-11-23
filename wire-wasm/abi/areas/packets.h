@@ -18,9 +18,9 @@ extern "C" {
  *
  * Names. A packet is named as the server names it in `/plugins packets`: `clientbound.set_title_text`,
  * `serverbound.chat_message`, `serverbound.play.custom_payload` (the phase is added when the name alone is ambiguous),
- * a hex id such as `clientbound.configuration.0x07`. A listener may also use a wildcard: `serverbound.*`, `clientbound.play.*` or `*`.
- * Phases are handshake, status, login, configuration and play. packet_names lists the real names and packet_lookup
- * says what one name means, so nothing here is a hand-written table.
+ * a hex id such as `clientbound.configuration.0x07`. A listener may also use a wildcard: `serverbound.*`,
+ * `clientbound.play.*` or `*`. Phases are handshake, status, login, configuration and play. packet_names lists the real
+ * names and packet_lookup says what one name means, so nothing here is a hand-written table.
  *
  * Threads. A packet or channel listener runs on the thread that carries the packet, usually the network thread of that
  * connection, holding the plugin's turn: it must not block, wait or do slow work. A listener has a time budget of 5
@@ -63,7 +63,8 @@ BASALT_IMPORT(packet_unlisten) int32_t basalt_packet_unlisten(int32_t listener);
 /* packet_send: sends the clientbound packet `name` with `body` to `player`. `intercept` non-zero runs the listeners on
  * it (including this plugin's), zero sends it past them. 1 when written, 0 when the player has no Java connection
  * (Bedrock) or it is closing; INVALID for an unknown or serverbound name or a bad body; STALE for a player that left;
- * DENIED without the packets capability. The body is in the wire format of the player's protocol. */
+ * DENIED without the packets capability. The body is in the server's own protocol shape; for an older client the server
+ * translates the packet on the way out, after the listeners. */
 BASALT_IMPORT(packet_send) int32_t basalt_packet_send(int32_t player, const char *name, int32_t name_len,
                                                       const char *body, int32_t body_len, int32_t intercept);
 
