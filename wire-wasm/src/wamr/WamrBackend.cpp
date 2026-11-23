@@ -16,7 +16,7 @@
 
 namespace basalt::wire::wasm {
 namespace {
-constexpr std::size_t kMaxFunctions = 128;
+constexpr std::size_t kMaxFunctions = 1024;
 constexpr std::size_t kSlotBytes = sizeof(std::uint64_t);
 constexpr std::uint32_t kWasmPageBytes = 65536;
 constexpr std::size_t kErrorBytes = 256;
@@ -171,6 +171,10 @@ bool Runtime::acquire() {
         gWasiCount = 0;
         gProxyCount = 0;
         const std::span<const AbiFunction> functions = abiFunctions();
+        if (functions.size() > kMaxFunctions) {
+            wasm_runtime_destroy();
+            return false;
+        }
         for (std::size_t index = 0; index < functions.size(); ++index) {
             gSignatures.push_back(wamrSignature(functions[index].signature));
             const NativeSymbol symbol{functions[index].name.data(), reinterpret_cast<void*>(kTrampolines[index]),
