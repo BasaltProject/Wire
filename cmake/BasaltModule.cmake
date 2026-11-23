@@ -48,6 +48,10 @@ function(basalt_test NAME)
         CXX_EXTENSIONS OFF
     )
     add_test(NAME ${NAME} COMMAND ${NAME})
+    if(BASALT_SANITIZE MATCHES "thread")
+        set_tests_properties(${NAME} PROPERTIES
+            ENVIRONMENT "TSAN_OPTIONS=suppressions=${CMAKE_CURRENT_FUNCTION_LIST_DIR}/tsan.supp")
+    endif()
 endfunction()
 
 function(basalt_bench NAME)
