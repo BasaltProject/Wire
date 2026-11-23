@@ -1,4 +1,4 @@
-/* Basalt plugin ABI: the structured value encoding. Normative; the prose and the limit table are in ABI.md, "Values".
+/* Basalt plugin ABI: the structured value encoding. Normative.
  *
  * Whatever does not fit a handful of scalars (a recipe, a list of effects, an attribute table, a form definition, an
  * event payload) crosses the boundary as ONE encoded value in a buffer: `(const char *ptr, int32_t len)` going in,

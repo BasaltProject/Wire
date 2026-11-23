@@ -20,7 +20,7 @@ inline constexpr std::string_view kBasaltModule = "basalt";
 inline constexpr std::string_view kProxyModule = "basalt_proxy";
 inline constexpr std::string_view kWasiModule = "wasi_snapshot_preview1";
 
-/// Which imports a module may use: the server profile, or the proxy one (see ABI-proxy.md).
+/// Which imports a module may use: the server profile, or the proxy one.
 enum class Profile : std::uint8_t { Server, Proxy };
 
 /// Which profiles offer an import: the server one, the proxy one, or both.
